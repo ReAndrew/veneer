@@ -62,8 +62,8 @@ Produces `target/invalider-<version>.jar`.
 ## License
 
 GPLv3 for the combined work (required by AntiSpoof's original GPLv3 license when
-combined with other code) - see `LICENSE`. CheckHacks's original MIT text is kept
-in `LICENSE-MIT` for attribution.
+combined with other code) - see `LICENSE`. CheckHacks's original MIT text is
+appended to the same file for attribution.
 
 ## Original projects
 
