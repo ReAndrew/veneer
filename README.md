@@ -1,71 +1,117 @@
+<div align="center">
+
 # Veneer
 
-A single Paper/Spigot plugin merging two previously-independent plugins into one jar:
+**Catch clients that aren't what they claim to be.**
 
-* **AntiSpoof** (`com.gigazelensky.antispoof.*`, by GigaZelensky) - client brand/channel
-  spoof detection.
-* **CheckHacks** (`me.branduzzo.checkHacks.*`, by Branduzzo) - sign-translation-vulnerability
-  hack detection.
+Client spoof detection, mod detection and cache-based account linking for Paper, Spigot and Folia, in a single jar.
 
-Both modules' original package trees, classes, and behavior were kept as close to
-unchanged as possible. The only required change was replacing their two separate
-`JavaPlugin` main classes with a single one (`com.veneer.VeneerPlugin`), since
-Bukkit only loads one main class per `plugin.yml`.
+![Java 21](https://img.shields.io/badge/Java-21-orange)
+![Paper 1.21+](https://img.shields.io/badge/Paper-1.21%2B-blue)
+![Folia](https://img.shields.io/badge/Folia-supported-brightgreen)
+![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
+
+</div>
+
+> **Status:** the plugin compiles and packages; it has **not yet been run on a live server**. Treat it as a pre-release.
+
+---
+
+## Features
+
+| Module | What it does |
+|---|---|
+| **Spoof detection** (from AntiSpoof) | Compares the client brand and registered plugin channels against what the claimed client can actually send. Catches fake `vanilla`, fake Fabric/Forge/Lunar, blocked or required channels, Geyser impersonation. Uses PacketEvents and the `minecraft:brand` channel. |
+| **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite, and there is an embedded web editor. |
+| **Anticheat bridge** | Flags from Grim (event bus), Vulcan, Spartan, Matrix, Intave and AAC can trigger a mod scan. A spoof flag can also queue one. |
+| **RPTrack** | Links accounts and IPs of the same Minecraft installation through its resource-pack download cache, and detects LiquidBounce's local server. **Off by default.** See [RPTrack](#rptrack). |
+| **Integrations** | LuckPerms (live alert-recipient refresh, primary group), PlaceholderAPI (`%veneer_*%`), Floodgate/Geyser, Discord webhooks, Folia-aware scheduling. |
+
+## Install
+
+1. Drop `veneer-<version>.jar` into `plugins/` and start the server.
+2. Edit `plugins/Veneer/config.yml`, then reload with `/spoof reload` or `/hackreload`.
+3. Optional: install LuckPerms, PlaceholderAPI, Floodgate, ViaVersion or an anticheat. Veneer picks them up automatically.
+
+Upgrading from the earlier builds (**Invalider**, **Anomaly**)? On first start the contents of `plugins/Anomaly` or `plugins/Invalider` are copied into `plugins/Veneer` if it has no `config.yml` yet. The old folder is left untouched. Permissions changed prefix, so re-grant them as `veneer.*`.
+
+## Commands
+
+| Command | Aliases | Permission | Description |
+|---|---|---|---|
+| `/spoof` |  `/antispoof` | `veneer.spoof.use` | Inspect client brand and channels, manage spoof detection |
+| `/hackcheck <player> [hacks]` | `/checkhacks` | `veneer.hacks.check` | Scan a player for mods |
+| `/hackalerts` | `/chalerts` | `veneer.hacks.alerts` | Toggle your detection alerts |
+| `/hacklang <player>` | `/checklang` | `veneer.hacks.lang` | Check a player's client language |
+| `/hackeditor` | `/cheditor` | `veneer.hacks.editor` | Open the web editor for hack definitions |
+| `/hackreload` | `/chreload` | `veneer.hacks.reload` | Reload hack detection config |
+| `/rptrack <player>` | `/hackfp` | `veneer.hacks.rptrack` | Show a player's cache fingerprint and linked accounts |
+
+Other permissions: `veneer.spoof.alerts`, `veneer.spoof.admin`, `veneer.spoof.bypass`. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
+
+## Configuration
+
+One file, `plugins/Veneer/config.yml`:
+
+```
+antispoof:            # spoof detection (brand, channels, punishments, Discord)
+checkhacks:
+  settings:           # prefix, language, web editor, Discord, Bedrock handling
+  detection:          # hack definitions, auto-checks, anticheat hooks, commands
+  language-check:     # /hacklang
+  rptrack:            # resource-pack cache tracking (disabled by default)
+```
+
+Chat messages live in `plugins/Veneer/messages/<lang>.yml` (en, ru, de, es, fr, it, br, lolcat, uwu).
+
+## PlaceholderAPI
+
+| Placeholder | Value |
+|---|---|
+| `%veneer_brand%` | Client brand |
+| `%veneer_channels%`, `%veneer_channels_count%` | Registered plugin channels |
+| `%veneer_is_spoofing%`, `%veneer_is_bedrock%` | `true` / `false` |
+| `%veneer_client_type%` | Client type seen by the mod scan |
+| `%veneer_alerts%` | `on` / `off` for the viewer |
+| `%veneer_group%` | LuckPerms primary group |
+| `%veneer_rptrack_packs%`, `%veneer_rptrack_linked%`, `%veneer_rptrack_liquidbounce%` | RPTrack result for the player |
+
+The older `%antispoof_*%` placeholders still work.
+
+## RPTrack
+
+The Minecraft client caches downloaded resource packs by SHA-1 in `.minecraft/downloads`, shared across accounts. On join, Veneer offers 28 probe packs with a known hash and an unreachable URL; a pack answers *loaded* only if it is already cached. A fresh client is assigned a random subset of 6 packs that it really downloads, and later logins on any account or IP reproduce that subset. The technique is described in [this write-up](https://alaggydev.github.io/posts/cytooxien/).
+
+A built-in HTTP server serves the probe packs and a small pack that hides the "failed to download" toast. Set it up in `checkhacks.rptrack`:
+
+```yaml
+enabled: true
+port: 8123
+public-url: "http://play.example.com:8123"   # must be reachable by players
+min-match: 5                                 # packs that must overlap to link two accounts
+```
+
+> **Privacy:** this is covert tracking of players. Disclose it in your server rules or privacy policy. Some clients (Meteor, Wurst, LiquidBounce, ExploitPreventer) already block it, so absence of a match proves nothing.
 
 ## Build
 
 ```
-mvn package
+mvn -q -DskipTests package
 ```
 
-Produces `target/veneer-<version>.jar`.
+Produces `target/veneer-<version>.jar` (about 19 MB, PacketEvents and bStats shaded and relocated). Needs Java 21 or newer.
 
-## What changed during the merge
+## Notes
 
-- **One main class.** `AntiSpoofPlugin` and `CheckHacksPlugin` were removed; their
-  `onEnable`/`onDisable` logic now lives in `VeneerPlugin`, which both modules'
-  managers/listeners/commands reference directly (constructor param types were
-  updated from the old plugin classes to `VeneerPlugin`).
-- **One config file.** Everything lives in `plugins/Veneer/config.yml`: `antispoof:`
-  (was AntiSpoof's config.yml) and `checkhacks:` with `settings` (was config.yml),
-  `detection` (was checkhacks.yml) and `language-check` (was checklang.yml). Each
-  module's `ConfigManager` reads its own section via `VeneerConfig.section(...)`,
-  not Bukkit's built-in `getConfig()`. Chat messages stay in `messages/<lang>.yml`.
-  Old standalone config files are not migrated.
-- **AntiSpoof -> CheckHacks.** A new AntiSpoof flag queues a CheckHacks scan
-  (`antispoof.checkhacks-on-flag.enabled`). Anticheat hooks (Grim via its event bus,
-  Vulcan, Spartan, Matrix, Intave, AAC) are in `checkhacks.detection.detect-flag`.
-- **One accessor renamed.** Both modules had a `getConfigManager()` on their plugin
-  class, returning incompatible types. AntiSpoof kept the name; CheckHacks's is now
-  `getHackConfigManager()`. This only matters if you're writing code against the
-  plugin instance directly (not via commands/config).
-- **AntiSpoof's Lite build variant was dropped.** The original project shipped a
-  "Full" (PacketEvents shaded in) and "Lite" (PacketEvents provided externally) jar.
-  The merged build only produces the Full equivalent, since CheckHacks has no
-  Lite-style profile and a single combined jar is simpler to install.
-- **CheckHacks's self-updater is disabled.** `/checkhacksupdate` and the
-  startup GitHub check are wired up but inert
-  (`VeneerPlugin.onEnable` never calls `updateManager.checkForUpdates()`).
-  The original updater downloads a standalone `CheckHacks-X.Y.Z.jar` release and
-  deletes the currently-running jar to replace it. In this merged build the running
-  jar is `veneer-*.jar` (AntiSpoof + CheckHacks); letting that logic run would
-  delete the merged plugin and replace it with a CheckHacks-only jar missing all of
-  AntiSpoof. Update by building/downloading a new Veneer release manually.
-- **Version reset to `1.0.0`**, independent of the original AntiSpoof (1.2.7) and
-  CheckHacks (1.3.1) version numbers, since they no longer version independently.
-- **`api-version` set to `1.21`, Paper API 1.21.4 used for compilation**, matching
-  CheckHacks's requirement (Folia support, modern sign APIs). AntiSpoof's original
-  claimed range was 1.8.9-1.21.5 against the old Spigot API; its code compiles fine
-  against the newer Paper API, so no functional loss is expected, but it hasn't been
-  tested against legacy 1.8.x servers as part of this merge.
+- The self-updater inherited from CheckHacks is **disabled**: it would delete the running merged jar. Update manually.
+- Version `1.0.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 
-## License
+## Credits and license
 
-GPLv3 for the combined work (required by AntiSpoof's original GPLv3 license when
-combined with other code) - see `LICENSE`. CheckHacks's original MIT text is
-appended to the same file for attribution.
+Veneer merges two open-source plugins and adds new modules:
 
-## Original projects
+- **AntiSpoof** by GigaZelensky (GPLv3)
+- **CheckHacks** by Branduzzo (MIT)
 
-The original standalone projects, with their own git history, are kept untouched
-in `AntiSpoof/` and `CheckHacks/` for reference. They are not part of the build.
+The combined work is released under **GPLv3**, see `LICENSE`; the CheckHacks MIT text is appended there for attribution.
