@@ -1,4 +1,4 @@
-Invalider is a combined work built from two separately-licensed plugins:
+Veneer is a combined work built from two separately-licensed plugins:
 
   * AntiSpoof (com.gigazelensky.antispoof.*) - Copyright (C) 2025 GigaZelensky
     Originally licensed under the GNU General Public License v3.0.
@@ -10,12 +10,12 @@ Because the GPLv3 component is incorporated into this single combined/linked
 work, GPLv3 section 5 requires the work as a whole to be distributed under
 the GNU General Public License v3.0 or later. Accordingly:
 
-Invalider is free software: you can redistribute it and/or modify it under
+Veneer is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option)
 any later version.
 
-Invalider is distributed in the hope that it will be useful, but WITHOUT ANY
+Veneer is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
 FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
 details: https://www.gnu.org/licenses/gpl-3.0.html

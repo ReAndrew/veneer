@@ -1,4 +1,4 @@
-# Invalider
+# Veneer
 
 A single Paper/Spigot plugin merging two previously-independent plugins into one jar:
 
@@ -9,7 +9,7 @@ A single Paper/Spigot plugin merging two previously-independent plugins into one
 
 Both modules' original package trees, classes, and behavior were kept as close to
 unchanged as possible. The only required change was replacing their two separate
-`JavaPlugin` main classes with a single one (`com.invalider.InvaliderPlugin`), since
+`JavaPlugin` main classes with a single one (`com.veneer.VeneerPlugin`), since
 Bukkit only loads one main class per `plugin.yml`.
 
 ## Build
@@ -18,18 +18,18 @@ Bukkit only loads one main class per `plugin.yml`.
 mvn package
 ```
 
-Produces `target/invalider-<version>.jar`.
+Produces `target/veneer-<version>.jar`.
 
 ## What changed during the merge
 
 - **One main class.** `AntiSpoofPlugin` and `CheckHacksPlugin` were removed; their
-  `onEnable`/`onDisable` logic now lives in `InvaliderPlugin`, which both modules'
+  `onEnable`/`onDisable` logic now lives in `VeneerPlugin`, which both modules'
   managers/listeners/commands reference directly (constructor param types were
-  updated from the old plugin classes to `InvaliderPlugin`).
-- **One config file.** Everything lives in `plugins/Invalider/config.yml`: `antispoof:`
+  updated from the old plugin classes to `VeneerPlugin`).
+- **One config file.** Everything lives in `plugins/Veneer/config.yml`: `antispoof:`
   (was AntiSpoof's config.yml) and `checkhacks:` with `settings` (was config.yml),
   `detection` (was checkhacks.yml) and `language-check` (was checklang.yml). Each
-  module's `ConfigManager` reads its own section via `InvaliderConfig.section(...)`,
+  module's `ConfigManager` reads its own section via `VeneerConfig.section(...)`,
   not Bukkit's built-in `getConfig()`. Chat messages stay in `messages/<lang>.yml`.
   Old standalone config files are not migrated.
 - **AntiSpoof -> CheckHacks.** A new AntiSpoof flag queues a CheckHacks scan
@@ -45,12 +45,12 @@ Produces `target/invalider-<version>.jar`.
   Lite-style profile and a single combined jar is simpler to install.
 - **CheckHacks's self-updater is disabled.** `/checkhacksupdate` and the
   startup GitHub check are wired up but inert
-  (`InvaliderPlugin.onEnable` never calls `updateManager.checkForUpdates()`).
+  (`VeneerPlugin.onEnable` never calls `updateManager.checkForUpdates()`).
   The original updater downloads a standalone `CheckHacks-X.Y.Z.jar` release and
   deletes the currently-running jar to replace it. In this merged build the running
-  jar is `invalider-*.jar` (AntiSpoof + CheckHacks); letting that logic run would
+  jar is `veneer-*.jar` (AntiSpoof + CheckHacks); letting that logic run would
   delete the merged plugin and replace it with a CheckHacks-only jar missing all of
-  AntiSpoof. Update by building/downloading a new Invalider release manually.
+  AntiSpoof. Update by building/downloading a new Veneer release manually.
 - **Version reset to `1.0.0`**, independent of the original AntiSpoof (1.2.7) and
   CheckHacks (1.3.1) version numbers, since they no longer version independently.
 - **`api-version` set to `1.21`, Paper API 1.21.4 used for compilation**, matching

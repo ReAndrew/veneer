@@ -1,83 +1,106 @@
-name: Invalider
+name: Veneer
 version: ${project.version}
-main: com.invalider.InvaliderPlugin
+main: com.veneer.VeneerPlugin
 api-version: '1.21'
 folia-supported: true
-description: Merged plugin combining AntiSpoof (client spoof detection) and CheckHacks (sign-translation hack detection).
+description: Client spoof detection and sign-translation hack detection in one plugin.
 authors: [GigaZelensky, Branduzzo]
 
-softdepend: [ProtocolLib, ProtocolSupport, ViaVersion, ViaBackwards, ViaRewind, Geyser-Spigot, PlaceholderAPI, GrimAC, Vulcan, Spartan, Matrix, Intave, AAC, floodgate]
+softdepend: [ProtocolLib, ProtocolSupport, ViaVersion, ViaBackwards, ViaRewind, Geyser-Spigot, PlaceholderAPI, LuckPerms, GrimAC, Vulcan, Spartan, Matrix, Intave, AAC, floodgate]
 loadbefore: [PacketEvents]
 
 commands:
-  antispoof:
-    description: View client channel information and manage the AntiSpoof module
-    usage: /antispoof help
-    permission: antispoof.command
-  checkhacks:
+  spoof:
+    description: Inspect client brand/channels and manage the spoof detection module
+    usage: /spoof help
+    permission: veneer.spoof.use
+    aliases: [antispoof]
+  hackcheck:
     description: Check a player for installed hacks/mods.
-    usage: /checkhacks <player> [hack1,hack2,...]
-    permission: checkhacks.check
-  chreload:
-    description: Reload CheckHacks configuration.
-    usage: /chreload
-    permission: checkhacks.reload
-  chalerts:
+    usage: /hackcheck <player> [hack1,hack2,...]
+    permission: veneer.hacks.check
+    aliases: [checkhacks]
+  hackreload:
+    description: Reload the hack detection configuration.
+    usage: /hackreload
+    permission: veneer.hacks.reload
+    aliases: [chreload]
+  hackalerts:
     description: Toggle hack detection alerts.
-    usage: /chalerts
-    permission: checkhacks.alerts
-    aliases: [checkalerts, alerts]
-  checklang:
-    description: Check the language of a player.
-    usage: /checklang <player> [lang1,lang2,...]
-    permission: checkhacks.checklang
-  cheditor:
-    description: Open the CheckHacks web editor.
-    usage: /cheditor
-    permission: checkhacks.editor
-  checkhacksupdate:
-    description: Disabled in this merged build - download new Invalider releases manually instead.
-    usage: /checkhacksupdate
-    permission: checkhacks.update
+    usage: /hackalerts
+    permission: veneer.hacks.alerts
+    aliases: [chalerts, checkalerts]
+  hacklang:
+    description: Check the client language of a player.
+    usage: /hacklang <player> [lang1,lang2,...]
+    permission: veneer.hacks.lang
+    aliases: [checklang]
+  hackeditor:
+    description: Open the hack detection web editor.
+    usage: /hackeditor
+    permission: veneer.hacks.editor
+    aliases: [cheditor]
+  rptrack:
+    description: Show RPTrack (resource-pack cache) data and linked accounts.
+    usage: /rptrack <player>
+    permission: veneer.hacks.rptrack
+    aliases: [hackfp]
 
 permissions:
-  antispoof.command:
-    description: Access to AntiSpoof commands
+  veneer.spoof.use:
+    description: Use /spoof
     default: op
-  antispoof.admin:
-    description: Access to admin commands like reload
+  veneer.spoof.admin:
+    description: Admin spoof commands such as reload
     default: op
-  antispoof.alerts:
+  veneer.spoof.alerts:
     description: Receive spoof alerts
     default: op
-  antispoof.bypass:
+  veneer.spoof.bypass:
     description: Bypass all spoof checks
     default: false
-  checkhacks.check:
-    description: Use /checkhacks.
+  veneer.hacks.check:
+    description: Use /hackcheck
     default: op
-  checkhacks.reload:
-    description: Use /chreload.
+  veneer.hacks.rptrack:
+    description: Use /rptrack
     default: op
-  checkhacks.alerts:
-    description: Receive alerts and use /chalerts.
+  veneer.hacks.reload:
+    description: Use /hackreload
     default: op
-  checkhacks.checklang:
-    description: Use /checklang.
+  veneer.hacks.alerts:
+    description: Receive hack alerts and use /hackalerts
     default: op
-  checkhacks.editor:
-    description: Use /cheditor.
+  veneer.hacks.lang:
+    description: Use /hacklang
     default: op
-  checkhacks.update:
-    description: Receive update notifications and run /checkhacksupdate (disabled in the merged build).
+  veneer.hacks.editor:
+    description: Use /hackeditor
     default: op
-  checkhacks.*:
-    description: All CheckHacks permissions.
+  veneer.hacks.update:
+    description: Reserved (updater is disabled in this build)
+    default: op
+  veneer.spoof.*:
+    description: All spoof permissions
     default: false
     children:
-      checkhacks.check: true
-      checkhacks.reload: true
-      checkhacks.alerts: true
-      checkhacks.checklang: true
-      checkhacks.editor: true
-      checkhacks.update: true
+      veneer.spoof.use: true
+      veneer.spoof.admin: true
+      veneer.spoof.alerts: true
+  veneer.hacks.*:
+    description: All hack detection permissions
+    default: false
+    children:
+      veneer.hacks.check: true
+      veneer.hacks.rptrack: true
+      veneer.hacks.reload: true
+      veneer.hacks.alerts: true
+      veneer.hacks.lang: true
+      veneer.hacks.editor: true
+      veneer.hacks.update: true
+  veneer.*:
+    description: Everything
+    default: false
+    children:
+      veneer.spoof.*: true
+      veneer.hacks.*: true

@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════
-#  Invalider - config.yml (single configuration file)
+#  Veneer - config.yml (single configuration file)
 #
 #  antispoof:   client brand / channel spoof detection (AntiSpoof)
 #  checkhacks:  sign-translation mod detection (CheckHacks)
@@ -404,10 +404,10 @@ antispoof:
   # ──────────────────────────────────────────────────────────
   # Checks for updates from GitHub when the server starts
   update-checker:
-    # Whether to check for updates on startup
-    enabled: true
+    # Disabled: it compares against upstream AntiSpoof releases, not Veneer
+    enabled: false
     # Whether to notify admins when they join
-    notify-on-join: true
+    notify-on-join: false
 
   # ──────────────────────────────────────────────────────────
   #                Legacy Punishment Settings
@@ -427,10 +427,10 @@ antispoof:
   # These messages will be used if a specific check is enabled
   # but doesn't have its own alerts defined
   # Available placeholders: %player%, %reason%, %brand%, %channel%
-  # Defines the message sent to players with the `antispoof.alerts` permission
+  # Defines the message sent to players with the `veneer.spoof.alerts` permission
   # when a spoofing attempt is detected.
   messages:
-    # Message shown to players with antispoof.alerts permission
+    # Message shown to players with veneer.spoof.alerts permission
     alert: "&8[&cAntiSpoof&8] &e%player% flagged! &c%reason%"
     # Message logged to console (no color codes needed)
     console-alert: "%player% flagged! %reason%"
@@ -440,7 +440,7 @@ antispoof:
     console-multiple-flags: "%player% has multiple violations: %reasons%"
 
   # ──────────────────────────────────────────────────────────
-  #            CheckHacks integration (Invalider)
+  #            CheckHacks integration (Veneer)
   # ──────────────────────────────────────────────────────────
   # When AntiSpoof flags a player, queue a CheckHacks scan on them.
   # Uses the hack list from checkhacks.detection.detect-flag.hacks and respects
@@ -529,12 +529,12 @@ checkhacks:
         mode: KEYBIND
 
       wurst:
-        display-name: "Wurst Client (-1.21)"
+        display-name: "Wurst"
         key: "key.wurst.zoom"
         mode: KEYBIND
 
       xray-fabric:
-        display-name: "XRay (Fabric)"
+        display-name: "XRay"
         key: "xray.config.toggle"
         mode: KEYBIND
 
@@ -544,7 +544,7 @@ checkhacks:
         mode: KEYBIND
 
       killaura-fabric:
-        display-name: "KillAura (Fabric)"
+        display-name: "KillAura"
         key: "key.killaura"
         mode: KEYBIND
 
@@ -584,7 +584,7 @@ checkhacks:
         mode: TRANSLATE
 
       autoclicker-fabric:
-        display-name: "AutoClicker (Fabric)"
+        display-name: "AutoClicker"
         key: "autoclicker-fabric.hud.holding"
         mode: TRANSLATE
 
@@ -594,7 +594,7 @@ checkhacks:
         mode: TRANSLATE
 
       auto-clicker-mc:
-        display-name: "Auto Clicker (p1k0chu)"
+        display-name: "Auto Clicker MC"
         key: "key.auto-clicker_.toggle"
         mode: KEYBIND
 
@@ -604,7 +604,7 @@ checkhacks:
         mode: TRANSLATE
 
       ui-utils:
-        display-name: "Ui Utils"
+        display-name: "UI Utils"
         key: "key.ui-utils.restore_screen"
         mode: TRANSLATE
 
@@ -619,12 +619,12 @@ checkhacks:
         mode: TRANSLATE
 
       trouser-streak-newchunks:
-        display-name: "Trouser Streak (NewerNewChunks)"
+        display-name: "Trouser Streak: NewChunks"
         key: "module.trouser-streak.NewerNewChunks.description"
         mode: TRANSLATE
 
       trouser-streak-anhero:
-        display-name: "Trouser Streak (AnHero)"
+        display-name: "Trouser Streak: AnHero"
         key: "module.trouser-streak.AnHero.description"
         mode: TRANSLATE
 
@@ -799,3 +799,20 @@ checkhacks:
       bs_ba: "Hodaj naprijed"
       cy_gb: "Cerdded ymlaen"
       ga_ie: "Siúil ar aghaidh"
+
+  # RPTrack: resource-pack cache fingerprint (https://alaggydev.github.io/posts/cytooxien/).
+  # Links accounts/IPs of the same Minecraft installation via its pack download cache.
+  # This is covert tracking of players: disclose it in your rules/privacy policy.
+  rptrack:
+    enabled: false
+    # Built-in HTTP server that serves the probe packs; public-url must be reachable by clients.
+    bind: "0.0.0.0"
+    port: 8123
+    public-url: ""            # e.g. "http://play.example.com:8123"
+    probes: 28                # packs probed on every join (max 62)
+    assign: 6                 # packs actually downloaded by a fresh client
+    min-match: 5              # cached packs that must overlap to link two accounts
+    delay-ticks: 40           # wait after join before probing
+    timeout-ticks: 100        # max wait for client answers
+    liquidbounce-probe: true  # detect LiquidBounce via its 127.0.0.1:15000 server
+    alert: true               # notify veneer.hacks.alerts holders on a match
