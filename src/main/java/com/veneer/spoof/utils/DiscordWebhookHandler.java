@@ -156,7 +156,7 @@ public class DiscordWebhookHandler {
                 }
                 
                 // Schedule the webhook after the configured delay
-                Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
+                com.veneer.hacks.utils.FoliaScheduler.runAsyncLater(plugin, () -> {
                     // Re-fetch the player data to get the most up-to-date channels
                     PlayerData updatedData = plugin.getPlayerDataMap().get(playerUuid);
                     if (updatedData != null && player.isOnline()) {

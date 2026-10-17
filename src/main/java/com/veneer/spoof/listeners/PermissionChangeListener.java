@@ -33,7 +33,7 @@ public class PermissionChangeListener implements Listener {
             command.startsWith("/group") || command.contains("permission")) {
             
             // Schedule a check after command execution completes
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runGlobalLater(plugin, () -> {
                 updateAllPlayerPermissions();
             }, 1L);
         }
@@ -47,7 +47,7 @@ public class PermissionChangeListener implements Listener {
         String pluginName = event.getPlugin().getName().toLowerCase();
         if (isPermissionPlugin(pluginName)) {
             // Wait a bit longer for plugin to fully initialize
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runGlobalLater(plugin, () -> {
                 updateAllPlayerPermissions();
             }, 20L); // 1 second delay
         }
@@ -60,7 +60,7 @@ public class PermissionChangeListener implements Listener {
     public void onPluginDisable(PluginDisableEvent event) {
         String pluginName = event.getPlugin().getName().toLowerCase();
         if (isPermissionPlugin(pluginName)) {
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runGlobalLater(plugin, () -> {
                 updateAllPlayerPermissions();
             }, 1L);
         }

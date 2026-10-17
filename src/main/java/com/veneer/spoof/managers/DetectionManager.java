@@ -157,7 +157,7 @@ public class DetectionManager {
         
         // Add to recently checked and schedule removal
         recentlyCheckedPlayers.add(playerUUID);
-        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, 
+        com.veneer.hacks.utils.FoliaScheduler.runAsyncLater(plugin, 
             () -> recentlyCheckedPlayers.remove(playerUUID), 
             CHECK_COOLDOWN / 50); // Convert to ticks
         
@@ -184,7 +184,7 @@ public class DetectionManager {
         }
         
         // Run check asynchronously to avoid lag
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        com.veneer.hacks.utils.FoliaScheduler.runAsync(plugin, () -> {
             checkPlayer(player, isJoinCheck, checkRequiredChannels);
         });
     }
@@ -235,14 +235,14 @@ public class DetectionManager {
                 detectedViolations.put("NO_BRAND", "No client brand detected");
 
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                     processViolations(player, finalViolations, "unknown");
                 });
             } else if (config.shouldBlockNonVanillaWithChannels()) {
                 Map<String, String> detectedViolations = new HashMap<>();
                 detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                     processViolations(player, finalViolations, "unknown");
                 });
             }
@@ -273,7 +273,7 @@ public class DetectionManager {
             violations.put("JOIN_BRAND", true);
             
             // Send join brand alert on main thread
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                 plugin.getAlertManager().sendBrandJoinAlert(player, brand);
             });
         }
@@ -417,7 +417,7 @@ public class DetectionManager {
                         final String finalMatchedBrandKey = matchedBrandKey;
                         final PlayerData finalData = data;  // Create a final reference to data
                         
-                        Bukkit.getScheduler().runTask(plugin, () -> {
+                        com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                             // Only send the alert if not already punished
                             if (!finalData.isAlreadyPunished()) {
                                 sendBrandAlert(player, finalBrand, finalMatchedBrandKey);
@@ -510,7 +510,7 @@ public class DetectionManager {
             final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
             final String finalBrand = brand;  // Make brand effectively final
             
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                 processViolations(player, finalViolations, finalBrand);
             });
         }

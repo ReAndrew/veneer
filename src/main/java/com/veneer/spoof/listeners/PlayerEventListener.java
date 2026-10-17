@@ -98,7 +98,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
      * This doesn't check for required channels
      */
     private void scheduleInitialBrandCheck(Player player, long delayTicks) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 if (config.isDebugMode()) {
                     plugin.getLogger().info("[Debug] Running initial brand check for " + player.getName() + 
@@ -114,7 +114,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
      * This is run after a longer delay to ensure all channels are registered
      */
     private void scheduleRequiredChannelsCheck(Player player, long delayTicks) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 if (config.isDebugMode()) {
                     plugin.getLogger().info("[Debug] Running complete check with required channels for " + player.getName());
@@ -141,7 +141,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
         
         // Special handling for no-brand detection
         if (config.isNoBrandCheckEnabled()) {
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                 // Only process if still null after 1 second (allows time for brand packet)
                 if (player.isOnline() && plugin.getClientBrand(player) == null) {
                     if (config.isDebugMode()) {
@@ -153,7 +153,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
                     noBrandViolation.put("NO_BRAND", "No client brand detected");
                     
                     // Process on main thread
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
                         plugin.getDetectionManager().processViolation(player, "NO_BRAND", "No client brand detected");
                     });
                 }

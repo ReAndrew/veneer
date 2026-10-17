@@ -190,7 +190,7 @@ public class VersionChecker implements Listener {
         // Only notify admins and only if an update is available
         if (updateAvailable && player.hasPermission("veneer.spoof.admin")) {
             // Delay the message slightly to ensure it's seen after join messages
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                 sendUpdateNotification(player);
             }, 20L); // 1 second delay
         }

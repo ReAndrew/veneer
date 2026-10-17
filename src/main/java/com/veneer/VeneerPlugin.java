@@ -131,7 +131,7 @@ public class VeneerPlugin extends JavaPlugin {
             getLogger().info("Discord webhook integration is disabled.");
         }
 
-        Bukkit.getScheduler().runTaskLater(this, () -> {
+        com.veneer.hacks.utils.FoliaScheduler.runGlobalLater(this, () -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 alertManager.registerPlayer(player);
             }

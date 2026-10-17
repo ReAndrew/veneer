@@ -427,7 +427,7 @@ public class AlertManager {
             
             // Execute command on the main thread
             final String finalCommand = formatted;
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runGlobal(plugin, () -> {
                 plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), finalCommand);
             });
         }
@@ -531,7 +531,7 @@ public class AlertManager {
             
             // Execute command on the main thread
             final String finalCommand = formatted;
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            com.veneer.hacks.utils.FoliaScheduler.runGlobal(plugin, () -> {
                 plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), finalCommand);
             });
         }

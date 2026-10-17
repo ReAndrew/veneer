@@ -8,7 +8,7 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 
 ![Java 21](https://img.shields.io/badge/Java-21-orange)
 ![Paper 1.21+](https://img.shields.io/badge/Paper-1.21%2B-blue)
-![Folia](https://img.shields.io/badge/Folia-supported-brightgreen)
+![Folia](https://img.shields.io/badge/Folia-experimental-yellow)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
 </div>
@@ -105,6 +105,7 @@ Produces `target/veneer-<version>.jar` (about 19 MB, PacketEvents and bStats sha
 
 - The self-updater inherited from CheckHacks is **disabled**: it would delete the running merged jar. Update manually.
 - Version `1.0.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. This is **experimental**: it compiles but has not been tested on a real Folia server.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 
 ## Credits and license

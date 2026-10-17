@@ -196,6 +196,17 @@ public final class FoliaScheduler {
         }
     }
 
+    public static WrappedTask runAsyncLater(Plugin plugin, Runnable task, long delayTicks) {
+        if (!FOLIA) return wrap(Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, task, delayTicks));
+        try {
+            Object handle = asyncRunDelayed.invoke(getAsyncScheduler(), plugin, asConsumer(task),
+                    Math.max(1, delayTicks) * 50L, java.util.concurrent.TimeUnit.MILLISECONDS);
+            return wrap(handle);
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
     /* ===========================================================
      *                          internals
      * =========================================================== */
