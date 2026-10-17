@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.utils.MessageUtil;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -11,9 +11,9 @@ import java.util.Map;
 
 public class AlertsCommand implements CommandExecutor {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public AlertsCommand(CheckHacksPlugin plugin) {
+    public AlertsCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -21,7 +21,7 @@ public class AlertsCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(MessageUtil.parseRaw(plugin,
-                    plugin.getConfigManager().getPrefix() + "<red>Only players can use this command.", Map.of()));
+                    plugin.getHackConfigManager().getPrefix() + "<red>Only players can use this command.", Map.of()));
             return true;
         }
         if (!player.hasPermission("checkhacks.alerts")) {

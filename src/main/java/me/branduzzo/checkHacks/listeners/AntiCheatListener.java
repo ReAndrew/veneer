@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.listeners;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.HackDefinition;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import me.branduzzo.checkHacks.utils.MessageUtil;
@@ -16,38 +16,62 @@ import java.util.Map;
 
 public class AntiCheatListener implements Listener {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
     private static final String[] GRIM_CLASSES = {
             "ac.grim.grimac.api.events.FlagEvent",
             "ac.grim.grimac.events.FlagEvent"
     };
-    private static final String VULCAN_CLASS  = "me.frep.vulcan.spigot.events.PlayerFlagEvent";
-    private static final String SPARTAN_CLASS = "me.vagdedes.spartan.api.PlayerViolationEvent";
-    private static final String MATRIX_CLASS  = "me.rerere.matrix.api.events.PlayerViolationEvent";
+    private static final String[] VULCAN_CLASSES = {
+            "me.frep.vulcan.api.event.VulcanFlagEvent",
+            "me.frep.vulcan.spigot.events.PlayerFlagEvent"
+    };
+    private static final String[] SPARTAN_CLASSES = {"me.vagdedes.spartan.api.PlayerViolationEvent"};
+    private static final String[] MATRIX_CLASSES  = {"me.rerere.matrix.api.events.PlayerViolationEvent"};
+    private static final String[] INTAVE_CLASSES = {
+            "de.jpx3.intave.access.check.event.IntaveViolationEvent",
+            "de.jpx3.intave.access.player.event.IntaveViolationEvent"
+    };
+    private static final String[] AAC_CLASSES = {"me.konsolas.aac.api.PlayerViolationEvent"};
 
-    public AntiCheatListener(CheckHacksPlugin plugin) {
+    public AntiCheatListener(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void registerHooks() {
-        if (!plugin.getConfigManager().isDetectFlagEnabled()) return;
+        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
 
-        if (plugin.getConfigManager().isGrimEnabled()) {
-            boolean ok = false;
+        if (plugin.getHackConfigManager().isGrimEnabled()) {
+            boolean ok = tryRegisterGrimBus();
             for (String cls : GRIM_CLASSES)
-                if (tryRegister(cls, "Grim", true)) { ok = true; break; }
+                if (!ok && tryRegister(cls, "Grim", true)) ok = true;
             if (!ok) plugin.getLogger().info("[CheckHacks] Grim not found, skipping.");
         }
-        if (plugin.getConfigManager().isVulcanEnabled())
-            if (!tryRegister(VULCAN_CLASS, "Vulcan", false))
-                plugin.getLogger().info("[CheckHacks] Vulcan not found, skipping.");
-        if (plugin.getConfigManager().isSpartanEnabled())
-            if (!tryRegister(SPARTAN_CLASS, "Spartan", false))
-                plugin.getLogger().info("[CheckHacks] Spartan not found, skipping.");
-        if (plugin.getConfigManager().isMatrixEnabled())
-            if (!tryRegister(MATRIX_CLASS, "Matrix", false))
-                plugin.getLogger().info("[CheckHacks] Matrix not found, skipping.");
+        registerAny(plugin.getHackConfigManager().isVulcanEnabled(), "Vulcan", VULCAN_CLASSES);
+        registerAny(plugin.getHackConfigManager().isSpartanEnabled(), "Spartan", SPARTAN_CLASSES);
+        registerAny(plugin.getHackConfigManager().isMatrixEnabled(), "Matrix", MATRIX_CLASSES);
+        registerAny(plugin.getHackConfigManager().isAnticheatEnabled("intave"), "Intave", INTAVE_CLASSES);
+        registerAny(plugin.getHackConfigManager().isAnticheatEnabled("aac"), "AAC", AAC_CLASSES);
+    }
+
+    private void registerAny(boolean enabled, String acName, String[] classes) {
+        if (!enabled) return;
+        for (String cls : classes)
+            if (tryRegister(cls, acName, false)) return;
+        plugin.getLogger().info("[CheckHacks] " + acName + " not found, skipping.");
+    }
+
+    private boolean tryRegisterGrimBus() {
+        if (Bukkit.getPluginManager().getPlugin("GrimAC") == null) return false;
+        try {
+            GrimHook.register(plugin, this);
+            plugin.getLogger().info("[CheckHacks] Grim hook registered (event bus).");
+            return true;
+        } catch (Throwable t) {
+            plugin.getLogger().info("[CheckHacks] Grim event bus unavailable (" + t.getClass().getSimpleName()
+                    + "), trying legacy event classes.");
+            return false;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -68,9 +92,14 @@ public class AntiCheatListener implements Listener {
     }
 
     private void handleFlag(Event event, boolean isGrim, String acName) {
-        if (!plugin.getConfigManager().isDetectFlagEnabled()) return;
+        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
         Player player = extractPlayer(event, isGrim, acName);
         if (player == null) return;
+        queueCheck(player, acName);
+    }
+
+    public void queueCheck(Player player, String acName) {
+        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
         if (!plugin.getCheckManager().canAutoCheck(player.getUniqueId())) return;
         if (plugin.getCheckManager().isChecking(player.getUniqueId())) return;
 
@@ -78,7 +107,7 @@ public class AntiCheatListener implements Listener {
         MessageUtil.broadcastAlerts(plugin,
                 MessageUtil.parse(plugin, "anticheat-trigger", Map.of("player", player.getName())));
 
-        List<HackDefinition> hacks = plugin.getConfigManager().getFlagCheckHacks();
+        List<HackDefinition> hacks = plugin.getHackConfigManager().getFlagCheckHacks();
         if (hacks.isEmpty()) return;
 
         FoliaScheduler.runAtEntity(plugin, player, () ->

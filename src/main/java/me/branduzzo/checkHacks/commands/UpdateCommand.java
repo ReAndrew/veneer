@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -9,9 +9,9 @@ import java.util.Map;
 
 public class UpdateCommand implements CommandExecutor {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public UpdateCommand(CheckHacksPlugin plugin) {
+    public UpdateCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 

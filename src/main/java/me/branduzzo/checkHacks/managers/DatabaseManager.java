@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.managers;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 
 import java.io.File;
 import java.sql.*;
@@ -8,10 +8,10 @@ import java.util.*;
 
 public class DatabaseManager {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private Connection connection;
 
-    public DatabaseManager(CheckHacksPlugin plugin) {
+    public DatabaseManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
         connect();
         createTables();

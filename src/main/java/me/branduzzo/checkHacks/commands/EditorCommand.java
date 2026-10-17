@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -10,9 +10,9 @@ import java.util.Map;
 
 public class EditorCommand implements CommandExecutor {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public EditorCommand(CheckHacksPlugin plugin) {
+    public EditorCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -26,7 +26,7 @@ public class EditorCommand implements CommandExecutor {
             player.sendMessage(plugin.getMessageManager().get("no-permission"));
             return true;
         }
-        if (!plugin.getConfigManager().isWebEditorEnabled()) {
+        if (!plugin.getHackConfigManager().isWebEditorEnabled()) {
             player.sendMessage(plugin.getMessageManager().get("editor-disabled"));
             return true;
         }
@@ -34,10 +34,10 @@ public class EditorCommand implements CommandExecutor {
         String token = plugin.getDatabaseManager().saveToken(
                 player.getUniqueId().toString(),
                 player.getName(),
-                plugin.getConfigManager().getTokenExpireMinutes());
+                plugin.getHackConfigManager().getTokenExpireMinutes());
 
-        String host = plugin.getConfigManager().getWebHost();
-        int    port = plugin.getConfigManager().getWebPort();
+        String host = plugin.getHackConfigManager().getWebHost();
+        int    port = plugin.getHackConfigManager().getWebPort();
         String url  = "http://" + host + ":" + port + "/editor?token=" + token;
 
         player.sendMessage(plugin.getMessageManager().get("editor-url", Map.of("url", url)));

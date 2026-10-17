@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.managers;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.LangCheckData;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import me.branduzzo.checkHacks.utils.SignUtil;
@@ -24,11 +24,11 @@ public class LangCheckManager {
     private static final String LANG_KEY      = "key.forward";
     private static final String LANG_FALLBACK = "\u27e6LANG_UNKNOWN\u27e7";
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private final Map<UUID, LangCheckData> activeChecks     = new ConcurrentHashMap<>();
     private final Set<UUID>                firstJoinChecked = ConcurrentHashMap.newKeySet();
 
-    public LangCheckManager(CheckHacksPlugin plugin) {
+    public LangCheckManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -107,7 +107,7 @@ public class LangCheckManager {
                     Map.of("player", target.getName()));
             plugin.getMessageManager().broadcastAlerts(msg);
             notifyInitiator(data, msg);
-        }, plugin.getConfigManager().getLangTimeoutTicks());
+        }, plugin.getHackConfigManager().getLangTimeoutTicks());
 
         data.setTimeoutTask(timeout);
     }
@@ -159,7 +159,7 @@ public class LangCheckManager {
                 target.getUniqueId().toString(), checkerName, "Lang check", false);
         plugin.getDatabaseManager().saveLangResult(scanId, display, response);
 
-        ConfigManager cfg = plugin.getConfigManager();
+        ConfigManager cfg = plugin.getHackConfigManager();
         if (cfg.isLangDiscordEnabled()) {
             String description = cfg.getLangDiscordMessage()
                     .replace("&name&",    target.getName())

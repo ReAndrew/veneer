@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.HackDefinition;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import me.branduzzo.checkHacks.utils.MessageUtil;
@@ -19,9 +19,9 @@ import java.util.stream.Collectors;
 
 public class CheckHacksCommand implements CommandExecutor, TabCompleter {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public CheckHacksCommand(CheckHacksPlugin plugin) {
+    public CheckHacksCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -33,7 +33,7 @@ public class CheckHacksCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length < 1) {
             sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                    plugin.getConfigManager().getPrefix()
+                    plugin.getHackConfigManager().getPrefix()
                             + "<red>Usage: /checkhacks <player> [hack1,hack2,...]"));
             return true;
         }
@@ -54,7 +54,7 @@ public class CheckHacksCommand implements CommandExecutor, TabCompleter {
         if (args.length >= 2) {
             hacks = new ArrayList<>();
             for (String id : args[1].split(",")) {
-                HackDefinition h = plugin.getConfigManager().getHack(id.trim().toLowerCase());
+                HackDefinition h = plugin.getHackConfigManager().getHack(id.trim().toLowerCase());
                 if (h == null) {
                     sender.sendMessage(MessageUtil.parse(plugin, "invalid-hack",
                             Map.of("hack", id.trim())));
@@ -63,12 +63,12 @@ public class CheckHacksCommand implements CommandExecutor, TabCompleter {
                 hacks.add(h);
             }
         } else {
-            hacks = plugin.getConfigManager().getDefaultCheckHacks();
+            hacks = plugin.getHackConfigManager().getDefaultCheckHacks();
         }
 
         if (hacks.isEmpty()) {
             sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                    plugin.getConfigManager().getPrefix() + "<red>No valid hacks to check."));
+                    plugin.getHackConfigManager().getPrefix() + "<red>No valid hacks to check."));
             return true;
         }
 
@@ -92,7 +92,7 @@ public class CheckHacksCommand implements CommandExecutor, TabCompleter {
             String typed = args[1];
             String prefix  = typed.contains(",") ? typed.substring(0, typed.lastIndexOf(',') + 1) : "";
             String current = typed.contains(",") ? typed.substring(typed.lastIndexOf(',') + 1) : typed;
-            return plugin.getConfigManager().getHacks().keySet().stream()
+            return plugin.getHackConfigManager().getHacks().keySet().stream()
                     .filter(id -> id.startsWith(current.toLowerCase()))
                     .map(id -> prefix + id)
                     .collect(Collectors.toList());

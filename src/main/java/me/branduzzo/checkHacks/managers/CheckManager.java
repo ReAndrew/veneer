@@ -1,5 +1,6 @@
 package me.branduzzo.checkHacks.managers;
 
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.*;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import me.branduzzo.checkHacks.utils.SignUtil;
@@ -31,18 +32,18 @@ public class CheckManager {
     private static volatile boolean floodgateResolved;
     private static volatile boolean floodgateAvailable;
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private final Map<UUID, CheckPlayerData> activeChecks  = new ConcurrentHashMap<>();
     private final Map<UUID, Long>            lastAutoCheck = new ConcurrentHashMap<>();
 
-    public CheckManager(CheckHacksPlugin plugin) {
+    public CheckManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
     public boolean isChecking(UUID uuid) { return activeChecks.containsKey(uuid); }
 
     public boolean canAutoCheck(UUID uuid) {
-        long cooldownMs = plugin.getConfigManager().getFlagCooldownHours() * 3_600_000L;
+        long cooldownMs = plugin.getHackConfigManager().getFlagCooldownHours() * 3_600_000L;
         return System.currentTimeMillis() - lastAutoCheck.getOrDefault(uuid, 0L) >= cooldownMs;
     }
 
@@ -147,7 +148,7 @@ public class CheckManager {
                 d.getResults().put(h.getId(), HackResult.PROTECTED);
             d.incrementBatch();
             scheduleNextOrFinish(uuid);
-        }, plugin.getConfigManager().getTimeoutTicks());
+        }, plugin.getHackConfigManager().getTimeoutTicks());
 
         data.setSignTimeoutTask(timeout);
     }
@@ -193,7 +194,7 @@ public class CheckManager {
         if (data == null) return;
         if (data.hasMoreBatches()) {
             Player target = Bukkit.getPlayer(uuid);
-            long delay = plugin.getConfigManager().getBetweenSignTicks();
+            long delay = plugin.getHackConfigManager().getBetweenSignTicks();
             Runnable next = () -> {
                 Player t = Bukkit.getPlayer(uuid);
                 if (t != null && t.isOnline()) processBatch(t, data);
@@ -277,7 +278,7 @@ public class CheckManager {
                 case SKIPPED      -> "<gray>";
             };
             Component line = MM.deserialize(
-                    plugin.getConfigManager().getPrefix()
+                    plugin.getHackConfigManager().getPrefix()
                             + "  <white>" + hack.getDisplayName() + ": " + color + r.name());
             plugin.getMessageManager().broadcastAlerts(line);
             notifyInitiator(data, line);
@@ -290,7 +291,7 @@ public class CheckManager {
         plugin.getDatabaseManager().saveScanWithResults(
                 "hack", targetName, targetUUID, checkerName, data.getReason(), anyDetected, dbRows);
 
-        ConfigManager cfg = plugin.getConfigManager();
+        ConfigManager cfg = plugin.getHackConfigManager();
 
         if (cfg.isDiscordEnabled()) {
             String hacksChecked = allHacks.stream()
@@ -338,7 +339,7 @@ public class CheckManager {
                                       Map<String, HackResult> results, List<HackDefinition> allHacks) {
         if (data.isConfirmScan() && allClean) return;
 
-        ConfigManager cfg = plugin.getConfigManager();
+        ConfigManager cfg = plugin.getHackConfigManager();
         final String tn = targetName;
 
         String detectedList = allHacks.stream()
@@ -422,7 +423,7 @@ public class CheckManager {
     }
 
     private boolean isBedrockPlayer(Player target) {
-        ConfigManager cfg = plugin.getConfigManager();
+        ConfigManager cfg = plugin.getHackConfigManager();
         if (cfg.isBedrockEnabled()) {
             String name = target.getName();
             for (String prefix : cfg.getBedrockPrefixes().isEmpty()

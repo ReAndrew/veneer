@@ -1,23 +1,21 @@
 package me.branduzzo.checkHacks.managers;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.CommandRule;
 import me.branduzzo.checkHacks.DetectionMode;
 import me.branduzzo.checkHacks.HackDefinition;
 import me.branduzzo.checkHacks.HackResult;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
+import com.invalider.InvaliderConfig;
 
-import java.io.File;
 import java.util.*;
 
 public class ConfigManager {
 
-    private final CheckHacksPlugin plugin;
-    private FileConfiguration masterConfig;
-    private FileConfiguration hacksConfig;
-    private FileConfiguration langConfig;
+    private final InvaliderPlugin plugin;
+    private ConfigurationSection masterConfig;
+    private ConfigurationSection hacksConfig;
+    private ConfigurationSection langConfig;
     private final Map<String, HackDefinition> hacks = new LinkedHashMap<>();
     private final Map<String, CommandRule> commandRules = new LinkedHashMap<>();
     private final Map<String, List<CommandRule>> rulesByHack = new HashMap<>();
@@ -33,51 +31,20 @@ public class ConfigManager {
     private boolean commandIfCleanEnabled;
     private String cleanCommand;
 
-    public ConfigManager(CheckHacksPlugin plugin) {
+    public ConfigManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
         reload();
     }
 
     public void reload() {
-        plugin.reloadConfig();
-        masterConfig = plugin.getConfig();
+        masterConfig = InvaliderConfig.section(plugin, "checkhacks.settings");
 
-        hacksConfig = loadFile("checkhacks.yml");
-        langConfig  = loadFile("checklang.yml");
+        hacksConfig = InvaliderConfig.section(plugin, "checkhacks.detection");
+        langConfig  = InvaliderConfig.section(plugin, "checkhacks.language-check");
 
         loadHacks();
         loadCommandRules();
         cacheSettings();
-    }
-
-    private FileConfiguration loadFile(String name) {
-        File file = new File(plugin.getDataFolder(), name);
-        if (!file.exists()) {
-            plugin.saveResource(name, false);
-        } else if ("checkhacks.yml".equals(name)) {
-            upgradeHacksConfig(file);
-        }
-        return YamlConfiguration.loadConfiguration(file);
-    }
-
-    private void upgradeHacksConfig(File file) {
-        try {
-            FileConfiguration cfg = YamlConfiguration.loadConfiguration(file);
-            boolean changed = false;
-            if (!cfg.contains("doublecheck")) {
-                cfg.set("doublecheck", true);
-                changed = true;
-            }
-            if (!cfg.contains("command-rules")) {
-                cfg.set("command-rules.meteorclient1.mod", "meteorclient");
-                cfg.set("command-rules.meteorclient1.result", "DETECTED");
-                cfg.set("command-rules.meteorclient1.command", "tempban %player% 31d Meteor Client");
-                changed = true;
-            }
-            if (changed) cfg.save(file);
-        } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] Failed to upgrade checkhacks.yml: " + e.getMessage());
-        }
     }
 
     private void loadHacks() {
@@ -193,6 +160,8 @@ public class ConfigManager {
 
     public boolean isDoubleCheckEnabled() { return doubleCheck; }
 
+    public boolean isAlertsDefaultEnabled() { return masterConfig.getBoolean("alerts.default-enabled", true); }
+
     public List<CommandRule> getRulesForHack(String hackId) {
         return rulesByHack.getOrDefault(hackId, List.of());
     }
@@ -201,6 +170,7 @@ public class ConfigManager {
     public boolean isGrimEnabled()       { return hacksConfig.getBoolean("detect-flag.anticheats.grim", true); }
     public boolean isVulcanEnabled()     { return hacksConfig.getBoolean("detect-flag.anticheats.vulcan", true); }
     public boolean isSpartanEnabled()    { return hacksConfig.getBoolean("detect-flag.anticheats.spartan", true); }
+    public boolean isAnticheatEnabled(String id) { return hacksConfig.getBoolean("detect-flag.anticheats." + id, true); }
     public boolean isMatrixEnabled()     { return hacksConfig.getBoolean("detect-flag.anticheats.matrix", true); }
     public long    getFlagCooldownHours(){ return hacksConfig.getLong("detect-flag.cooldown-hours", 24); }
 

@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -9,9 +9,9 @@ import java.util.Map;
 
 public class CHReloadCommand implements CommandExecutor {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public CHReloadCommand(CheckHacksPlugin plugin) {
+    public CHReloadCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -21,7 +21,7 @@ public class CHReloadCommand implements CommandExecutor {
             sender.sendMessage(plugin.getMessageManager().get("no-permission"));
             return true;
         }
-        plugin.getConfigManager().reload();
+        plugin.getHackConfigManager().reload();
         plugin.getMessageManager().load();
         sender.sendMessage(plugin.getMessageManager().get("reload-done"));
         return true;

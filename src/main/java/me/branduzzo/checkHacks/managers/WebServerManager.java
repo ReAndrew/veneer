@@ -3,7 +3,7 @@ package me.branduzzo.checkHacks.managers;
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.HackDefinition;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import org.bukkit.Bukkit;
@@ -18,19 +18,19 @@ import java.util.concurrent.Executors;
 
 public class WebServerManager {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private HttpServer server;
     private final Gson gson = new Gson();
     private volatile List<Map<String, Object>> cachedPlayers = new ArrayList<>();
 
-    public WebServerManager(CheckHacksPlugin plugin) {
+    public WebServerManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
         start();
         FoliaScheduler.runGlobalTimer(plugin, this::updatePlayerCache, 1L, 100L);
     }
 
     private void start() {
-        int port = plugin.getConfigManager().getWebPort();
+        int port = plugin.getHackConfigManager().getWebPort();
         try {
             server = HttpServer.create(new InetSocketAddress(port), 0);
             server.createContext("/", this::handle);
@@ -143,11 +143,11 @@ public class WebServerManager {
                 if (target == null) return;
                 FoliaScheduler.runAtEntity(plugin, target, () -> {
                     if ("lang".equals(finalType)) {
-                        Map<String, String> langs = plugin.getConfigManager().getLanguages();
+                        Map<String, String> langs = plugin.getHackConfigManager().getLanguages();
                         if (!langs.isEmpty())
                             plugin.getLangCheckManager().startCheck(target, null, langs);
                     } else {
-                        List<HackDefinition> hacks = plugin.getConfigManager().getDefaultCheckHacks();
+                        List<HackDefinition> hacks = plugin.getHackConfigManager().getDefaultCheckHacks();
                         if (!hacks.isEmpty())
                             plugin.getCheckManager().startCheck(target, null, hacks, false,
                                     "Web editor check by " + checkerName);

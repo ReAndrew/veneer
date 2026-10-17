@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.listeners;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -12,9 +12,9 @@ import java.util.UUID;
 
 public class SignListener implements Listener {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public SignListener(CheckHacksPlugin plugin) {
+    public SignListener(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 

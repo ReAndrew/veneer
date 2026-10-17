@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.managers;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -13,17 +13,17 @@ import java.util.Map;
 
 public class MessageManager {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private FileConfiguration messages;
     private static final MiniMessage MM = MiniMessage.miniMessage();
 
-    public MessageManager(CheckHacksPlugin plugin) {
+    public MessageManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
         load();
     }
 
     public void load() {
-        String lang = plugin.getConfigManager().getLanguage();
+        String lang = plugin.getHackConfigManager().getLanguage();
         ensureFile("messages/en.yml");
         ensureFile("messages/it.yml");
         ensureFile("messages/br.yml");
@@ -54,7 +54,7 @@ public class MessageManager {
     }
 
     public Component get(String key, Map<String, String> placeholders) {
-        String prefix = plugin.getConfigManager().getPrefix();
+        String prefix = plugin.getHackConfigManager().getPrefix();
         String raw = getRaw(key).replace("{prefix}", prefix);
         for (Map.Entry<String, String> e : placeholders.entrySet())
             raw = raw.replace("{" + e.getKey() + "}", e.getValue());

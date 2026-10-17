@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.commands;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.utils.MessageUtil;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -15,9 +15,9 @@ import java.util.stream.Collectors;
 
 public class CheckLangCommand implements CommandExecutor, TabCompleter {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
 
-    public CheckLangCommand(CheckHacksPlugin plugin) {
+    public CheckLangCommand(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -29,7 +29,7 @@ public class CheckLangCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length < 1) {
             sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                    plugin.getConfigManager().getPrefix()
+                    plugin.getHackConfigManager().getPrefix()
                             + "<red>Usage: /checklang <player> [lang1,lang2,...]"));
             return true;
         }
@@ -46,7 +46,7 @@ public class CheckLangCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        Map<String, String> allLangs = plugin.getConfigManager().getLanguages();
+        Map<String, String> allLangs = plugin.getHackConfigManager().getLanguages();
         Map<String, String> langs;
 
         if (args.length >= 2) {
@@ -55,7 +55,7 @@ public class CheckLangCommand implements CommandExecutor, TabCompleter {
                 String trimmed = code.trim().toLowerCase();
                 if (!allLangs.containsKey(trimmed)) {
                     sender.sendMessage(MessageUtil.parseRaw(plugin,
-                            plugin.getConfigManager().getPrefix()
+                            plugin.getHackConfigManager().getPrefix()
                                     + "<red>Unknown language: <white>" + trimmed, Map.of()));
                     return true;
                 }
@@ -82,7 +82,7 @@ public class CheckLangCommand implements CommandExecutor, TabCompleter {
             String typed   = args[1];
             String prefix  = typed.contains(",") ? typed.substring(0, typed.lastIndexOf(',') + 1) : "";
             String current = typed.contains(",") ? typed.substring(typed.lastIndexOf(',') + 1) : typed;
-            return plugin.getConfigManager().getLanguages().keySet().stream()
+            return plugin.getHackConfigManager().getLanguages().keySet().stream()
                     .filter(id -> id.startsWith(current.toLowerCase()))
                     .map(id -> prefix + id)
                     .collect(Collectors.toList());

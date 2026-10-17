@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.listeners;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.ClientType;
 import me.branduzzo.checkHacks.HackDefinition;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
@@ -21,11 +21,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class JoinListener implements Listener {
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private final Set<UUID> alreadyHackChecked = ConcurrentHashMap.newKeySet();
     private final Set<UUID> alreadyLangChecked = ConcurrentHashMap.newKeySet();
 
-    public JoinListener(CheckHacksPlugin plugin) {
+    public JoinListener(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -53,11 +53,11 @@ public class JoinListener implements Listener {
             plugin.getUpdateManager().notifyIfAvailable(player);
         }
 
-        if (plugin.getConfigManager().isJoinCheckEnabled()) {
-            if (!plugin.getConfigManager().isOnlyFirstJoin() || alreadyHackChecked.add(uuid)) {
+        if (plugin.getHackConfigManager().isJoinCheckEnabled()) {
+            if (!plugin.getHackConfigManager().isOnlyFirstJoin() || alreadyHackChecked.add(uuid)) {
                 FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                     if (!player.isOnline()) return;
-                    java.util.List<HackDefinition> hacks = plugin.getConfigManager().getJoinCheckHacks();
+                    java.util.List<HackDefinition> hacks = plugin.getHackConfigManager().getJoinCheckHacks();
                     if (hacks.isEmpty()) return;
                     plugin.getMessageManager().broadcastAlerts(
                             plugin.getMessageManager().get("join-check", Map.of("player", player.getName())));
@@ -66,12 +66,12 @@ public class JoinListener implements Listener {
             }
         }
 
-        if (plugin.getConfigManager().isLangJoinCheckEnabled()) {
+        if (plugin.getHackConfigManager().isLangJoinCheckEnabled()) {
             boolean isFirst = alreadyLangChecked.add(uuid);
-            if (!plugin.getConfigManager().isLangOnlyFirstJoin() || isFirst) {
+            if (!plugin.getHackConfigManager().isLangOnlyFirstJoin() || isFirst) {
                 FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                     if (!player.isOnline()) return;
-                    Map<String, String> langs = plugin.getConfigManager().getLanguages();
+                    Map<String, String> langs = plugin.getHackConfigManager().getLanguages();
                     if (langs.isEmpty()) return;
                     plugin.getMessageManager().broadcastAlerts(
                             plugin.getMessageManager().get("lang-join-check", Map.of("player", player.getName())));

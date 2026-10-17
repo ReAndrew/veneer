@@ -1,6 +1,6 @@
 package me.branduzzo.checkHacks.managers;
 
-import me.branduzzo.checkHacks.CheckHacksPlugin;
+import com.invalider.InvaliderPlugin;
 import me.branduzzo.checkHacks.utils.FoliaScheduler;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -19,13 +19,13 @@ public class UpdateManager {
 
     private static final String API_URL = "https://api.github.com/repos/branduzzo/CheckHacks/releases/latest";
 
-    private final CheckHacksPlugin plugin;
+    private final InvaliderPlugin plugin;
     private volatile String latestVersion;
     private volatile String downloadUrl;
     private volatile boolean updateAvailable;
     private volatile boolean downloading;
 
-    public UpdateManager(CheckHacksPlugin plugin) {
+    public UpdateManager(InvaliderPlugin plugin) {
         this.plugin = plugin;
     }
 
