@@ -2,7 +2,6 @@ package com.veneer;
 
 import com.veneer.spoof.commands.SpoofCommand;
 import com.veneer.spoof.data.PlayerData;
-import com.veneer.spoof.hooks.AntiSpoofPlaceholders;
 import com.veneer.spoof.listeners.PermissionChangeListener;
 import com.veneer.spoof.listeners.PlayerEventListener;
 import com.veneer.spoof.managers.AlertManager;
@@ -60,14 +59,11 @@ public class VeneerPlugin extends JavaPlugin {
     private CheckManager checkManager;
     private LangCheckManager langCheckManager;
     private ClientDataManager clientDataManager;
-    private UpdateManager updateManager;
     private final Set<UUID> alertsDisabled = new HashSet<>();
     private com.veneer.hooks.LuckPermsHook luckPermsHook;
 
     @Override
     public void onEnable() {
-        migrateLegacyData();
-
         // ---------- AntiSpoof ----------
         this.configManager = new com.veneer.spoof.managers.ConfigManager(this);
         this.alertManager = new AlertManager(this);
@@ -92,7 +88,6 @@ public class VeneerPlugin extends JavaPlugin {
         }
 
         if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            new AntiSpoofPlaceholders(this).register();
             new com.veneer.hooks.VeneerPlaceholders(this).register();
             getLogger().info("Successfully registered PlaceholderAPI expansion!");
         }
@@ -176,15 +171,6 @@ public class VeneerPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(acListener, this);
         acListener.registerHooks();
 
-
-        updateManager = new UpdateManager(this);
-        // NOTE: intentionally not calling updateManager.checkForUpdates() here.
-        // CheckHacks's updater downloads a standalone CheckHacks-X.Y.Z.jar from
-        // GitHub and deletes the currently running jar to replace it - in this
-        // merged build that jar is Veneer.jar (AntiSpoof + CheckHacks), so an
-        // "update" would silently delete the merged plugin and drop in a
-        // CheckHacks-only jar missing all of AntiSpoof. Left disabled until the
-        // updater is reworked to target a merged-build release instead.
 
         getLogger().info("Veneer enabled: AntiSpoof + CheckHacks v" + getDescription().getVersion());
     }
@@ -486,30 +472,6 @@ public class VeneerPlugin extends JavaPlugin {
         return luckPermsHook == null ? "" : luckPermsHook.getPrimaryGroup(player);
     }
 
-    /**
-     * The plugin was renamed (Invalider -> Anomaly -> Veneer): copy the newest legacy folder into
-     * plugins/Veneer once, only when the new folder has no config yet. Old folders are left untouched.
-     */
-    private void migrateLegacyData() {
-        java.io.File dest = getDataFolder();
-        if (new java.io.File(dest, "config.yml").exists()) return;
-        for (String name : new String[]{"Anomaly", "Invalider"}) {
-            java.io.File legacy = new java.io.File(dest.getParentFile(), name);
-            if (!legacy.isDirectory()) continue;
-            try (var walk = java.nio.file.Files.walk(legacy.toPath())) {
-                for (java.nio.file.Path src : (Iterable<java.nio.file.Path>) walk::iterator) {
-                    java.nio.file.Path dst = dest.toPath().resolve(legacy.toPath().relativize(src).toString());
-                    if (java.nio.file.Files.isDirectory(src)) java.nio.file.Files.createDirectories(dst);
-                    else java.nio.file.Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                }
-                getLogger().info("Migrated data from plugins/" + name + " to plugins/" + dest.getName() + ".");
-            } catch (Exception e) {
-                getLogger().warning("Could not migrate plugins/" + name + ": " + e.getMessage());
-            }
-            return;
-        }
-    }
-
     public com.veneer.hacks.managers.ConfigManager getHackConfigManager() { return hackConfigManager; }
     public MessageManager    getMessageManager()    { return messageManager; }
     public com.veneer.hacks.rptrack.RPTrackManager getRPTrackManager() { return rpTrackManager; }
@@ -517,7 +479,6 @@ public class VeneerPlugin extends JavaPlugin {
     public CheckManager      getCheckManager()      { return checkManager; }
     public LangCheckManager  getLangCheckManager()  { return langCheckManager; }
     public ClientDataManager getClientDataManager() { return clientDataManager; }
-    public UpdateManager     getUpdateManager()     { return updateManager; }
 
     /** Queues a CheckHacks scan when AntiSpoof flags a player. Safe to call from any thread. */
     public void triggerCheckHacksFromSpoof(Player player, String reason) {

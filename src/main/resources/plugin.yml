@@ -14,37 +14,30 @@ commands:
     description: Inspect client brand/channels and manage the spoof detection module
     usage: /spoof help
     permission: veneer.spoof.use
-    aliases: [antispoof]
   hackcheck:
     description: Check a player for installed hacks/mods.
     usage: /hackcheck <player> [hack1,hack2,...]
     permission: veneer.hacks.check
-    aliases: [checkhacks]
   hackreload:
     description: Reload the hack detection configuration.
     usage: /hackreload
     permission: veneer.hacks.reload
-    aliases: [chreload]
   hackalerts:
     description: Toggle hack detection alerts.
     usage: /hackalerts
     permission: veneer.hacks.alerts
-    aliases: [chalerts, checkalerts]
   hacklang:
     description: Check the client language of a player.
     usage: /hacklang <player> [lang1,lang2,...]
     permission: veneer.hacks.lang
-    aliases: [checklang]
   hackeditor:
     description: Open the hack detection web editor.
     usage: /hackeditor
     permission: veneer.hacks.editor
-    aliases: [cheditor]
   rptrack:
     description: Show RPTrack (resource-pack cache) data and linked accounts.
     usage: /rptrack <player>
     permission: veneer.hacks.rptrack
-    aliases: [hackfp]
 
 permissions:
   veneer.spoof.use:
@@ -77,8 +70,6 @@ permissions:
   veneer.hacks.editor:
     description: Use /hackeditor
     default: op
-  veneer.hacks.update:
-    description: Reserved (updater is disabled in this build)
     default: op
   veneer.spoof.*:
     description: All spoof permissions
@@ -97,7 +88,6 @@ permissions:
       veneer.hacks.alerts: true
       veneer.hacks.lang: true
       veneer.hacks.editor: true
-      veneer.hacks.update: true
   veneer.*:
     description: Everything
     default: false

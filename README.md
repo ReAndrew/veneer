@@ -33,19 +33,17 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 2. Edit `plugins/Veneer/config.yml`, then reload with `/spoof reload` or `/hackreload`.
 3. Optional: install LuckPerms, PlaceholderAPI, Floodgate, ViaVersion or an anticheat. Veneer picks them up automatically.
 
-Upgrading from the earlier builds (**Invalider**, **Anomaly**)? On first start the contents of `plugins/Anomaly` or `plugins/Invalider` are copied into `plugins/Veneer` if it has no `config.yml` yet. The old folder is left untouched. Permissions changed prefix, so re-grant them as `veneer.*`.
-
 ## Commands
 
-| Command | Aliases | Permission | Description |
-|---|---|---|---|
-| `/spoof` |  `/antispoof` | `veneer.spoof.use` | Inspect client brand and channels, manage spoof detection |
-| `/hackcheck <player> [hacks]` | `/checkhacks` | `veneer.hacks.check` | Scan a player for mods |
-| `/hackalerts` | `/chalerts` | `veneer.hacks.alerts` | Toggle your detection alerts |
-| `/hacklang <player>` | `/checklang` | `veneer.hacks.lang` | Check a player's client language |
-| `/hackeditor` | `/cheditor` | `veneer.hacks.editor` | Open the web editor for hack definitions |
-| `/hackreload` | `/chreload` | `veneer.hacks.reload` | Reload hack detection config |
-| `/rptrack <player>` | `/hackfp` | `veneer.hacks.rptrack` | Show a player's cache fingerprint and linked accounts |
+| Command | Permission | Description |
+|---|---|---|
+| `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, manage spoof detection |
+| `/hackcheck <player> [hacks]` | `veneer.hacks.check` | Scan a player for mods |
+| `/hackalerts` | `veneer.hacks.alerts` | Toggle your detection alerts |
+| `/hacklang <player>` | `veneer.hacks.lang` | Check a player's client language |
+| `/hackeditor` | `veneer.hacks.editor` | Open the web editor for hack definitions |
+| `/hackreload` | `veneer.hacks.reload` | Reload hack detection config |
+| `/rptrack <player>` | `veneer.hacks.rptrack` | Show a player's cache fingerprint and linked accounts |
 
 Other permissions: `veneer.spoof.alerts`, `veneer.spoof.admin`, `veneer.spoof.bypass`. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
 
@@ -76,19 +74,19 @@ Chat messages live in `plugins/Veneer/messages/<lang>.yml` (en, ru, de, es, fr, 
 | `%veneer_group%` | LuckPerms primary group |
 | `%veneer_rptrack_packs%`, `%veneer_rptrack_linked%`, `%veneer_rptrack_liquidbounce%` | RPTrack result for the player |
 
-The older `%antispoof_*%` placeholders still work.
-
 ## RPTrack
 
 The Minecraft client caches downloaded resource packs by SHA-1 in `.minecraft/downloads`, shared across accounts. On join, Veneer offers 28 probe packs with a known hash and an unreachable URL; a pack answers *loaded* only if it is already cached. A fresh client is assigned a random subset of 6 packs that it really downloads, and later logins on any account or IP reproduce that subset. The technique is described in [this write-up](https://alaggydev.github.io/posts/cytooxien/).
 
-A built-in HTTP server serves the probe packs and a small pack that hides the "failed to download" toast. Set it up in `checkhacks.rptrack`:
+Probe packs and a small pack that hides the "failed to download" toast must be downloadable by clients. Point `public-url` at `localhost` (e.g. `http://localhost:8123`) and Veneer serves them itself on that port, sending clients to the host they joined with. With any other URL no server is started: host `plugins/Veneer/rptrack/fp/` (exported on start) at `<public-url>/fp/`. Set it up in `checkhacks.rptrack`:
 
 ```yaml
 enabled: true
-port: 8123
-public-url: "http://play.example.com:8123"   # must be reachable by players
-min-match: 5                                 # packs that must overlap to link two accounts
+public-url: "http://localhost:8123"   # localhost = built-in server on this port
+track: 28                             # probe packs checked on every join
+send: 6                               # packs a fresh client is sent (<= track)
+match: 5                              # cached packs that must overlap to link accounts (<= send)
+debug: false                          # log every step to check how stable the signal is
 ```
 
 > **Privacy:** this is covert tracking of players. Disclose it in your server rules or privacy policy. Some clients (Meteor, Wurst, LiquidBounce, ExploitPreventer) already block it, so absence of a match proves nothing.
@@ -103,7 +101,6 @@ Produces `target/veneer-<version>.jar` (about 19 MB, PacketEvents and bStats sha
 
 ## Notes
 
-- The self-updater inherited from CheckHacks is **disabled**: it would delete the running merged jar. Update manually.
 - Version `1.0.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
 - **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. This is **experimental**: it compiles but has not been tested on a real Folia server.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.

@@ -59,7 +59,11 @@ public class RPTrackManager implements Listener {
 
     private final VeneerPlugin plugin;
     private final ConfigurationSection cfg;
-    private final boolean enabled;
+    private final boolean enabled, debug;
+    /** public-url pointed at localhost: Veneer serves the packs itself on {@link #localPort}. */
+    private final boolean local;
+    private final int localPort;
+    private final String scheme;
     private final int probes, assign, minMatch, delay, timeout;
     private final boolean lbProbe, alert;
     private final String publicUrl;
@@ -80,14 +84,35 @@ public class RPTrackManager implements Listener {
         this.plugin = plugin;
         this.cfg = VeneerConfig.section(plugin, "checkhacks.rptrack");
         this.enabled = cfg.getBoolean("enabled", false);
-        this.probes = Math.max(1, Math.min(62, cfg.getInt("probes", 28)));
-        this.assign = Math.max(1, Math.min(probes, cfg.getInt("assign", 6)));
-        this.minMatch = Math.max(1, cfg.getInt("min-match", 5));
+        this.debug = cfg.getBoolean("debug", false);
+        this.probes = Math.max(1, Math.min(62, cfg.getInt("track", 28)));
+        this.assign = Math.max(1, Math.min(probes, cfg.getInt("send", 6)));
+        this.minMatch = Math.max(1, Math.min(assign, cfg.getInt("match", 5)));
+        if (cfg.getInt("send", 6) > probes || cfg.getInt("match", 5) > assign)
+            plugin.getLogger().warning("[RPTrack] send must be <= track and match <= send; values were clamped to "
+                    + "track=" + probes + ", send=" + assign + ", match=" + minMatch + ".");
         this.delay = cfg.getInt("delay-ticks", 40);
         this.timeout = cfg.getInt("timeout-ticks", 100);
         this.lbProbe = cfg.getBoolean("liquidbounce-probe", true);
         this.alert = cfg.getBoolean("alert", true);
-        String url = cfg.getString("public-url", "");
+        String url = cfg.getString("public-url", "").trim();
+        if (!url.isEmpty() && !url.contains("://")) url = "http://" + url;
+        boolean isLocal = false;
+        int port = 8123;
+        String sch = "http";
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            String host = uri.getHost();
+            isLocal = host != null && (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1"));
+            if (uri.getPort() != -1) port = uri.getPort();
+            if (uri.getScheme() != null) sch = uri.getScheme();
+        } catch (java.net.URISyntaxException e) {
+            plugin.getLogger().warning("[RPTrack] invalid public-url: " + e.getMessage());
+            url = "";
+        }
+        this.local = isLocal;
+        this.localPort = port;
+        this.scheme = sch;
         this.publicUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
 
         packs = new byte[probes][];
@@ -103,18 +128,35 @@ public class RPTrackManager implements Listener {
                 hashes[i] = sha1.digest(packs[i]);
                 ids[i] = UUID.nameUUIDFromBytes(("veneer-probe-" + (i + 1)).getBytes(StandardCharsets.UTF_8));
             }
-            startHttp();
+            exportPacks();
+            if (local) startHttp();
         } catch (Exception e) {
             plugin.getLogger().severe("[RPTrack] init failed: " + e.getMessage());
             return;
         }
         if (publicUrl.isEmpty())
-            plugin.getLogger().warning("[RPTrack] public-url is empty: packs cannot be assigned to new clients.");
+            plugin.getLogger().warning("[RPTrack] public-url is empty: packs cannot be sent to new clients.");
+        else if (local)
+            plugin.getLogger().info("[RPTrack] public-url is localhost: serving packs on port " + localPort
+                    + ", clients are pointed at the host they joined with.");
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        plugin.getLogger().info("[RPTrack] enabled (" + probes + " probes, port " + cfg.getInt("port", 8123) + ")");
+        plugin.getLogger().info("[RPTrack] enabled (" + probes + " tracked, " + assign + " sent, match " + minMatch
+                + (local ? ", serving on port " + localPort : ", packs exported to plugins/" + plugin.getName() + "/rptrack") + ")");
     }
 
-    public boolean isEnabled() { return enabled && http != null; }
+    /** Base URL the given player downloads packs from, or "" when none is available. */
+    private String baseUrl(Player player) {
+        if (!local) return publicUrl;
+        java.net.InetSocketAddress vh = player.getVirtualHost();
+        String host = vh != null ? vh.getHostString() : (Bukkit.getIp().isEmpty() ? null : Bukkit.getIp());
+        return host == null ? "" : scheme + "://" + host + ":" + localPort;
+    }
+
+    private void debug(String msg) {
+        if (debug) plugin.getLogger().info("[RPTrack/debug] " + msg);
+    }
+
+    public boolean isEnabled() { return enabled && (!local || http != null); }
 
     public void stop() {
         if (http != null) http.stop(0);
@@ -174,8 +216,17 @@ public class RPTrackManager implements Listener {
         return bos.toByteArray();
     }
 
+    /** Writes the packs to plugins/Veneer/rptrack/fp/ so they can be hosted elsewhere under public-url. */
+    private void exportPacks() throws java.io.IOException {
+        java.io.File dir = new java.io.File(plugin.getDataFolder(), "rptrack/fp");
+        dir.mkdirs();
+        java.nio.file.Files.write(new java.io.File(dir, "hide.zip").toPath(), hidePack);
+        for (int i = 0; i < probes; i++)
+            java.nio.file.Files.write(new java.io.File(dir, (i + 1) + ".zip").toPath(), packs[i]);
+    }
+
     private void startHttp() throws Exception {
-        http = HttpServer.create(new InetSocketAddress(cfg.getString("bind", "0.0.0.0"), cfg.getInt("port", 8123)), 0);
+        http = HttpServer.create(new InetSocketAddress(localPort), 0);
         http.createContext("/fp/", ex -> {
             try (ex) {
                 String path = ex.getRequestURI().getPath().substring("/fp/".length());
@@ -216,17 +267,21 @@ public class RPTrackManager implements Listener {
         if (!player.isOnline()) return;
         Session s = new Session();
         sessions.put(player.getUniqueId(), s);
-        if (publicUrl.isEmpty()) {
+        String base = baseUrl(player);
+        if (base.isEmpty()) {
+            debug(player.getName() + ": no pack url, skipping toast-hiding pack");
             startProbe(player, s);
             return;
         }
-        player.setResourcePack(HIDE_ID, publicUrl + "/fp/hide.zip", hideHash, (net.kyori.adventure.text.Component) null, false);
+        debug(player.getName() + ": sending toast-hiding pack from " + base);
+        player.setResourcePack(HIDE_ID, base + "/fp/hide.zip", hideHash, (net.kyori.adventure.text.Component) null, false);
         FoliaScheduler.runAtEntityLater(plugin, player, () -> startProbe(player, s), timeout);
     }
 
     private synchronized void startProbe(Player player, Session s) {
         if (!player.isOnline() || s.done || s.phase != Phase.HIDE) return;
         s.phase = Phase.PROBE;
+        debug(player.getName() + ": probing " + probes + " packs" + (lbProbe ? " + liquidbounce" : ""));
         for (int i = 0; i < probes; i++) {
             s.idToProbe.put(ids[i], i);
             s.pending.add(i);
@@ -257,6 +312,7 @@ public class RPTrackManager implements Listener {
         Integer probe = s.idToProbe.get(id);
         if (!isLb && probe == null) return;
 
+        debug(player.getName() + ": " + s.phase + " " + (isLb ? "liquidbounce" : "#" + (probe + 1)) + " -> " + event.getStatus());
         boolean success;
         switch (event.getStatus()) {
             case SUCCESSFULLY_LOADED -> success = true;
@@ -286,10 +342,19 @@ public class RPTrackManager implements Listener {
 
         Set<Integer> cached = new TreeSet<>(s.ok);
         boolean lb = s.lbHit;
+        if (debug) {
+            Set<Integer> cachedOneBased = new TreeSet<>();
+            for (int i : cached) cachedOneBased.add(i + 1);
+            Set<Integer> silent = new TreeSet<>();
+            for (int i : s.pending) silent.add(i + 1);
+            debug(player.getName() + ": probe done, cached=" + cachedOneBased + ", no answer=" + silent
+                    + ", liquidbounce=" + lb + ", declined=" + s.declined);
+        }
         if (lb) report(player, "LiquidBounce local HTTP server (port 15000) reachable");
 
         if (cached.isEmpty()) {
-            if (publicUrl.isEmpty()) { s.done = true; return; }
+            String base = baseUrl(player);
+            if (base.isEmpty()) { s.done = true; debug(player.getName() + ": fresh client but no pack url, nothing assigned"); return; }
             // fresh client: hand out a random subset for real
             List<Integer> all = new ArrayList<>();
             for (int i = 0; i < probes; i++) all.add(i);
@@ -300,8 +365,9 @@ public class RPTrackManager implements Listener {
             s.lbPending = false;
             s.lbHit = lb;
             for (int k = 0; k < assign; k++) s.pending.add(all.get(k));
+            debug(player.getName() + ": fresh client, sending " + assign + " packs");
             for (int i : new ArrayList<>(s.pending))
-                player.setResourcePack(ids[i], publicUrl + "/fp/" + (i + 1) + ".zip", hashes[i], (net.kyori.adventure.text.Component) null, false);
+                player.setResourcePack(ids[i], base + "/fp/" + (i + 1) + ".zip", hashes[i], (net.kyori.adventure.text.Component) null, false);
             FoliaScheduler.runAtEntityLater(plugin, player, () -> finishAssign(player, s), timeout * 3L);
         } else {
             s.done = true;
@@ -315,6 +381,7 @@ public class RPTrackManager implements Listener {
         s.done = true;
         sessions.remove(player.getUniqueId());
         if (player.isOnline()) removeAll(player, s);
+        debug(player.getName() + ": assign done, stored " + s.ok.size() + "/" + assign + " (pending " + s.pending.size() + ")");
         if (s.ok.isEmpty()) return;
         long mask = maskOf(s.ok);
         results.put(player.getUniqueId(), new Result(s.ok.size(), 0, s.lbHit));
@@ -338,8 +405,13 @@ public class RPTrackManager implements Listener {
         String uuid = player.getUniqueId().toString();
         FoliaScheduler.runAsync(plugin, () -> {
             List<String> linked = findLinked(uuid, mask);
-            results.put(player.getUniqueId(), new Result(Long.bitCount(mask), linked.size(), lb));
-            plugin.getDatabaseManager().saveRPTrack(uuid, player.getName(), mask, lb);
+            long own = getMask(uuid);
+            if (own != 0)
+                debug(player.getName() + ": stability vs own stored fingerprint: " + Long.bitCount(mask & own) + "/"
+                        + Long.bitCount(own) + " packs still cached, " + Long.bitCount(mask & ~own) + " extra");
+            debug(player.getName() + ": linked accounts " + linked);
+            results.put(player.getUniqueId(), new Result(Long.bitCount(mask | own), linked.size(), lb));
+            plugin.getDatabaseManager().saveRPTrack(uuid, player.getName(), mask | own, lb);
             if (!linked.isEmpty() && alert)
                 report(player, "same client cache as: " + String.join(", ", linked));
         });
