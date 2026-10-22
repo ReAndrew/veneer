@@ -302,7 +302,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
             return;
         }
         debug(player.getName() + ": sending toast-hiding pack from " + base);
-        player.setResourcePack(HIDE_ID, base + "/fp/hide.zip", hideHash, (net.kyori.adventure.text.Component) null, false);
+        send(player, List.of(packInfo(HIDE_ID, base + "/fp/hide.zip", hideHash)));
         FoliaScheduler.runAtEntityLater(plugin, player, () -> startProbe(player, s), timeout);
     }
 
