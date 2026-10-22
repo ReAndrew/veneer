@@ -2,8 +2,7 @@ package com.veneer.hacks.listeners;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
-import com.veneer.hacks.utils.FoliaScheduler;
-import com.veneer.hacks.utils.MessageUtil;
+import com.veneer.core.FoliaScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -39,36 +38,36 @@ public class AntiCheatListener implements Listener {
     }
 
     public void registerHooks() {
-        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
+        if (!plugin.hacks().config().isDetectFlagEnabled()) return;
 
-        if (plugin.getHackConfigManager().isGrimEnabled()) {
+        if (plugin.hacks().config().isAnticheatEnabled("grim")) {
             boolean ok = tryRegisterGrimBus();
             for (String cls : GRIM_CLASSES)
                 if (!ok && tryRegister(cls, "Grim", true)) ok = true;
-            if (!ok) plugin.getLogger().info("[CheckHacks] Grim not found, skipping.");
+            if (!ok) plugin.getLogger().info("[Hacks] Grim not found, skipping.");
         }
-        registerAny(plugin.getHackConfigManager().isVulcanEnabled(), "Vulcan", VULCAN_CLASSES);
-        registerAny(plugin.getHackConfigManager().isSpartanEnabled(), "Spartan", SPARTAN_CLASSES);
-        registerAny(plugin.getHackConfigManager().isMatrixEnabled(), "Matrix", MATRIX_CLASSES);
-        registerAny(plugin.getHackConfigManager().isAnticheatEnabled("intave"), "Intave", INTAVE_CLASSES);
-        registerAny(plugin.getHackConfigManager().isAnticheatEnabled("aac"), "AAC", AAC_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("vulcan"), "Vulcan", VULCAN_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("spartan"), "Spartan", SPARTAN_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("matrix"), "Matrix", MATRIX_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("intave"), "Intave", INTAVE_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("aac"), "AAC", AAC_CLASSES);
     }
 
     private void registerAny(boolean enabled, String acName, String[] classes) {
         if (!enabled) return;
         for (String cls : classes)
             if (tryRegister(cls, acName, false)) return;
-        plugin.getLogger().info("[CheckHacks] " + acName + " not found, skipping.");
+        plugin.getLogger().info("[Hacks] " + acName + " not found, skipping.");
     }
 
     private boolean tryRegisterGrimBus() {
         if (Bukkit.getPluginManager().getPlugin("GrimAC") == null) return false;
         try {
             GrimHook.register(plugin, this);
-            plugin.getLogger().info("[CheckHacks] Grim hook registered (event bus).");
+            plugin.getLogger().info("[Hacks] Grim hook registered (event bus).");
             return true;
         } catch (Throwable t) {
-            plugin.getLogger().info("[CheckHacks] Grim event bus unavailable (" + t.getClass().getSimpleName()
+            plugin.getLogger().info("[Hacks] Grim event bus unavailable (" + t.getClass().getSimpleName()
                     + "), trying legacy event classes.");
             return false;
         }
@@ -81,37 +80,37 @@ public class AntiCheatListener implements Listener {
             Bukkit.getPluginManager().registerEvent(
                     eventClass, this, EventPriority.NORMAL,
                     (l, e) -> handleFlag(e, isGrim, acName), plugin, false);
-            plugin.getLogger().info("[CheckHacks] " + acName + " hook registered (" + className + ").");
+            plugin.getLogger().info("[Hacks] " + acName + " hook registered (" + className + ").");
             return true;
         } catch (ClassNotFoundException e) {
             return false;
         } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] " + acName + " hook failed: " + e.getMessage());
+            plugin.getLogger().warning("[Hacks] " + acName + " hook failed: " + e.getMessage());
             return false;
         }
     }
 
     private void handleFlag(Event event, boolean isGrim, String acName) {
-        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
+        if (!plugin.hacks().config().isDetectFlagEnabled()) return;
         Player player = extractPlayer(event, isGrim, acName);
         if (player == null) return;
         queueCheck(player, acName);
     }
 
     public void queueCheck(Player player, String acName) {
-        if (!plugin.getHackConfigManager().isDetectFlagEnabled()) return;
-        if (!plugin.getCheckManager().canAutoCheck(player.getUniqueId())) return;
-        if (plugin.getCheckManager().isChecking(player.getUniqueId())) return;
+        if (!plugin.hacks().config().isDetectFlagEnabled()) return;
+        if (!plugin.hacks().checks().canAutoCheck(player.getUniqueId())) return;
+        if (plugin.hacks().checks().isChecking(player.getUniqueId())) return;
 
-        plugin.getLogger().info("[CheckHacks] " + acName + " flagged " + player.getName() + " — queuing check.");
-        MessageUtil.broadcastAlerts(plugin,
-                MessageUtil.parse(plugin, "anticheat-trigger", Map.of("player", player.getName())));
+        plugin.getLogger().info("[Hacks] " + acName + " flagged " + player.getName() + " — queuing check.");
+        plugin.alerts().send(
+                plugin.messages().get("anticheat-trigger", Map.of("player", player.getName())));
 
-        List<HackDefinition> hacks = plugin.getHackConfigManager().getFlagCheckHacks();
+        List<HackDefinition> hacks = plugin.hacks().config().getFlagCheckHacks();
         if (hacks.isEmpty()) return;
 
         FoliaScheduler.runAtEntity(plugin, player, () ->
-                plugin.getCheckManager().startCheck(player, null, hacks, true,
+                plugin.hacks().checks().startCheck(player, null, hacks, true,
                         "Anticheat flag: " + acName));
     }
 
@@ -155,7 +154,7 @@ public class AntiCheatListener implements Listener {
             }
         }
 
-        plugin.getLogger().warning("[CheckHacks] Could not extract player from event: "
+        plugin.getLogger().warning("[Hacks] Could not extract player from event: "
                 + event.getClass().getName() + " (" + acName + ")");
         return null;
     }

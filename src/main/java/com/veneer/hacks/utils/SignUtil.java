@@ -39,7 +39,7 @@ public class SignUtil {
                 }
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] setAllowedEditor: " + e.getMessage());
+            plugin.getLogger().warning("[Hacks] setAllowedEditor: " + e.getMessage());
         }
     }
 
@@ -63,7 +63,7 @@ public class SignUtil {
             if (create == null) return;
             sendPacket(player, create.invoke(null, be), plugin);
         } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] sendBlockEntityPacket: " + e.getMessage());
+            plugin.getLogger().warning("[Hacks] sendBlockEntityPacket: " + e.getMessage());
         }
     }
 
@@ -77,7 +77,7 @@ public class SignUtil {
             Object packet = pktClass.getConstructor(bpClass, boolean.class).newInstance(bp, true);
             sendPacket(player, packet, plugin);
         } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] sendOpenSignPacket: " + e.getMessage());
+            plugin.getLogger().warning("[Hacks] sendOpenSignPacket: " + e.getMessage());
         }
     }
 
@@ -110,7 +110,7 @@ public class SignUtil {
             if (send == null) throw new IllegalStateException("send() not found");
             send.invoke(conn, packet);
         } catch (Exception e) {
-            plugin.getLogger().warning("[CheckHacks] sendPacket: " + e.getMessage());
+            plugin.getLogger().warning("[Hacks] sendPacket: " + e.getMessage());
         }
     }
 
@@ -140,4 +140,4 @@ public class SignUtil {
         }
         return fields;
     }
-}
+}

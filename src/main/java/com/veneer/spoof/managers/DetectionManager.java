@@ -1,8 +1,7 @@
 package com.veneer.spoof.managers;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.spoof.data.PlayerData;
-import org.bukkit.Bukkit;
+import com.veneer.core.PlayerProfile;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -60,7 +59,7 @@ public class DetectionManager {
     
     public DetectionManager(VeneerPlugin plugin) {
         this.plugin = plugin;
-        this.config = plugin.getConfigManager();
+        this.config = plugin.spoof().config();
     }
     
     /**
@@ -72,20 +71,20 @@ public class DetectionManager {
      */
     public boolean addPlayerChannel(Player player, String channel, boolean triggerCheck) {
         UUID playerUUID = player.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().computeIfAbsent(playerUUID, uuid -> new PlayerData());
+        PlayerProfile data = plugin.profile(player);
         
         boolean channelAdded = false;
         if (!data.getChannels().contains(channel)) {
             data.addChannel(channel);
             channelAdded = true;
             
-            if (plugin.getConfigManager().isDebugMode()) {
+            if (plugin.spoof().config().isDebugMode()) {
                 plugin.getLogger().info("[Debug] Channel added for " + player.getName() + ": " + channel);
             }
             
             // If this channel was newly added after the initial join
             if (triggerCheck && data.isInitialChannelsRegistered() && config.isModifiedChannelsEnabled()) {
-                plugin.getAlertManager().sendModifiedChannelAlert(player, channel);
+                plugin.spoof().alertManager().sendModifiedChannelAlert(player, channel);
             }
         }
         
@@ -101,7 +100,7 @@ public class DetectionManager {
             Map<String, Boolean> violations = playerViolations.get(playerUUID);
             if (violations.getOrDefault("MISSING_REQUIRED_CHANNELS", false)) {
                 // Only log this once when we clear the flag
-                if (plugin.getConfigManager().isDebugMode()) {
+                if (plugin.spoof().config().isDebugMode()) {
                     plugin.getLogger().info("[Debug] Clearing 'MISSING_REQUIRED_CHANNELS' flag for " + player.getName() + 
                                            " because a fabric channel was registered: " + channel);
                 }
@@ -135,11 +134,11 @@ public class DetectionManager {
      */
     public void removePlayerChannel(Player player, String channel) {
         UUID playerUUID = player.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().get(playerUUID);
+        PlayerProfile data = plugin.profiles().get(playerUUID);
         if (data != null) {
             data.removeChannel(channel);
             
-            if (plugin.getConfigManager().isDebugMode()) {
+            if (plugin.spoof().config().isDebugMode()) {
                 plugin.getLogger().info("[Debug] Channel removed for " + player.getName() + ": " + channel);
             }
         }
@@ -157,7 +156,7 @@ public class DetectionManager {
         
         // Add to recently checked and schedule removal
         recentlyCheckedPlayers.add(playerUUID);
-        com.veneer.hacks.utils.FoliaScheduler.runAsyncLater(plugin, 
+        com.veneer.core.FoliaScheduler.runAsyncLater(plugin, 
             () -> recentlyCheckedPlayers.remove(playerUUID), 
             CHECK_COOLDOWN / 50); // Convert to ticks
         
@@ -178,13 +177,13 @@ public class DetectionManager {
         if (checkRequiredChannels) {
             requiredChannelCheckedPlayers.add(player.getUniqueId());
             
-            if (plugin.getConfigManager().isDebugMode()) {
+            if (plugin.spoof().config().isDebugMode()) {
                 plugin.getLogger().info("[Debug] Running FULL check with required channels for " + player.getName());
             }
         }
         
         // Run check asynchronously to avoid lag
-        com.veneer.hacks.utils.FoliaScheduler.runAsync(plugin, () -> {
+        com.veneer.core.FoliaScheduler.runAsync(plugin, () -> {
             checkPlayer(player, isJoinCheck, checkRequiredChannels);
         });
     }
@@ -206,16 +205,12 @@ public class DetectionManager {
         // Skip if player is offline or has been punished
         if (!player.isOnline()) return;
         
-        PlayerData data = plugin.getPlayerDataMap().get(uuid);
-        if (data == null) {
-            data = new PlayerData();
-            plugin.getPlayerDataMap().put(uuid, data);
-        }
+        PlayerProfile data = plugin.profile(player);
         
         if (data.isAlreadyPunished()) return;
         
         // Get player's client brand
-        String brand = plugin.getClientBrand(player);
+        String brand = plugin.spoof().getClientBrand(player);
         
         // Check for missing brand first
         if (brand == null) {
@@ -235,14 +230,14 @@ public class DetectionManager {
                 detectedViolations.put("NO_BRAND", "No client brand detected");
 
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
-                com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
+                com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
                     processViolations(player, finalViolations, "unknown");
                 });
             } else if (config.shouldBlockNonVanillaWithChannels()) {
                 Map<String, String> detectedViolations = new HashMap<>();
                 detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
-                com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
+                com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
                     processViolations(player, finalViolations, "unknown");
                 });
             }
@@ -251,7 +246,7 @@ public class DetectionManager {
         }
         
         // Check if player is a Bedrock player
-        boolean isBedrockPlayer = plugin.isBedrockPlayer(player);
+        boolean isBedrockPlayer = plugin.bedrock().isBedrock(player);
         
         // If player is a Bedrock player and we're set to ignore them, return immediately
         if (isBedrockPlayer && config.getBedrockHandlingMode().equals("IGNORE")) {
@@ -273,8 +268,8 @@ public class DetectionManager {
             violations.put("JOIN_BRAND", true);
             
             // Send join brand alert on main thread
-            com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
-                plugin.getAlertManager().sendBrandJoinAlert(player, brand);
+            com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
+                plugin.spoof().alertManager().sendBrandJoinAlert(player, brand);
             });
         }
         
@@ -415,9 +410,9 @@ public class DetectionManager {
                     if (!brandConfig.shouldFlag()) {
                         final String finalBrand = brand;
                         final String finalMatchedBrandKey = matchedBrandKey;
-                        final PlayerData finalData = data;  // Create a final reference to data
+                        final PlayerProfile finalData = data;  // Create a final reference to data
                         
-                        com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
+                        com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
                             // Only send the alert if not already punished
                             if (!finalData.isAlreadyPunished()) {
                                 sendBrandAlert(player, finalBrand, finalMatchedBrandKey);
@@ -510,7 +505,7 @@ public class DetectionManager {
             final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
             final String finalBrand = brand;  // Make brand effectively final
             
-            com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
+            com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
                 processViolations(player, finalViolations, finalBrand);
             });
         }
@@ -524,7 +519,7 @@ public class DetectionManager {
      */
     private void sendBrandAlert(Player player, String brand, String brandKey) {
         // Use the centralized method to ensure no duplicates
-        plugin.sendBrandAlert(player, brand, brandKey);
+        plugin.spoof().sendBrandAlert(player, brand, brandKey);
     }
     
     /**
@@ -537,7 +532,7 @@ public class DetectionManager {
         if (!player.isOnline()) return;
         
         UUID uuid = player.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().get(uuid);
+        PlayerProfile data = plugin.profiles().get(uuid);
 
         if (data == null || data.isAlreadyPunished() || detectedViolations.isEmpty()) return;
 
@@ -564,7 +559,7 @@ public class DetectionManager {
         // Skip if no new violations
         if (newViolations.isEmpty()) return;
 
-        plugin.triggerCheckHacksFromSpoof(player, String.join("; ", newViolations.values()));
+        plugin.hacks().onSpoofFlag(player, String.join("; ", newViolations.values()));
         
         // Get violated channel for blacklist mode
         String violatedChannel = null;
@@ -587,12 +582,12 @@ public class DetectionManager {
                 ConfigManager.ClientBrandConfig brandConfig = config.getClientBrandConfig(brandKey);
                 
                 // Use the brand-specific alert and punishment settings
-                plugin.getAlertManager().sendBrandViolationAlert(
+                plugin.spoof().alertManager().sendBrandViolationAlert(
                     player, reason, brand, violatedChannel, "CLIENT_BRAND", brandConfig);
                 
                 // Execute punishment if needed
                 if (brandConfig.shouldPunish()) {
-                    plugin.getAlertManager().executeBrandPunishment(
+                    plugin.spoof().alertManager().executeBrandPunishment(
                         player, reason, brand, "CLIENT_BRAND", violatedChannel, brandConfig);
                     data.setAlreadyPunished(true);
                 }
@@ -610,12 +605,12 @@ public class DetectionManager {
             ConfigManager.ClientBrandConfig defaultConfig = config.getClientBrandConfig(null);
             
             // Send alert
-            plugin.getAlertManager().sendBrandViolationAlert(
+            plugin.spoof().alertManager().sendBrandViolationAlert(
                 player, reason, brand, null, "UNKNOWN_BRAND", defaultConfig);
             
             // Execute punishment if needed
             if (defaultConfig.shouldPunish()) {
-                plugin.getAlertManager().executeBrandPunishment(
+                plugin.spoof().alertManager().executeBrandPunishment(
                     player, reason, brand, "UNKNOWN_BRAND", null, defaultConfig);
                 data.setAlreadyPunished(true);
             }
@@ -629,7 +624,7 @@ public class DetectionManager {
             // Only pass the channel parameter for BLOCKED_CHANNEL violations
             String channelParam = entry.getKey().equals("BLOCKED_CHANNEL") ? violatedChannel : null;
             
-            plugin.getAlertManager().sendViolationAlert(
+            plugin.spoof().alertManager().sendViolationAlert(
                 player, entry.getValue(), brand, channelParam, entry.getKey());
         }
         
@@ -642,7 +637,7 @@ public class DetectionManager {
 
                 if (shouldPunishViolation(violationType, brand)) {
                     String channelParam = violationType.equals("BLOCKED_CHANNEL") ? violatedChannel : null;
-                    plugin.getAlertManager().executePunishment(
+                    plugin.spoof().alertManager().executePunishment(
                         player, reason, brand, violationType, channelParam);
                     data.setAlreadyPunished(true);
                     break;
@@ -661,7 +656,7 @@ public class DetectionManager {
         if (!player.isOnline()) return;
         
         UUID uuid = player.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().get(uuid);
+        PlayerProfile data = plugin.profiles().get(uuid);
         
         if (data == null || data.isAlreadyPunished()) return;
         
@@ -677,21 +672,21 @@ public class DetectionManager {
         violations.put(violationType, true);
         
         // Send alert
-        plugin.getAlertManager().sendViolationAlert(
+        plugin.spoof().alertManager().sendViolationAlert(
             player, reason, "unknown", null, violationType);
 
-        plugin.triggerCheckHacksFromSpoof(player, reason);
+        plugin.hacks().onSpoofFlag(player, reason);
         
         // Execute punishment if needed - using "unknown" as brand since we don't know it
         boolean shouldPunish = shouldPunishViolation(violationType, "unknown");
         
         if (shouldPunish) {
-            plugin.getAlertManager().executePunishment(
+            plugin.spoof().alertManager().executePunishment(
                 player, reason, "unknown", violationType, null);
             data.setAlreadyPunished(true);
         }
         
-        if (plugin.getConfigManager().isDebugMode()) {
+        if (plugin.spoof().config().isDebugMode()) {
             plugin.getLogger().info("[Debug] Processed violation for " + player.getName() + 
                                   ": " + violationType + " - " + reason);
         }
@@ -785,7 +780,7 @@ public class DetectionManager {
         boolean claimsGeyser = brand.toLowerCase().contains("geyser");
         
         // If player claims to be using Geyser but isn't detected as a Bedrock player
-        return claimsGeyser && !plugin.isBedrockPlayer(player);
+        return claimsGeyser && !plugin.bedrock().isBedrock(player);
     }
     
     /**
@@ -885,8 +880,6 @@ public class DetectionManager {
      * @param playerUUID The UUID of the player who disconnected
      */
     public void handlePlayerQuit(UUID playerUUID) {
-        plugin.getPlayerDataMap().remove(playerUUID);
-        plugin.getPlayerBrands().remove(playerUUID);
         playerViolations.remove(playerUUID);
         recentlyCheckedPlayers.remove(playerUUID);
         requiredChannelCheckedPlayers.remove(playerUUID);

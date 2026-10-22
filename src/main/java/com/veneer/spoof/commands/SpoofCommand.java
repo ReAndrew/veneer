@@ -1,7 +1,7 @@
 package com.veneer.spoof.commands;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.spoof.data.PlayerData;
+import com.veneer.core.PlayerProfile;
 import com.veneer.spoof.managers.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 public class SpoofCommand implements CommandExecutor, TabCompleter {
     private final VeneerPlugin plugin;
     private final List<String> subcommands = Arrays.asList(
-        "channels", "brand", "help", "reload", "check", "blockedchannels", "blockedbrands", "runcheck"
+        "channels", "brand", "help", "check", "blockedchannels", "blockedbrands", "runcheck"
     );
 
     public SpoofCommand(VeneerPlugin plugin) {
@@ -44,17 +44,6 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
 
         if (subCommand.equals("help")) {
             showHelp(sender);
-            return true;
-        }
-        
-        if (subCommand.equals("reload")) {
-            if (!sender.hasPermission("veneer.spoof.admin")) {
-                sender.sendMessage(ChatColor.RED + "You don't have permission to reload the plugin.");
-                return true;
-            }
-            
-            plugin.getConfigManager().reload();
-            sender.sendMessage(ChatColor.GREEN + "AntiSpoof configuration reloaded!");
             return true;
         }
         
@@ -129,7 +118,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         }
         
         UUID targetUUID = target.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().get(targetUUID);
+        PlayerProfile data = plugin.profiles().get(targetUUID);
         if (data == null) {
             sender.sendMessage(ChatColor.YELLOW + "No data available for this player.");
             return true;
@@ -162,7 +151,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.AQUA + "Running check for all online players...");
             int count = 0;
             for (Player player : Bukkit.getOnlinePlayers()) {
-                plugin.getDetectionManager().checkPlayerAsync(player, false, true);
+                plugin.spoof().detection().checkPlayerAsync(player, false, true);
                 count++;
             }
             sender.sendMessage(ChatColor.GREEN + "Check triggered for " + count + " players.");
@@ -177,7 +166,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.AQUA + "Running check for all online players...");
             int count = 0;
             for (Player player : Bukkit.getOnlinePlayers()) {
-                plugin.getDetectionManager().checkPlayerAsync(player, false, true);
+                plugin.spoof().detection().checkPlayerAsync(player, false, true);
                 count++;
             }
             sender.sendMessage(ChatColor.GREEN + "Check triggered for " + count + " players.");
@@ -192,15 +181,15 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         }
 
         sender.sendMessage(ChatColor.AQUA + "Running check for player " + target.getName() + "...");
-        plugin.getDetectionManager().checkPlayerAsync(target, false, true);
+        plugin.spoof().detection().checkPlayerAsync(target, false, true);
         sender.sendMessage(ChatColor.GREEN + "Check triggered for " + target.getName() + ".");
         sender.sendMessage(ChatColor.YELLOW + "Note: This only re-analyzes existing data, players might need to rejoin for fresh data.");
     }
     
     private void showBlockedBrands(CommandSender sender) {
-        boolean enabled = plugin.getConfigManager().isBlockedBrandsEnabled();
-        boolean whitelistMode = plugin.getConfigManager().isBrandWhitelistEnabled();
-        List<String> blockedBrands = plugin.getConfigManager().getBlockedBrands();
+        boolean enabled = plugin.spoof().config().isBlockedBrandsEnabled();
+        boolean whitelistMode = plugin.spoof().config().isBrandWhitelistEnabled();
+        List<String> blockedBrands = plugin.spoof().config().getBlockedBrands();
         
         sender.sendMessage(ChatColor.AQUA + "=== Blocked Brands Configuration ===");
         sender.sendMessage(ChatColor.GRAY + "Enabled: " + (enabled ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
@@ -217,9 +206,9 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     }
     
     private void showBlockedChannels(CommandSender sender) {
-        boolean enabled = plugin.getConfigManager().isBlockedChannelsEnabled();
-        String whitelistMode = plugin.getConfigManager().getChannelWhitelistMode();
-        List<String> blockedChannels = plugin.getConfigManager().getBlockedChannels();
+        boolean enabled = plugin.spoof().config().isBlockedChannelsEnabled();
+        String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
+        List<String> blockedChannels = plugin.spoof().config().getBlockedChannels();
         
         sender.sendMessage(ChatColor.AQUA + "=== Blocked Channels Configuration ===");
         sender.sendMessage(ChatColor.GRAY + "Enabled: " + (enabled ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
@@ -246,19 +235,19 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     }
     
     private void checkPlayer(CommandSender sender, Player target) {
-        boolean isSpoofing = plugin.isPlayerSpoofing(target);
-        String brand = plugin.getClientBrand(target);
+        boolean isSpoofing = plugin.spoof().isPlayerSpoofing(target);
+        String brand = plugin.spoof().getClientBrand(target);
         List<String> flagReasons = new ArrayList<>();
         
         if (brand == null) {
-            if (!plugin.getConfigManager().shouldBlockNonVanillaWithChannels()) {
+            if (!plugin.spoof().config().shouldBlockNonVanillaWithChannels()) {
                 sender.sendMessage(ChatColor.AQUA + target.getName() + ChatColor.YELLOW + " has no client brand information yet.");
                 return;
             }
             flagReasons.add("Non-vanilla client detected");
         }
         
-        PlayerData data = plugin.getPlayerDataMap().get(target.getUniqueId());
+        PlayerProfile data = plugin.profiles().get(target.getUniqueId());
         boolean hasChannels = data != null && !data.getChannels().isEmpty();
         boolean claimsVanilla = brand != null && brand.equalsIgnoreCase("vanilla");
         
@@ -271,26 +260,26 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         // Determine all reasons for flagging
         if (isSpoofing) {
             // Check for vanilla client with channels
-            if (claimsVanilla && hasChannels && plugin.getConfigManager().isVanillaCheckEnabled()) {
+            if (claimsVanilla && hasChannels && plugin.spoof().config().isVanillaCheckEnabled()) {
                 flagReasons.add("Vanilla client with plugin channels");
             }
             
             // Check for Geyser spoofing
-            if (plugin.isSpoofingGeyser(target)) {
+            if (plugin.spoof().isSpoofingGeyser(target)) {
                 flagReasons.add("Spoofing Geyser client");
             }
             
             // Check for strict non-vanilla
-            if (plugin.getConfigManager().shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
+            if (plugin.spoof().config().shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
                 flagReasons.add("Non-vanilla client detected");
             }
             
             // Check for blocked brand
-            if (plugin.getConfigManager().isBlockedBrandsEnabled()) {
-                boolean brandBlocked = plugin.getConfigManager().isBrandBlocked(brand);
+            if (plugin.spoof().config().isBlockedBrandsEnabled()) {
+                boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
                 
-                if (brandBlocked && plugin.getConfigManager().shouldCountNonWhitelistedBrandsAsFlag()) {
-                    if (plugin.getConfigManager().isBrandWhitelistEnabled()) {
+                if (brandBlocked) {
+                    if (plugin.spoof().config().isBrandWhitelistEnabled()) {
                         flagReasons.add("Client brand is not in whitelist");
                     } else {
                         flagReasons.add("Using blocked client brand");
@@ -299,19 +288,19 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             }
             
             // Check channel whitelist/blacklist
-            if (hasChannels && plugin.getConfigManager().isBlockedChannelsEnabled()) {
-                String whitelistMode = plugin.getConfigManager().getChannelWhitelistMode();
+            if (hasChannels && plugin.spoof().config().isBlockedChannelsEnabled()) {
+                String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
                 
-                Set<String> filtered = plugin.getDetectionManager().getFilteredChannels(data.getChannels());
+                Set<String> filtered = plugin.spoof().detection().getFilteredChannels(data.getChannels());
 
                 if (!whitelistMode.equals("FALSE")) {
                     // Whitelist mode
-                    boolean passesWhitelist = plugin.getDetectionManager().checkChannelWhitelist(filtered);
+                    boolean passesWhitelist = plugin.spoof().detection().checkChannelWhitelist(filtered);
                     if (!passesWhitelist) {
                         if (whitelistMode.equals("STRICT")) {
                             // Get missing channels for strict mode
                             List<String> missingChannels = new ArrayList<>();
-                            for (String whitelistedChannel : plugin.getConfigManager().getBlockedChannels()) {
+                            for (String whitelistedChannel : plugin.spoof().config().getBlockedChannels()) {
                                 boolean found = false;
                                 for (String playerChannel : filtered) {
                                     try {
@@ -344,7 +333,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     }
                 } else {
                     // Blacklist mode - check for blocked channels
-                    String blockedChannel = plugin.getDetectionManager().findBlockedChannel(filtered);
+                    String blockedChannel = plugin.spoof().detection().findBlockedChannel(filtered);
                     if (blockedChannel != null) {
                         flagReasons.add("Using blocked channel: " + blockedChannel);
                     }
@@ -352,9 +341,9 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             }
             
             // Check for missing required brand channels
-            String matchedBrand = plugin.getConfigManager().getMatchingClientBrand(brand);
+            String matchedBrand = plugin.spoof().config().getMatchingClientBrand(brand);
             if (matchedBrand != null && hasChannels) {
-                ConfigManager.ClientBrandConfig brandConfig = plugin.getConfigManager().getClientBrandConfig(matchedBrand);
+                ConfigManager.ClientBrandConfig brandConfig = plugin.spoof().config().getClientBrandConfig(matchedBrand);
                 if (!brandConfig.getRequiredChannels().isEmpty()) {
                     // Look for missing required channels
                     List<String> missingRequiredChannels = new ArrayList<>();
@@ -410,8 +399,8 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             }
             
             // Check if the brand is blocked/not whitelisted and display with appropriate color
-            if (plugin.getConfigManager().isBlockedBrandsEnabled()) {
-                boolean brandBlocked = plugin.getConfigManager().isBrandBlocked(brand);
+            if (plugin.spoof().config().isBlockedBrandsEnabled()) {
+                boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
                 
                 if (brandBlocked) {
                     sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.RED + "Blocked");
@@ -423,8 +412,8 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.GRAY + "Has channels: " + (hasChannels ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
             
             // Channel whitelist/blacklist checks
-            if (hasChannels && plugin.getConfigManager().isBlockedChannelsEnabled()) {
-                String whitelistMode = plugin.getConfigManager().getChannelWhitelistMode();
+            if (hasChannels && plugin.spoof().config().isBlockedChannelsEnabled()) {
+                String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
                 
                 if (!whitelistMode.equals("FALSE")) {
                     // Whitelist mode
@@ -435,7 +424,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     
                     // First, list all player channels and if they're whitelisted
                     for (String channel : data.getChannels()) {
-                        boolean whitelisted = plugin.getConfigManager().matchesChannelPattern(channel);
+                        boolean whitelisted = plugin.spoof().config().matchesChannelPattern(channel);
                         
                         if (whitelisted) {
                             sender.sendMessage(ChatColor.GREEN + channel);
@@ -448,7 +437,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     if (whitelistMode.equals("STRICT")) {
                         List<String> missingWhitelistedChannels = new ArrayList<>();
                         
-                        for (String whitelistedChannel : plugin.getConfigManager().getBlockedChannels()) {
+                        for (String whitelistedChannel : plugin.spoof().config().getBlockedChannels()) {
                             boolean found = false;
                             for (String playerChannel : data.getChannels()) {
                                 try {
@@ -482,7 +471,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     List<String> blockedChannels = new ArrayList<>();
                     
                     for (String channel : data.getChannels()) {
-                        boolean blocked = plugin.getConfigManager().matchesChannelPattern(channel);
+                        boolean blocked = plugin.spoof().config().matchesChannelPattern(channel);
                         
                         if (blocked) {
                             blockedChannels.add(channel);
@@ -505,8 +494,8 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.GRAY + "Client brand: " + ChatColor.WHITE + brand);
             
             // Check if the brand is blocked/not whitelisted and display with appropriate color
-            if (plugin.getConfigManager().isBlockedBrandsEnabled()) {
-                boolean brandBlocked = plugin.getConfigManager().isBrandBlocked(brand);
+            if (plugin.spoof().config().isBlockedBrandsEnabled()) {
+                boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
                 
                 if (brandBlocked) {
                     sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.RED + "Blocked" + 
@@ -525,9 +514,9 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         
         boolean foundSpoofing = false;
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (plugin.isPlayerSpoofing(player)) {
+            if (plugin.spoof().isPlayerSpoofing(player)) {
                 foundSpoofing = true;
-                String brand = plugin.getClientBrand(player);
+                String brand = plugin.spoof().getClientBrand(player);
                 sender.sendMessage(ChatColor.RED + player.getName() + ChatColor.GRAY + 
                     " - Brand: " + ChatColor.WHITE + (brand != null ? brand : "unknown"));
             }
@@ -539,28 +528,27 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     }
     
     private void showHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.AQUA + "=== AntiSpoof Commands ===");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof channels <player> " + ChatColor.WHITE + "- Show player's plugin channels");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof brand <player> " + ChatColor.WHITE + "- Show player's client brand");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof check [player|*] " + ChatColor.WHITE + "- Check if player is spoofing");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof runcheck [player|*] " + ChatColor.WHITE + "- Re-run checks on player(s)");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof blockedchannels " + ChatColor.WHITE + "- Show blocked channel config");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof blockedbrands " + ChatColor.WHITE + "- Show blocked brand config");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof reload " + ChatColor.WHITE + "- Reload the plugin configuration");
-        sender.sendMessage(ChatColor.GRAY + "/antispoof help " + ChatColor.WHITE + "- Show this help message");
+        sender.sendMessage(ChatColor.AQUA + "=== Veneer spoof commands ===");
+        sender.sendMessage(ChatColor.GRAY + "/spoof channels <player> " + ChatColor.WHITE + "- Show player's plugin channels");
+        sender.sendMessage(ChatColor.GRAY + "/spoof brand <player> " + ChatColor.WHITE + "- Show player's client brand");
+        sender.sendMessage(ChatColor.GRAY + "/spoof check [player|*] " + ChatColor.WHITE + "- Check if player is spoofing");
+        sender.sendMessage(ChatColor.GRAY + "/spoof runcheck [player|*] " + ChatColor.WHITE + "- Re-run checks on player(s)");
+        sender.sendMessage(ChatColor.GRAY + "/spoof blockedchannels " + ChatColor.WHITE + "- Show blocked channel config");
+        sender.sendMessage(ChatColor.GRAY + "/spoof blockedbrands " + ChatColor.WHITE + "- Show blocked brand config");
+        sender.sendMessage(ChatColor.GRAY + "/spoof help " + ChatColor.WHITE + "- Show this help message");
     }
     
-    private void showChannels(CommandSender sender, Player target, PlayerData data) {
+    private void showChannels(CommandSender sender, Player target, PlayerProfile data) {
         sender.sendMessage(ChatColor.AQUA + "Channels for " + target.getName() + ":");
         
         if (data.getChannels().isEmpty()) {
             sender.sendMessage(ChatColor.GRAY + "No channels registered.");
         } else {
-            String whitelistMode = plugin.getConfigManager().getChannelWhitelistMode();
+            String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
             boolean isWhitelist = !whitelistMode.equals("FALSE");
             
             data.getChannels().forEach(channel -> {
-                boolean isListed = plugin.getConfigManager().matchesChannelPattern(channel);
+                boolean isListed = plugin.spoof().config().matchesChannelPattern(channel);
                 
                 if (isListed) {
                     if (isWhitelist) {
@@ -580,14 +568,14 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     }
     
     private void showBrand(CommandSender sender, Player target) {
-        String brand = plugin.getClientBrand(target);
+        String brand = plugin.spoof().getClientBrand(target);
         if (brand == null || brand.isEmpty()) {
             sender.sendMessage(ChatColor.YELLOW + target.getName() + " has no client brand information.");
         } else {
             // Check if the brand is in the whitelist/blacklist and display with appropriate color
-            if (plugin.getConfigManager().isBlockedBrandsEnabled()) {
-                boolean brandBlocked = plugin.getConfigManager().isBrandBlocked(brand);
-                boolean whitelistMode = plugin.getConfigManager().isBrandWhitelistEnabled();
+            if (plugin.spoof().config().isBlockedBrandsEnabled()) {
+                boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
+                boolean whitelistMode = plugin.spoof().config().isBrandWhitelistEnabled();
                 
                 if (brandBlocked) {
                     sender.sendMessage(ChatColor.AQUA + "Client brand for " + target.getName() + ": " + 

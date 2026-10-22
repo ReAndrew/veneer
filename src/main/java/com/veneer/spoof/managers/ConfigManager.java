@@ -1,8 +1,7 @@
 package com.veneer.spoof.managers;
 
 import org.bukkit.configuration.ConfigurationSection;
-import com.veneer.VeneerConfig;
-import org.bukkit.plugin.java.JavaPlugin;
+import com.veneer.VeneerPlugin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,7 +11,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 public class ConfigManager {
-    private final JavaPlugin plugin;
+    private final VeneerPlugin plugin;
     private ConfigurationSection config;
     
     // Cache for compiled regex patterns
@@ -60,17 +59,13 @@ public class ConfigManager {
         public List<String> getRequiredChannelsPunishments() { return requiredChannelsPunishments; }
     }
 
-    public ConfigManager(JavaPlugin plugin) {
+    public ConfigManager(VeneerPlugin plugin) {
         this.plugin = plugin;
         reload();
     }
 
-    public boolean isCheckHacksOnFlagEnabled() {
-        return config.getBoolean("checkhacks-on-flag.enabled", true);
-    }
-
     public void reload() {
-        config = VeneerConfig.section(plugin, "antispoof");
+        config = plugin.config().section("spoof");
 
         // Clear and recompile regex patterns
         channelPatterns.clear();
@@ -109,7 +104,7 @@ public class ConfigManager {
             defaultBrandConfig.alert = defaultSection.getBoolean("alert", true);
             defaultBrandConfig.discordAlert = defaultSection.getBoolean("discord-alert", false);
             defaultBrandConfig.alertMessage = defaultSection.getString("alert-message", 
-                "&8[&cAntiSpoof&8] &7%player% using unknown client: &e%brand%");
+                "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%");
             defaultBrandConfig.consoleAlertMessage = defaultSection.getString("console-alert-message", 
                 "%player% using unknown client: %brand%");
             defaultBrandConfig.punish = defaultSection.getBoolean("punish", false);
@@ -120,7 +115,7 @@ public class ConfigManager {
             defaultBrandConfig.flag = true;
             defaultBrandConfig.alert = true;
             defaultBrandConfig.discordAlert = false;
-            defaultBrandConfig.alertMessage = "&8[&cAntiSpoof&8] &7%player% using unknown client: &e%brand%";
+            defaultBrandConfig.alertMessage = "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%";
             defaultBrandConfig.consoleAlertMessage = "%player% using unknown client: %brand%";
             defaultBrandConfig.punish = false;
             defaultBrandConfig.punishments = new ArrayList<>();
@@ -199,7 +194,7 @@ public class ConfigManager {
     }
 
     public boolean isDebugMode() {
-        return config.getBoolean("debug", false);
+        return plugin.config().debug();
     }
     
     /**
@@ -248,43 +243,7 @@ public class ConfigManager {
         return clientBrands.getOrDefault(brandKey, defaultBrandConfig);
     }
     
-    /**
-     * Check if a channel matches any of the required channels for a brand
-     * @param brandKey The brand key to check
-     * @param channel The channel to check
-     * @return True if the channel matches a required channel pattern
-     */
-    public boolean matchesRequiredChannel(String brandKey, String channel) {
-        ClientBrandConfig brandConfig = getClientBrandConfig(brandKey);
-        
-        if (brandConfig.getRequiredChannels().isEmpty()) {
-            return true; // No required channels means any channel is fine
-        }
-        
-        for (Pattern pattern : brandConfig.getRequiredChannels()) {
-            try {
-                if (pattern.matcher(channel).matches()) {
-                    return true;
-                }
-            } catch (Exception e) {
-                // If regex fails, try direct comparison
-                if (channel.equals(pattern.pattern())) {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    }
     
-    /**
-     * Check if a brand has strict checking enabled (must have no channels)
-     * @param brandKey The brand key to check
-     * @return True if strict checking is enabled for this brand
-     */
-    public boolean hasStrictChecking(String brandKey) {
-        return getClientBrandConfig(brandKey).hasStrictCheck();
-    }
     
     /**
      * @return Whether brand detection is enabled (maps to client-brands.enabled)
@@ -314,14 +273,6 @@ public class ConfigManager {
         return defaultBrandConfig.shouldFlag();
     }
     
-    /**
-     * @return Whether non-whitelisted brands should be flagged
-     */
-    public boolean shouldCountNonWhitelistedBrandsAsFlag() {
-        // In the new system, this is controlled per brand by the 'flag' parameter
-        // Default to true for backward compatibility
-        return true;
-    }
     
     /**
      * @return Whether brand whitelist mode is enabled (backward compatibility)
@@ -381,27 +332,11 @@ public class ConfigManager {
         return defaultBrandConfig.shouldDiscordAlert();
     }
     
-    /**
-     * Get punishment commands for blocked brands (backward compatibility)
-     * @return List of punishment commands
-     */
-    public List<String> getBlockedBrandsPunishments() {
-        // Use the default client brand punishments
-        return defaultBrandConfig.getPunishments();
-    }
     
-    /**
-     * Check if punishment is enabled for blocked brands (backward compatibility)
-     * @return True if punishment is enabled, false otherwise
-     */
-    public boolean shouldPunishBlockedBrands() {
-        // Use the default client brand punishment setting
-        return defaultBrandConfig.shouldPunish();
-    }
     
     // Global alert messages (legacy)
     public String getAlertMessage() {
-        return config.getString("messages.alert", "&8[&cAntiSpoof&8] &e%player% flagged! &c%reason%");
+        return config.getString("messages.alert", "&8[&cVeneer&8] &e%player% flagged! &c%reason%");
     }
     
     public String getConsoleAlertMessage() {
@@ -410,7 +345,7 @@ public class ConfigManager {
     
     // Multiple flags messages
     public String getMultipleFlagsMessage() {
-        return config.getString("messages.multiple-flags", "&8[&cAntiSpoof&8] &e%player% has multiple violations: &c%reasons%");
+        return config.getString("messages.multiple-flags", "&8[&cVeneer&8] &e%player% has multiple violations: &c%reasons%");
     }
     
     public String getConsoleMultipleFlagsMessage() {
@@ -437,7 +372,7 @@ public class ConfigManager {
     
     public String getNoBrandAlertMessage() {
         return config.getString("no-brand-check.alert-message", 
-                               "&8[&cAntiSpoof&8] &e%player% flagged! &cNo client brand detected");
+                               "&8[&cVeneer&8] &e%player% flagged! &cNo client brand detected");
     }
     
     public String getNoBrandConsoleAlertMessage() {
@@ -536,7 +471,7 @@ public class ConfigManager {
     // Added whitelist message methods
     public String getChannelWhitelistAlertMessage() {
         return config.getString("blocked-channels.whitelist-alert-message", 
-            "&8[&cAntiSpoof&8] &e%player% flagged! &cChannels don't match whitelist requirements");
+            "&8[&cVeneer&8] &e%player% flagged! &cChannels don't match whitelist requirements");
     }
     
     public String getChannelWhitelistConsoleAlertMessage() {
@@ -563,7 +498,7 @@ public class ConfigManager {
     
     public String getModifiedChannelsAlertMessage() {
         return config.getString("blocked-channels.modifiedchannels.alert-message", 
-                               "&8[&cAntiSpoof&8] &e%player% modified channel: &f%channel%");
+                               "&8[&cVeneer&8] &e%player% modified channel: &f%channel%");
     }
     
     public String getModifiedChannelsConsoleAlertMessage() {
@@ -625,58 +560,31 @@ public class ConfigManager {
         return config.getStringList("bedrock-handling.geyser-spoof.punishments");
     }
     
-    // Bedrock Prefix Check
-    public boolean isBedrockPrefixCheckEnabled() {
-        return config.getBoolean("bedrock-handling.prefix-check.enabled", true);
-    }
     
-    public String getBedrockPrefix() {
-        return config.getString("bedrock-handling.prefix-check.prefix", ".");
-    }
     
     // Global Alert settings
     public boolean isJoinBrandAlertsEnabled() {
         return config.getBoolean("global-alerts.join-brand-alerts", false);
     }
     
-    public boolean isInitialChannelsAlertsEnabled() {
-        return config.getBoolean("global-alerts.initial-channels-alerts", false);
-    }
     
     // Discord webhook settings
     public boolean isDiscordWebhookEnabled() {
         return config.getBoolean("discord.enabled", false);
     }
     
+    /** The webhook for spoof alerts: {@code spoof.discord.webhook}, else {@code general.discord.webhook}. */
     public String getDiscordWebhookUrl() {
-        return config.getString("discord.webhook", "");
+        return plugin.config().webhook(config.getString("discord.webhook", ""));
     }
     
     public String getDiscordEmbedTitle() {
-        return config.getString("discord.embed-title", "**AntiSpoof Alert**");
+        return config.getString("discord.embed-title", "**Veneer spoof alert**");
     }
     
     public String getDiscordEmbedColor() {
         return config.getString("discord.embed-color", "#2AB7CA");
     }
     
-    public List<String> getDiscordViolationContent() {
-        return config.getStringList("discord.violation-content");
-    }
     
-    /**
-     * Checks if update checking is enabled
-     * @return True if update checking is enabled, false otherwise
-     */
-    public boolean isUpdateCheckerEnabled() {
-        return config.getBoolean("update-checker.enabled", true);
-    }
-
-    /**
-     * Checks if join notifications for updates are enabled
-     * @return True if join notifications are enabled, false otherwise
-     */
-    public boolean isUpdateNotifyOnJoinEnabled() {
-        return config.getBoolean("update-checker.notify-on-join", true);
-    }
 }

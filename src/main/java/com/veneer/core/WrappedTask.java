@@ -1,4 +1,4 @@
-package com.veneer.hacks.utils;
+package com.veneer.core;
 
 /**
  * Common abstraction over Bukkit's {@code BukkitTask} and Folia's

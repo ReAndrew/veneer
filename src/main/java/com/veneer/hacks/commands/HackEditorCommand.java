@@ -23,24 +23,24 @@ public class HackEditorCommand implements CommandExecutor {
             return true;
         }
         if (!player.hasPermission("veneer.hacks.editor")) {
-            player.sendMessage(plugin.getMessageManager().get("no-permission"));
+            player.sendMessage(plugin.messages().get("no-permission"));
             return true;
         }
-        if (!plugin.getHackConfigManager().isWebEditorEnabled()) {
-            player.sendMessage(plugin.getMessageManager().get("editor-disabled"));
+        if (!plugin.hacks().config().isWebEditorEnabled()) {
+            player.sendMessage(plugin.messages().get("editor-disabled"));
             return true;
         }
 
-        String token = plugin.getDatabaseManager().saveToken(
+        String token = plugin.database().saveToken(
                 player.getUniqueId().toString(),
                 player.getName(),
-                plugin.getHackConfigManager().getTokenExpireMinutes());
+                plugin.hacks().config().getTokenExpireMinutes());
 
-        String host = plugin.getHackConfigManager().getWebHost();
-        int    port = plugin.getHackConfigManager().getWebPort();
+        String host = plugin.hacks().config().getWebHost();
+        int    port = plugin.hacks().config().getWebPort();
         String url  = "http://" + host + ":" + port + "/editor?token=" + token;
 
-        player.sendMessage(plugin.getMessageManager().get("editor-url", Map.of("url", url)));
+        player.sendMessage(plugin.messages().get("editor-url", Map.of("url", url)));
         return true;
     }
-}
+}

@@ -1,24 +1,19 @@
 package com.veneer.spoof.utils;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.spoof.data.PlayerData;
+import com.veneer.core.PlayerProfile;
+import com.veneer.core.Webhook;
 import com.veneer.spoof.managers.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.awt.Color;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DiscordWebhookHandler {
@@ -57,7 +52,7 @@ public class DiscordWebhookHandler {
     
     public DiscordWebhookHandler(VeneerPlugin plugin) {
         this.plugin = plugin;
-        this.config = plugin.getConfigManager();
+        this.config = plugin.spoof().config();
     }
     
     /**
@@ -93,7 +88,7 @@ public class DiscordWebhookHandler {
         }
 
         UUID playerUuid = player.getUniqueId();
-        PlayerData data = plugin.getPlayerDataMap().get(playerUuid);
+        PlayerProfile data = plugin.profiles().get(playerUuid);
         
         // No data, no channels to check
         if (data == null) {
@@ -156,9 +151,9 @@ public class DiscordWebhookHandler {
                 }
                 
                 // Schedule the webhook after the configured delay
-                com.veneer.hacks.utils.FoliaScheduler.runAsyncLater(plugin, () -> {
+                com.veneer.core.FoliaScheduler.runAsyncLater(plugin, () -> {
                     // Re-fetch the player data to get the most up-to-date channels
-                    PlayerData updatedData = plugin.getPlayerDataMap().get(playerUuid);
+                    PlayerProfile updatedData = plugin.profiles().get(playerUuid);
                     if (updatedData != null && player.isOnline()) {
                         Set<String> updatedChannels = updatedData.getChannels();
                         lastAlertChannels.put(playerUuid, new HashSet<>(updatedChannels));
@@ -486,80 +481,23 @@ public class DiscordWebhookHandler {
     /**
      * Directly sends a webhook
      */
-    private void sendWebhookDirectly(Player player, String reason, String brand, String channel, 
-                                    List<String> violations, String consoleAlert, 
+    private void sendWebhookDirectly(Player player, String reason, String brand, String channel,
+                                    List<String> violations, String consoleAlert,
                                     boolean isCompactUpdate, Set<String> modifiedChannels) {
         String webhookUrl = config.getDiscordWebhookUrl();
-        
-        // Validate webhook URL format
-        if (!webhookUrl.startsWith("https://discord.com/api/webhooks/") && 
-            !webhookUrl.startsWith("https://discordapp.com/api/webhooks/")) {
-            plugin.getLogger().warning("[Discord] Invalid webhook URL. Must start with https://discord.com/api/webhooks/ or https://discordapp.com/api/webhooks/");
+        if (webhookUrl.isEmpty()) {
+            plugin.getLogger().warning("[Discord] No valid webhook URL (spoof.discord.webhook or general.discord.webhook).");
             return;
         }
-        
-        // Execute webhook request asynchronously
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (config.isDebugMode()) {
-                    plugin.getLogger().info("[Discord] Sending webhook for player: " + player.getName() + 
-                                          (isCompactUpdate ? " (modified channel)" : ""));
-                }
-                
-                URL url = java.net.URI.create(webhookUrl).toURL();
-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("POST");
-                connection.setRequestProperty("Content-Type", "application/json");
-                connection.setRequestProperty("User-Agent", "AntiSpoof-Plugin");
-                connection.setDoOutput(true);
-                
-                // Create JSON payload based on the webhook type
-                String json;
-                if (isCompactUpdate) {
-                    json = createModifiedChannelJson(player, reason, modifiedChannels);
-                } else {
-                    json = createFullWebhookJson(player, reason, brand, channel, violations, consoleAlert);
-                }
-                
-                if (config.isDebugMode()) {
-                    plugin.getLogger().info("[Discord] Webhook payload length: " + json.length());
-                }
-                
-                try (OutputStream os = connection.getOutputStream()) {
-                    byte[] input = json.getBytes(StandardCharsets.UTF_8);
-                    os.write(input, 0, input.length);
-                }
-                
-                int responseCode = connection.getResponseCode();
-                if (responseCode == 204) {
-                    if (config.isDebugMode()) {
-                        plugin.getLogger().info("[Discord] Webhook sent successfully!");
-                    }
-                } else {
-                    plugin.getLogger().warning("[Discord] Failed to send webhook, response code: " + responseCode);
-                    
-                    // Read error response
-                    try (java.io.BufferedReader br = new java.io.BufferedReader(
-                            new java.io.InputStreamReader(connection.getErrorStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder responseBody = new StringBuilder();
-                        String responseLine;
-                        while ((responseLine = br.readLine()) != null) {
-                            responseBody.append(responseLine);
-                        }
-                        plugin.getLogger().warning("[Discord] Error response: " + responseBody);
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("[Discord] Could not read error response: " + e.getMessage());
-                    }
-                }
-                
-                connection.disconnect();
-            } catch (IOException e) {
-                plugin.getLogger().warning("[Discord] Error sending webhook: " + e.getMessage());
-                e.printStackTrace();
-            }
-        });
+
+        plugin.debug("[Discord] Sending webhook for player: " + player.getName()
+                + (isCompactUpdate ? " (modified channel)" : ""));
+        String json = isCompactUpdate
+                ? createModifiedChannelJson(player, reason, modifiedChannels)
+                : createFullWebhookJson(player, reason, brand, channel, violations, consoleAlert);
+        plugin.webhook().post(webhookUrl, json);
     }
-    
+
     /**
      * Creates a compact JSON payload for modified channels
      */
@@ -713,7 +651,7 @@ public class DiscordWebhookHandler {
         
         // Add channels
         sb.append("**Channels**:\\n");
-        PlayerData data = plugin.getPlayerDataMap().get(player.getUniqueId());
+        PlayerProfile data = plugin.profiles().get(player.getUniqueId());
         if (data != null && !data.getChannels().isEmpty()) {
             Set<String> channels = data.getChannels();
             for (String ch : channels) {
@@ -755,17 +693,7 @@ public class DiscordWebhookHandler {
         return version;
     }
     
-    /**
-     * Escapes JSON special characters
-     */
-    private String escapeJson(String text) {
-        if (text == null) return "";
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t")
-                .replace("\b", "\\b")
-                .replace("\f", "\\f");
+    private static String escapeJson(String text) {
+        return Webhook.escape(text);
     }
 }

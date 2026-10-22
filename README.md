@@ -22,45 +22,48 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 | Module | What it does |
 |---|---|
 | **Spoof detection** (from AntiSpoof) | Compares the client brand and registered plugin channels against what the claimed client can actually send. Catches fake `vanilla`, fake Fabric/Forge/Lunar, blocked or required channels, Geyser impersonation. Uses PacketEvents and the `minecraft:brand` channel. |
-| **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite, and there is an embedded web editor. |
+| **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite, and an embedded web panel shows the history. |
 | **Anticheat bridge** | Flags from Grim (event bus), Vulcan, Spartan, Matrix, Intave and AAC can trigger a mod scan. A spoof flag can also queue one. |
 | **RPTrack** | Links accounts and IPs of the same Minecraft installation through its resource-pack download cache, and detects LiquidBounce's local server. **Off by default.** See [RPTrack](#rptrack). |
-| **Integrations** | LuckPerms (live alert-recipient refresh, primary group), PlaceholderAPI (`%veneer_*%`), Floodgate/Geyser, Discord webhooks, Folia-aware scheduling. |
+| **Integrations** | LuckPerms (primary group), PlaceholderAPI (`%veneer_*%`), Floodgate/Geyser, Discord webhooks, Folia-aware scheduling. |
 
 ## Install
 
 1. Drop `veneer-<version>.jar` into `plugins/` and start the server.
-2. Edit `plugins/Veneer/config.yml`, then reload with `/spoof reload` or `/hackreload`.
-3. Optional: install LuckPerms, PlaceholderAPI, Floodgate, ViaVersion or an anticheat. Veneer picks them up automatically.
+2. Edit `plugins/Veneer/config.yml`, then apply it with `/veneer reload`.
+3. Optional: install LuckPerms, PlaceholderAPI, Floodgate/Geyser, ViaVersion or an anticheat. Veneer picks them up automatically.
 
 ## Commands
 
 | Command | Permission | Description |
 |---|---|---|
-| `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, manage spoof detection |
+| `/veneer info <player>` | `veneer.admin` | One report per player: client brand and channels, spoof status, latest mod scan, RPTrack link |
+| `/veneer alerts` | `veneer.alerts` | Toggle your own staff alerts (spoof, mod scan and RPTrack share one switch) |
+| `/veneer reload` | `veneer.admin` | Reload `config.yml` and the language files for every module |
+| `/veneer version` | `veneer.admin` | Running and latest release |
+| `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, re-run spoof checks (`check`, `runcheck`, `channels`, `brand`) |
 | `/hackcheck <player> [hacks]` | `veneer.hacks.check` | Scan a player for mods |
-| `/hackalerts` | `veneer.hacks.alerts` | Toggle your detection alerts |
 | `/hacklang <player>` | `veneer.hacks.lang` | Check a player's client language |
-| `/hackeditor` | `veneer.hacks.editor` | Open the web editor for hack definitions |
-| `/hackreload` | `veneer.hacks.reload` | Reload hack detection config |
-| `/rptrack <player>` | `veneer.hacks.rptrack` | Show a player's cache fingerprint and linked accounts |
+| `/hackeditor` | `veneer.hacks.editor` | Link to the web panel: scan history and manual scans |
+| `/rptrack <player>` | `veneer.rptrack` | Show a player's cache fingerprint and linked accounts |
 
-Other permissions: `veneer.spoof.alerts`, `veneer.spoof.admin`, `veneer.spoof.bypass`. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
+Other permissions: `veneer.spoof.admin`, `veneer.spoof.bypass`. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
 
 ## Configuration
 
-One file, `plugins/Veneer/config.yml`:
+One file, `plugins/Veneer/config.yml`, one section per part:
 
 ```
-antispoof:            # spoof detection (brand, channels, punishments, Discord)
-checkhacks:
-  settings:           # prefix, language, web editor, Discord, Bedrock handling
-  detection:          # hack definitions, auto-checks, anticheat hooks, commands
-  language-check:     # /hacklang
-  rptrack:            # resource-pack cache tracking (disabled by default)
+general:    # language, prefix, debug, alerts, Bedrock detection, shared Discord webhook, update checker
+spoof:      # brand/channel rules, punishments, Discord alerts            (enabled: true)
+hacks:      # hack definitions, auto-checks, anticheat hooks, web panel   (enabled: true)
+rptrack:    # resource-pack cache tracking                                (enabled: false)
 ```
 
-Chat messages live in `plugins/Veneer/messages/<lang>.yml` (en, ru, de, es, fr, it, br, lolcat, uwu).
+- Settings that more than one module needs live in `general` once: the Bedrock rules, the staff alert switch, the debug flag and a default Discord webhook (a module's own URL wins when set).
+- Settings missing from your file are added from the defaults on start and on reload, comments included. Unknown settings are reported in the console.
+- Turning a module on or off needs a restart; everything else applies with `/veneer reload`.
+- The mod scan messages live in `plugins/Veneer/messages/<lang>.yml` (en, ru, de, es, fr, it, br, lolcat, uwu).
 
 ## PlaceholderAPI
 
@@ -78,7 +81,7 @@ Chat messages live in `plugins/Veneer/messages/<lang>.yml` (en, ru, de, es, fr, 
 
 The Minecraft client caches downloaded resource packs by SHA-1 in `.minecraft/downloads`, shared across accounts. On join, Veneer offers 28 probe packs with a known hash and an unreachable URL; a pack answers *loaded* only if it is already cached. A fresh client is assigned a random subset of 6 packs that it really downloads, and later logins on any account or IP reproduce that subset. The technique is described in [this write-up](https://alaggydev.github.io/posts/cytooxien/).
 
-Probe packs and a small pack that hides the "failed to download" toast must be downloadable by clients. Point `public-url` at `localhost` (e.g. `http://localhost:8123`) and Veneer serves them itself on that port, sending clients to the host they joined with. With any other URL no server is started: host `plugins/Veneer/rptrack/fp/` (exported on start) at `<public-url>/fp/`. Set it up in `checkhacks.rptrack`:
+Probe packs and a small pack that hides the "failed to download" toast must be downloadable by clients. Point `public-url` at `localhost` (e.g. `http://localhost:8123`) and Veneer serves them itself on that port, sending clients to the host they joined with. With any other URL no server is started: host `plugins/Veneer/rptrack/fp/` (exported on start) at `<public-url>/fp/`. Set it up in `rptrack`:
 
 ```yaml
 enabled: true
@@ -101,6 +104,7 @@ Produces `target/veneer-<version>.jar` (about 19 MB, PacketEvents and bStats sha
 
 ## Notes
 
+- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command.
 - Version `1.0.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
 - **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. This is **experimental**: it compiles but has not been tested on a real Folia server.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.

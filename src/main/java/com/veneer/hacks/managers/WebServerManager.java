@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
-import com.veneer.hacks.utils.FoliaScheduler;
+import com.veneer.core.FoliaScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -30,15 +30,16 @@ public class WebServerManager {
     }
 
     private void start() {
-        int port = plugin.getHackConfigManager().getWebPort();
+        int port = plugin.hacks().config().getWebPort();
         try {
-            server = HttpServer.create(new InetSocketAddress(port), 0);
+            String bind = plugin.hacks().config().getWebBind();
+            server = HttpServer.create(new InetSocketAddress(java.net.InetAddress.getByName(bind), port), 0);
             server.createContext("/", this::handle);
             server.setExecutor(Executors.newFixedThreadPool(4));
             server.start();
-            plugin.getLogger().info("Web editor running on port " + port);
+            plugin.getLogger().info("Web panel listening on " + bind + ":" + port);
         } catch (Exception e) {
-            plugin.getLogger().severe("Failed to start web editor: " + e.getMessage());
+            plugin.getLogger().severe("Failed to start the web panel: " + e.getMessage());
         }
     }
 
@@ -84,8 +85,8 @@ public class WebServerManager {
 
     private void serveEditor(HttpExchange ex, Map<String, String> params) throws IOException {
         String token = params.get("token");
-        if (token == null || plugin.getDatabaseManager().validateToken(token) == null) {
-            sendHtml(ex, 403, "<html><body style='font-family:monospace;background:#0d1117;color:#e6edf3;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'><div>Invalid or expired token.<br>Run <b>/cheditor</b> in Minecraft.</div></body></html>");
+        if (token == null || plugin.database().validateToken(token) == null) {
+            sendHtml(ex, 403, "<html><body style='font-family:monospace;background:#0d1117;color:#e6edf3;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'><div>Invalid or expired token.<br>Run <b>/hackeditor</b> in Minecraft.</div></body></html>");
             return;
         }
         try (InputStream is = plugin.getResource("web/editor.html")) {
@@ -96,7 +97,7 @@ public class WebServerManager {
 
     private void handleApi(HttpExchange ex, String path, Map<String, String> params) throws IOException {
         String token = params.get("token");
-        Map<String, String> playerInfo = token != null ? plugin.getDatabaseManager().validateToken(token) : null;
+        Map<String, String> playerInfo = token != null ? plugin.database().validateToken(token) : null;
 
         if (playerInfo == null) {
             sendJson(ex, 401, Map.of("error", "unauthorized"));
@@ -119,7 +120,7 @@ public class WebServerManager {
             String type  = params.get("type");
             int    limit = parseInt(params.get("limit"), 50);
             String validType = ("hack".equals(type) || "lang".equals(type)) ? type : null;
-            sendJson(ex, 200, plugin.getDatabaseManager().getRecentScans(validType, limit));
+            sendJson(ex, 200, plugin.database().getRecentScans(validType, limit));
             return;
         }
 
@@ -143,13 +144,13 @@ public class WebServerManager {
                 if (target == null) return;
                 FoliaScheduler.runAtEntity(plugin, target, () -> {
                     if ("lang".equals(finalType)) {
-                        Map<String, String> langs = plugin.getHackConfigManager().getLanguages();
+                        Map<String, String> langs = plugin.hacks().config().getLanguages();
                         if (!langs.isEmpty())
-                            plugin.getLangCheckManager().startCheck(target, null, langs);
+                            plugin.hacks().langChecks().startCheck(target, null, langs);
                     } else {
-                        List<HackDefinition> hacks = plugin.getHackConfigManager().getDefaultCheckHacks();
+                        List<HackDefinition> hacks = plugin.hacks().config().getDefaultCheckHacks();
                         if (!hacks.isEmpty())
-                            plugin.getCheckManager().startCheck(target, null, hacks, false,
+                            plugin.hacks().checks().startCheck(target, null, hacks, false,
                                     "Web editor check by " + checkerName);
                     }
                 });
@@ -164,10 +165,10 @@ public class WebServerManager {
             try {
                 long id = Long.parseLong(idStr);
                 if ("DELETE".equals(method)) {
-                    boolean ok = plugin.getDatabaseManager().deleteScan(id);
+                    boolean ok = plugin.database().deleteScan(id);
                     sendJson(ex, 200, Map.of("success", ok));
                 } else {
-                    Map<String, Object> scan = plugin.getDatabaseManager().getScan(id);
+                    Map<String, Object> scan = plugin.database().getScan(id);
                     if (scan == null) sendJson(ex, 404, Map.of("error", "scan not found"));
                     else              sendJson(ex, 200, scan);
                 }
@@ -188,7 +189,7 @@ public class WebServerManager {
             result.put("name",   name);
             result.put("uuid",   uuid);
             result.put("online", online);
-            result.put("scans",  plugin.getDatabaseManager().getPlayerScans(name));
+            result.put("scans",  plugin.database().getPlayerScans(name));
             sendJson(ex, 200, result);
             return;
         }
@@ -234,4 +235,4 @@ public class WebServerManager {
     public void stop() {
         if (server != null) server.stop(0);
     }
-}
+}

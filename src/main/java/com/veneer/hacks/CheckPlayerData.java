@@ -1,6 +1,6 @@
 package com.veneer.hacks;
 
-import com.veneer.hacks.utils.WrappedTask;
+import com.veneer.core.WrappedTask;
 import org.bukkit.Location;
 import org.bukkit.block.BlockState;
 
@@ -70,4 +70,4 @@ public class CheckPlayerData {
     public void setBarrierLocation(Location l)   { this.barrierLocation = l; }
     public WrappedTask getSignTimeoutTask()       { return signTimeoutTask; }
     public void setSignTimeoutTask(WrappedTask t) { this.signTimeoutTask = t; }
-}
+}

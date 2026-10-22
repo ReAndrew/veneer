@@ -6,7 +6,6 @@ import com.veneer.hacks.DetectionMode;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.hacks.HackResult;
 import org.bukkit.configuration.ConfigurationSection;
-import com.veneer.VeneerConfig;
 
 import java.util.*;
 
@@ -20,7 +19,6 @@ public class ConfigManager {
     private final Map<String, CommandRule> commandRules = new LinkedHashMap<>();
     private final Map<String, List<CommandRule>> rulesByHack = new HashMap<>();
 
-    private String prefix;
     private long timeoutTicks;
     private long betweenSignTicks;
     private boolean doubleCheck;
@@ -37,10 +35,9 @@ public class ConfigManager {
     }
 
     public void reload() {
-        masterConfig = VeneerConfig.section(plugin, "checkhacks.settings");
-
-        hacksConfig = VeneerConfig.section(plugin, "checkhacks.detection");
-        langConfig  = VeneerConfig.section(plugin, "checkhacks.language-check");
+        masterConfig = plugin.config().section("hacks");
+        hacksConfig  = plugin.config().section("hacks.detection");
+        langConfig   = plugin.config().section("hacks.language-check");
 
         loadHacks();
         loadCommandRules();
@@ -104,7 +101,6 @@ public class ConfigManager {
     }
 
     private void cacheSettings() {
-        prefix                 = masterConfig.getString("prefix", "<yellow>[CheckHacks] <gray>");
         timeoutTicks           = hacksConfig.getLong("timeout-ticks", 200);
         betweenSignTicks       = hacksConfig.getLong("between-sign-ticks", 5);
         doubleCheck            = hacksConfig.getBoolean("doublecheck", true);
@@ -132,14 +128,8 @@ public class ConfigManager {
         return result;
     }
 
-    public String getPrefix()    { return prefix; }
-    public String getLanguage()  { return masterConfig.getString("language", "en"); }
-
-    public boolean isBedrockEnabled()        { return masterConfig.getBoolean("bedrock.enabled", true); }
-    public List<String> getBedrockPrefixes() { return masterConfig.getStringList("bedrock.prefixes"); }
-
     public boolean isDiscordEnabled()   { return masterConfig.getBoolean("discord.enabled", false); }
-    public String  getWebhookUrl()      { return masterConfig.getString("discord.webhook-url", ""); }
+    public String  getWebhookUrl()      { return plugin.config().webhook(masterConfig.getString("discord.webhook-url", "")); }
     public int     getEmbedColor()      { return masterConfig.getInt("discord.embed-color", 16776960); }
     public String  getDiscordMessage()  { return masterConfig.getString("discord.message", ""); }
     public boolean isDiscordUseComponentsV2() { return masterConfig.getBoolean("discord.use-components-v2", true); }
@@ -147,6 +137,7 @@ public class ConfigManager {
     public boolean isWebEditorEnabled() { return masterConfig.getBoolean("web-editor.enabled", true); }
     public int     getWebPort()         { return masterConfig.getInt("web-editor.port", 8080); }
     public String  getWebHost()         { return masterConfig.getString("web-editor.host", "localhost"); }
+    public String  getWebBind()         { return masterConfig.getString("web-editor.bind", "127.0.0.1"); }
     public int     getTokenExpireMinutes() { return masterConfig.getInt("web-editor.token-expire-minutes", 10); }
 
     public boolean isCommandIfPositiveEnabled() { return commandIfPositiveEnabled; }
@@ -160,18 +151,15 @@ public class ConfigManager {
 
     public boolean isDoubleCheckEnabled() { return doubleCheck; }
 
-    public boolean isAlertsDefaultEnabled() { return masterConfig.getBoolean("alerts.default-enabled", true); }
-
     public List<CommandRule> getRulesForHack(String hackId) {
         return rulesByHack.getOrDefault(hackId, List.of());
     }
 
+    /** Whether a spoof-detection flag queues a mod scan on the flagged player. */
+    public boolean isSpoofFlagScanEnabled() { return hacksConfig.getBoolean("detect-spoof-flag.enabled", true); }
+
     public boolean isDetectFlagEnabled() { return hacksConfig.getBoolean("detect-flag.enabled", false); }
-    public boolean isGrimEnabled()       { return hacksConfig.getBoolean("detect-flag.anticheats.grim", true); }
-    public boolean isVulcanEnabled()     { return hacksConfig.getBoolean("detect-flag.anticheats.vulcan", true); }
-    public boolean isSpartanEnabled()    { return hacksConfig.getBoolean("detect-flag.anticheats.spartan", true); }
     public boolean isAnticheatEnabled(String id) { return hacksConfig.getBoolean("detect-flag.anticheats." + id, true); }
-    public boolean isMatrixEnabled()     { return hacksConfig.getBoolean("detect-flag.anticheats.matrix", true); }
     public long    getFlagCooldownHours(){ return hacksConfig.getLong("detect-flag.cooldown-hours", 24); }
 
     public boolean isJoinCheckEnabled()  { return hacksConfig.getBoolean("auto-check-on-join.enabled", false); }
@@ -192,7 +180,7 @@ public class ConfigManager {
     public boolean isLangJoinCheckEnabled() { return langConfig.getBoolean("auto-check-on-join.enabled", false); }
     public boolean isLangOnlyFirstJoin()    { return langConfig.getBoolean("auto-check-on-join.only-first-join", false); }
     public boolean isLangDiscordEnabled()   { return langConfig.getBoolean("discord.enabled", false); }
-    public String  getLangWebhookUrl()      { return langConfig.getString("discord.webhook-url", ""); }
+    public String  getLangWebhookUrl()      { return plugin.config().webhook(langConfig.getString("discord.webhook-url", "")); }
     public int     getLangEmbedColor()      { return langConfig.getInt("discord.embed-color", 5763719); }
     public String  getLangDiscordMessage()  { return langConfig.getString("discord.message", ""); }
     public boolean isLangDiscordUseComponentsV2() { return langConfig.getBoolean("discord.use-components-v2", true); }

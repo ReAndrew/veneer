@@ -1,6 +1,6 @@
 package com.veneer.hacks;
 
-import com.veneer.hacks.utils.WrappedTask;
+import com.veneer.core.WrappedTask;
 import org.bukkit.Location;
 import org.bukkit.block.BlockState;
 
@@ -38,4 +38,4 @@ public class LangCheckData {
     public void setBarrierLocation(Location l) { this.barrierLocation = l; }
     public WrappedTask getTimeoutTask()         { return timeoutTask; }
     public void setTimeoutTask(WrappedTask t)   { this.timeoutTask = t; }
-}
+}

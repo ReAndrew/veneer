@@ -1,14 +1,12 @@
 package com.veneer.spoof.listeners;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.spoof.data.PlayerData;
 import com.veneer.spoof.managers.ConfigManager;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.configuration.client.WrapperConfigClientPluginMessage;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPluginMessage;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -29,15 +27,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
 
     public PlayerEventListener(VeneerPlugin plugin) {
         this.plugin = plugin;
-        this.config = plugin.getConfigManager();
-    }
-
-    public void register() {
-        // Register Bukkit event listener
-        Bukkit.getPluginManager().registerEvents(this, plugin);
-        
-        // Register packet event listener
-        com.github.retrooper.packetevents.PacketEvents.getAPI().getEventManager().registerListener(this);
+        this.config = plugin.spoof().config();
     }
 
     @Override
@@ -67,7 +57,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
             channelRegistered = handleChannelRegistration(player, channel, data);
         } else {
             // Direct channel usage - check if this is a new channel
-            channelRegistered = plugin.getDetectionManager().addPlayerChannel(player, channel, true);
+            channelRegistered = plugin.spoof().detection().addPlayerChannel(player, channel, true);
         }
         
         return channelRegistered;
@@ -81,12 +71,12 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
         for (String registeredChannel : channels) {
             if (channel.equals("minecraft:register")) {
                 // Register the channel and trigger checks if needed
-                if (plugin.getDetectionManager().addPlayerChannel(player, registeredChannel, true)) {
+                if (plugin.spoof().detection().addPlayerChannel(player, registeredChannel, true)) {
                     didRegister = true;
                 }
             } else {
                 // Unregister the channel
-                plugin.getDetectionManager().removePlayerChannel(player, registeredChannel);
+                plugin.spoof().detection().removePlayerChannel(player, registeredChannel);
             }
         }
         
@@ -98,13 +88,13 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
      * This doesn't check for required channels
      */
     private void scheduleInitialBrandCheck(Player player, long delayTicks) {
-        com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
+        com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 if (config.isDebugMode()) {
                     plugin.getLogger().info("[Debug] Running initial brand check for " + player.getName() + 
                                          " (without required channels check)");
                 }
-                plugin.getDetectionManager().checkPlayerAsync(player, true, false);
+                plugin.spoof().detection().checkPlayerAsync(player, true, false);
             }
         }, delayTicks);
     }
@@ -114,12 +104,12 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
      * This is run after a longer delay to ensure all channels are registered
      */
     private void scheduleRequiredChannelsCheck(Player player, long delayTicks) {
-        com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
+        com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 if (config.isDebugMode()) {
                     plugin.getLogger().info("[Debug] Running complete check with required channels for " + player.getName());
                 }
-                plugin.getDetectionManager().checkPlayerAsync(player, false, true);
+                plugin.spoof().detection().checkPlayerAsync(player, false, true);
             }
         }, delayTicks);
     }
@@ -128,22 +118,17 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         
-        // Register player for alerts if they have permission
-        plugin.getAlertManager().registerPlayer(player);
-        
         // Skip if player has bypass permission
         if (player.hasPermission("veneer.spoof.bypass")) return;
         
-        // Create initial player data
-        UUID uuid = player.getUniqueId();
-        PlayerData data = new PlayerData();
-        plugin.getPlayerDataMap().put(uuid, data);
+        // Make sure the profile exists (channels may have registered during the configuration phase)
+        plugin.profile(player);
         
         // Special handling for no-brand detection
         if (config.isNoBrandCheckEnabled()) {
-            com.veneer.hacks.utils.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
+            com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                 // Only process if still null after 1 second (allows time for brand packet)
-                if (player.isOnline() && plugin.getClientBrand(player) == null) {
+                if (player.isOnline() && plugin.spoof().getClientBrand(player) == null) {
                     if (config.isDebugMode()) {
                         plugin.getLogger().info("[Debug] Processing no-brand alert for " + player.getName());
                     }
@@ -153,8 +138,8 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
                     noBrandViolation.put("NO_BRAND", "No client brand detected");
                     
                     // Process on main thread
-                    com.veneer.hacks.utils.FoliaScheduler.runAtEntity(plugin, player, () -> {
-                        plugin.getDetectionManager().processViolation(player, "NO_BRAND", "No client brand detected");
+                    com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
+                        plugin.spoof().detection().processViolation(player, "NO_BRAND", "No client brand detected");
                     });
                 }
             }, 20L); // 1 second delay to allow brand packet to arrive
@@ -179,6 +164,6 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
         UUID uuid = event.getPlayer().getUniqueId();
         
         // Use the centralized quit handler in plugin to clean up everything
-        plugin.handlePlayerQuit(uuid);
+        plugin.spoof().handlePlayerQuit(uuid);
     }
 }

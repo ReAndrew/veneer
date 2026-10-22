@@ -2,10 +2,9 @@ package com.veneer.hacks.managers;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.LangCheckData;
-import com.veneer.hacks.utils.FoliaScheduler;
+import com.veneer.core.FoliaScheduler;
 import com.veneer.hacks.utils.SignUtil;
-import com.veneer.hacks.utils.WebhookUtil;
-import com.veneer.hacks.utils.WrappedTask;
+import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -40,7 +39,7 @@ public class LangCheckManager {
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
-                initiator.sendMessage(plugin.getMessageManager().get("already-checking",
+                initiator.sendMessage(plugin.messages().get("already-checking",
                         Map.of("player", target.getName())));
             return;
         }
@@ -50,7 +49,7 @@ public class LangCheckManager {
         activeChecks.put(uuid, data);
 
         if (initiator != null)
-            initiator.sendMessage(plugin.getMessageManager().get("lang-check-started",
+            initiator.sendMessage(plugin.messages().get("lang-check-started",
                     Map.of("player", target.getName())));
 
         FoliaScheduler.runAtEntity(plugin, target, () -> setupLangSign(target, data));
@@ -103,11 +102,11 @@ public class LangCheckManager {
             if (!activeChecks.containsKey(uuid)) return;
             restoreSign(data);
             activeChecks.remove(uuid);
-            Component msg = plugin.getMessageManager().get("lang-check-timeout",
+            Component msg = plugin.messages().get("lang-check-timeout",
                     Map.of("player", target.getName()));
-            plugin.getMessageManager().broadcastAlerts(msg);
-            notifyInitiator(data, msg);
-        }, plugin.getHackConfigManager().getLangTimeoutTicks());
+            plugin.alerts().send(msg);
+            plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
+        }, plugin.hacks().config().getLangTimeoutTicks());
 
         data.setTimeoutTask(timeout);
     }
@@ -121,14 +120,14 @@ public class LangCheckManager {
         restoreSign(data);
 
         String response = lines.length > 0 ? lines[0].strip() : "";
-        plugin.getLogger().info("[CheckHacks] LangCheck response from " + target.getName() + ": '" + response + "'");
+        plugin.getLogger().info("[Hacks] LangCheck response from " + target.getName() + ": '" + response + "'");
 
         if (response.isEmpty() || response.equals(LANG_FALLBACK)) {
-            Component msg = plugin.getMessageManager().get("lang-check-protected",
+            Component msg = plugin.messages().get("lang-check-protected",
                     Map.of("player", target.getName()));
-            plugin.getMessageManager().broadcastAlerts(msg);
-            notifyInitiator(data, msg);
-            plugin.getDatabaseManager().saveScan("lang", target.getName(),
+            plugin.alerts().send(msg);
+            plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
+            plugin.database().saveScan("lang", target.getName(),
                     target.getUniqueId().toString(),
                     data.getInitiatorUUID() != null
                             ? Optional.ofNullable(Bukkit.getPlayer(data.getInitiatorUUID()))
@@ -145,47 +144,41 @@ public class LangCheckManager {
 
         String display = detected != null ? detected : "Unknown";
         String msgKey  = detected != null ? "lang-check-complete" : "lang-check-unknown";
-        Component msg  = plugin.getMessageManager().get(msgKey,
+        Component msg  = plugin.messages().get(msgKey,
                 Map.of("player", target.getName(), "lang", display, "response", response));
-        plugin.getMessageManager().broadcastAlerts(msg);
-        notifyInitiator(data, msg);
+        plugin.alerts().send(msg);
+        plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
 
         String checkerName = data.getInitiatorUUID() != null
                 ? Optional.ofNullable(Bukkit.getPlayer(data.getInitiatorUUID()))
                 .map(Player::getName).orElse("Console")
                 : "AutoCheck";
 
-        long scanId = plugin.getDatabaseManager().saveScan("lang", target.getName(),
+        long scanId = plugin.database().saveScan("lang", target.getName(),
                 target.getUniqueId().toString(), checkerName, "Lang check", false);
-        plugin.getDatabaseManager().saveLangResult(scanId, display, response);
+        plugin.database().saveLangResult(scanId, display, response);
 
-        ConfigManager cfg = plugin.getHackConfigManager();
+        ConfigManager cfg = plugin.hacks().config();
         if (cfg.isLangDiscordEnabled()) {
             String description = cfg.getLangDiscordMessage()
                     .replace("&name&",    target.getName())
                     .replace("&checker&", checkerName)
                     .replace("&lang&",    detected != null ? detected : "Unknown (" + response + ")");
-            WebhookUtil.sendRaw(cfg.getLangWebhookUrl(), cfg.getLangEmbedColor(), description, cfg.isLangDiscordUseComponentsV2());
+            plugin.webhook().report(cfg.getLangWebhookUrl(), cfg.getLangEmbedColor(), "Veneer language check",
+                    description, cfg.isLangDiscordUseComponentsV2());
         }
     }
 
-    private void notifyInitiator(LangCheckData data, Component msg) {
-        if (data.getInitiatorUUID() == null) return;
-        Player ini = Bukkit.getPlayer(data.getInitiatorUUID());
-        if (ini == null || !ini.isOnline()) return;
-        boolean gets = ini.hasPermission("veneer.hacks.alerts") && plugin.hasAlertsEnabled(ini.getUniqueId());
-        if (!gets) ini.sendMessage(msg);
-    }
 
     private void restoreSign(LangCheckData data) {
         Location loc = data.getSignLocation();
         if (loc == null) return;
         FoliaScheduler.runAtLocation(plugin, loc, () -> {
             try { if (data.getOriginalState() != null) data.getOriginalState().update(true, false); }
-            catch (Exception e) { plugin.getLogger().warning("[CheckHacks] LangRestore: " + e.getMessage()); }
+            catch (Exception e) { plugin.getLogger().warning("[Hacks] LangRestore: " + e.getMessage()); }
             if (data.isBarrierPlaced() && data.getBarrierLocation() != null) {
                 try { data.getBarrierLocation().getBlock().setType(Material.AIR, false); }
-                catch (Exception e) { plugin.getLogger().warning("[CheckHacks] LangBarrier: " + e.getMessage()); }
+                catch (Exception e) { plugin.getLogger().warning("[Hacks] LangBarrier: " + e.getMessage()); }
             }
         });
     }
@@ -197,4 +190,4 @@ public class LangCheckManager {
         }
         activeChecks.clear();
     }
-}
+}

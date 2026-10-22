@@ -1,4 +1,4 @@
-package com.veneer.hacks.managers;
+package com.veneer.core;
 
 import com.veneer.VeneerPlugin;
 

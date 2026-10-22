@@ -1,10 +1,8 @@
 package com.veneer.spoof.managers;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.spoof.data.PlayerData;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import com.veneer.spoof.utils.MessageUtil;
+import com.veneer.core.Text;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,50 +14,12 @@ public class AlertManager {
     // Track alert cooldowns by player UUID and alert type
     private final Map<UUID, Map<String, Long>> lastAlerts = new ConcurrentHashMap<>();
     
-    // Track players with alert permission
-    private final Set<UUID> playersWithAlertPermission = ConcurrentHashMap.newKeySet();
-    
     // Alert cooldown in milliseconds (3 seconds by default)
     private static final long ALERT_COOLDOWN = 3000;
     
     public AlertManager(VeneerPlugin plugin) {
         this.plugin = plugin;
-        this.config = plugin.getConfigManager();
-    }
-    
-    /**
-     * Adds a player to the alert recipients list if they have permission
-     * @param player The player to check and possibly add
-     */
-    public void registerPlayer(Player player) {
-        if (player.hasPermission("veneer.spoof.alerts")) {
-            playersWithAlertPermission.add(player.getUniqueId());
-            
-            if (config.isDebugMode()) {
-                plugin.getLogger().info("[Debug] Added player " + player.getName() + " to alert recipients");
-            }
-        }
-    }
-    
-    /**
-     * Removes a player from the alert recipients list
-     * @param uuid The UUID of the player to remove
-     */
-    public void unregisterPlayer(UUID uuid) {
-        playersWithAlertPermission.remove(uuid);
-    }
-    
-    /**
-     * Updates a player's alert status based on current permissions
-     * @param player The player to update
-     */
-    public void updatePlayerAlertStatus(Player player) {
-        UUID uuid = player.getUniqueId();
-        if (player.hasPermission("veneer.spoof.alerts")) {
-            playersWithAlertPermission.add(uuid);
-        } else {
-            playersWithAlertPermission.remove(uuid);
-        }
+        this.config = plugin.spoof().config();
     }
     
     /**
@@ -67,14 +27,7 @@ public class AlertManager {
      * @param message The message to send
      */
     public void sendAlertToRecipients(String message) {
-        String formatted = MessageUtil.miniMessage(message);
-
-        for (UUID uuid : playersWithAlertPermission) {
-            Player player = plugin.getServer().getPlayer(uuid);
-            if (player != null && player.isOnline()) {
-                player.sendMessage(formatted);
-            }
-        }
+        plugin.alerts().sendToPlayers(Text.legacy(message));
     }
     
     /**
@@ -143,7 +96,7 @@ public class AlertManager {
         if (config.isDiscordWebhookEnabled() && 
             config.isBlockedBrandsDiscordAlertEnabled()) {
             
-            plugin.getDiscordWebhookHandler().sendAlert(
+            plugin.spoof().discord().sendAlert(
                 player, 
                 "Joined with client brand: " + brand,
                 brand,
@@ -164,7 +117,7 @@ public class AlertManager {
         }
         
         // Use the centralized method to ensure no duplicates
-        plugin.sendBrandAlert(player, brand, null);
+        plugin.spoof().sendBrandAlert(player, brand, null);
     }
     
     /**
@@ -195,10 +148,10 @@ public class AlertManager {
         
         // Send to Discord webhook if enabled
         if (config.isModifiedChannelsDiscordEnabled()) {
-            plugin.getDiscordWebhookHandler().sendAlert(
+            plugin.spoof().discord().sendAlert(
                 player, 
                 "Modified channel: " + channel,
-                plugin.getClientBrand(player), 
+                plugin.spoof().getClientBrand(player), 
                 channel, 
                 null
             );
@@ -238,7 +191,7 @@ public class AlertManager {
         sendAlertToRecipients(playerAlert);
         
         // Send to Discord if enabled
-        plugin.getDiscordWebhookHandler().sendAlert(player, "Multiple Violations", brand, null, violations);
+        plugin.spoof().discord().sendAlert(player, "Multiple Violations", brand, null, violations);
     }
     
     /**
@@ -284,7 +237,7 @@ public class AlertManager {
         if (config.isDiscordWebhookEnabled() && brandConfig.shouldDiscordAlert()) {
             List<String> singleViolation = new ArrayList<>();
             singleViolation.add(reason);
-            plugin.getDiscordWebhookHandler().sendAlert(player, reason, brand, violatedChannel, singleViolation);
+            plugin.spoof().discord().sendAlert(player, reason, brand, violatedChannel, singleViolation);
         }
     }
     
@@ -391,7 +344,7 @@ public class AlertManager {
         if (config.isDiscordWebhookEnabled() && sendDiscordAlert) {
             List<String> singleViolation = new ArrayList<>();
             singleViolation.add(reason);
-            plugin.getDiscordWebhookHandler().sendAlert(player, reason, brand, violatedChannel, singleViolation);
+            plugin.spoof().discord().sendAlert(player, reason, brand, violatedChannel, singleViolation);
         }
     }
     
@@ -427,7 +380,7 @@ public class AlertManager {
             
             // Execute command on the main thread
             final String finalCommand = formatted;
-            com.veneer.hacks.utils.FoliaScheduler.runGlobal(plugin, () -> {
+            com.veneer.core.FoliaScheduler.runGlobal(plugin, () -> {
                 plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), finalCommand);
             });
         }
@@ -531,7 +484,7 @@ public class AlertManager {
             
             // Execute command on the main thread
             final String finalCommand = formatted;
-            com.veneer.hacks.utils.FoliaScheduler.runGlobal(plugin, () -> {
+            com.veneer.core.FoliaScheduler.runGlobal(plugin, () -> {
                 plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), finalCommand);
             });
         }
@@ -543,6 +496,5 @@ public class AlertManager {
      */
     public void handlePlayerQuit(UUID playerUUID) {
         lastAlerts.remove(playerUUID);
-        playersWithAlertPermission.remove(playerUUID);
     }
 }

@@ -1,4 +1,4 @@
-package com.veneer.spoof.utils;
+package com.veneer.core;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -9,10 +9,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Utility class for parsing color codes and MiniMessage strings.
+ * Text helpers shared by all modules. Config messages may mix legacy {@code &} codes, {@code &#RRGGBB}
+ * and MiniMessage tags; {@link #legacy} turns them into one plain string, {@link #mini} into a component.
  */
-public final class MessageUtil {
-    private MessageUtil() {}
+public final class Text {
+    private Text() {}
+
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+
+    public static Component mini(String input) {
+        return MM.deserialize(input);
+    }
 
     // Matches hex colors in both '&#RRGGBB' and '&x&F&F&F&F&F&F' formats
     private static final Pattern HEX_PATTERN =
@@ -27,7 +34,7 @@ public final class MessageUtil {
      * @param input the input string
      * @return the parsed string with legacy colour codes
      */
-    public static String miniMessage(String input) {
+    public static String legacy(String input) {
         if (input == null || input.isEmpty()) {
             return "";
         }
@@ -72,7 +79,7 @@ public final class MessageUtil {
                 .replace("§n", "<underlined>")
                 .replace("§o", "<italic>");
 
-        Component component = MiniMessage.miniMessage().deserialize(input).compact();
+        Component component = MM.deserialize(input).compact();
         return LegacyComponentSerializer.legacySection().serialize(component);
     }
 }

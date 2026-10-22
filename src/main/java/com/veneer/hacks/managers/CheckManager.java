@@ -2,10 +2,9 @@ package com.veneer.hacks.managers;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.*;
-import com.veneer.hacks.utils.FoliaScheduler;
+import com.veneer.core.FoliaScheduler;
 import com.veneer.hacks.utils.SignUtil;
-import com.veneer.hacks.utils.WebhookUtil;
-import com.veneer.hacks.utils.WrappedTask;
+import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -25,12 +24,6 @@ public class CheckManager {
     private static final String CTRL_KEYBIND  = "key.forward";
     private static final int    LINES_PER_SIGN = 3;
     private static final MiniMessage MM = MiniMessage.miniMessage();
-    private static final List<String> DEFAULT_BEDROCK_PREFIXES = List.of(".", "*");
-
-    private static volatile boolean geyserResolved;
-    private static volatile boolean geyserAvailable;
-    private static volatile boolean floodgateResolved;
-    private static volatile boolean floodgateAvailable;
 
     private final VeneerPlugin plugin;
     private final Map<UUID, CheckPlayerData> activeChecks  = new ConcurrentHashMap<>();
@@ -43,7 +36,7 @@ public class CheckManager {
     public boolean isChecking(UUID uuid) { return activeChecks.containsKey(uuid); }
 
     public boolean canAutoCheck(UUID uuid) {
-        long cooldownMs = plugin.getHackConfigManager().getFlagCooldownHours() * 3_600_000L;
+        long cooldownMs = plugin.hacks().config().getFlagCooldownHours() * 3_600_000L;
         return System.currentTimeMillis() - lastAutoCheck.getOrDefault(uuid, 0L) >= cooldownMs;
     }
 
@@ -53,16 +46,16 @@ public class CheckManager {
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
-                initiator.sendMessage(plugin.getMessageManager().get("already-checking",
+                initiator.sendMessage(plugin.messages().get("already-checking",
                         Map.of("player", target.getName())));
             return;
         }
 
-        if (isBedrockPlayer(target)) {
-            Component msg = plugin.getMessageManager().get("bedrock-skip",
+        if (plugin.bedrock().isBedrock(target)) {
+            Component msg = plugin.messages().get("bedrock-skip",
                     Map.of("player", target.getName()));
             if (initiator != null) initiator.sendMessage(msg);
-            else plugin.getMessageManager().broadcastAlerts(msg);
+            else plugin.alerts().send(msg);
             return;
         }
 
@@ -77,7 +70,7 @@ public class CheckManager {
         activeChecks.put(uuid, data);
 
         if (initiator != null)
-            initiator.sendMessage(plugin.getMessageManager().get("check-started",
+            initiator.sendMessage(plugin.messages().get("check-started",
                     Map.of("player", target.getName())));
 
         FoliaScheduler.runAtEntity(plugin, target, () -> processBatch(target, data));
@@ -148,7 +141,7 @@ public class CheckManager {
                 d.getResults().put(h.getId(), HackResult.PROTECTED);
             d.incrementBatch();
             scheduleNextOrFinish(uuid);
-        }, plugin.getHackConfigManager().getTimeoutTicks());
+        }, plugin.hacks().config().getTimeoutTicks());
 
         data.setSignTimeoutTask(timeout);
     }
@@ -173,7 +166,7 @@ public class CheckManager {
 
         boolean exploitPreventer = ctrlResp.equalsIgnoreCase(CTRL_KEYBIND);
 
-        StringBuilder log = new StringBuilder("[CheckHacks] Batch ").append(data.getCurrentBatch())
+        StringBuilder log = new StringBuilder("[Hacks] Batch ").append(data.getCurrentBatch())
                 .append(" from ").append(target.getName());
         if (exploitPreventer) log.append(" [ExploitPreventer DETECTED]");
         for (int i = 0; i < batch.size(); i++) {
@@ -194,7 +187,7 @@ public class CheckManager {
         if (data == null) return;
         if (data.hasMoreBatches()) {
             Player target = Bukkit.getPlayer(uuid);
-            long delay = plugin.getHackConfigManager().getBetweenSignTicks();
+            long delay = plugin.hacks().config().getBetweenSignTicks();
             Runnable next = () -> {
                 Player t = Bukkit.getPlayer(uuid);
                 if (t != null && t.isOnline()) processBatch(t, data);
@@ -260,9 +253,9 @@ public class CheckManager {
         boolean allClean     = true;
         StringBuilder resultText = new StringBuilder();
 
-        Component header = plugin.getMessageManager().get("check-complete", Map.of("player", targetName));
-        plugin.getMessageManager().broadcastAlerts(header);
-        notifyInitiator(data, header);
+        Component header = plugin.messages().get("check-complete", Map.of("player", targetName));
+        plugin.alerts().send(header);
+        plugin.alerts().notifyInitiator(data.getInitiatorUUID(), header);
 
         for (HackDefinition hack : allHacks) {
             HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
@@ -278,29 +271,33 @@ public class CheckManager {
                 case SKIPPED      -> "<gray>";
             };
             Component line = MM.deserialize(
-                    plugin.getHackConfigManager().getPrefix()
+                    plugin.config().prefix()
                             + "  <white>" + hack.getDisplayName() + ": " + color + r.name());
-            plugin.getMessageManager().broadcastAlerts(line);
-            notifyInitiator(data, line);
+            plugin.alerts().send(line);
+            plugin.alerts().notifyInitiator(data.getInitiatorUUID(), line);
         }
 
         List<Object[]> dbRows = new ArrayList<>(allHacks.size());
         for (HackDefinition hack : allHacks)
             dbRows.add(new Object[]{hack.getId(), hack.getDisplayName(),
                     results.getOrDefault(hack.getId(), HackResult.SKIPPED).name()});
-        plugin.getDatabaseManager().saveScanWithResults(
+        plugin.database().saveScanWithResults(
                 "hack", targetName, targetUUID, checkerName, data.getReason(), anyDetected, dbRows);
 
-        ConfigManager cfg = plugin.getHackConfigManager();
+        ConfigManager cfg = plugin.hacks().config();
 
         if (cfg.isDiscordEnabled()) {
             String hacksChecked = allHacks.stream()
                     .map(HackDefinition::getDisplayName)
                     .reduce((a, b) -> a + ", " + b).orElse("none");
-            WebhookUtil.sendResult(cfg.getWebhookUrl(), cfg.getEmbedColor(),
-                    cfg.getDiscordMessage(), targetName, checkerName,
-                    data.getReason(), hacksChecked, resultText.toString().trim(),
-                    cfg.isDiscordUseComponentsV2());
+            String description = cfg.getDiscordMessage()
+                    .replace("&name&", targetName)
+                    .replace("&checker&", checkerName)
+                    .replace("&reason&", data.getReason())
+                    .replace("&hacks&", hacksChecked)
+                    .replace("&results&", resultText.toString().trim());
+            plugin.webhook().report(cfg.getWebhookUrl(), cfg.getEmbedColor(), "Veneer mod scan",
+                    description, cfg.isDiscordUseComponentsV2());
         }
 
         if (cfg.isDoubleCheckEnabled() && !data.isConfirmScan() && (anyDetected || anyProtected)) {
@@ -326,9 +323,9 @@ public class CheckManager {
                 original.getInitiatorUUID(), batches, false, original.getReason(), true);
         activeChecks.put(target.getUniqueId(), data);
 
-        Component msg = plugin.getMessageManager().get("doublecheck", Map.of("player", target.getName()));
-        plugin.getMessageManager().broadcastAlerts(msg);
-        notifyInitiator(data, msg);
+        Component msg = plugin.messages().get("doublecheck", Map.of("player", target.getName()));
+        plugin.alerts().send(msg);
+        plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
 
         FoliaScheduler.runAtEntity(plugin, target, () -> processBatch(target, data));
         return true;
@@ -339,7 +336,7 @@ public class CheckManager {
                                       Map<String, HackResult> results, List<HackDefinition> allHacks) {
         if (data.isConfirmScan() && allClean) return;
 
-        ConfigManager cfg = plugin.getHackConfigManager();
+        ConfigManager cfg = plugin.hacks().config();
         final String tn = targetName;
 
         String detectedList = allHacks.stream()
@@ -391,23 +388,16 @@ public class CheckManager {
                 .replace("{player}", playerName);
     }
 
-    private void notifyInitiator(CheckPlayerData data, Component msg) {
-        if (data.getInitiatorUUID() == null) return;
-        Player ini = Bukkit.getPlayer(data.getInitiatorUUID());
-        if (ini == null || !ini.isOnline()) return;
-        boolean gets = ini.hasPermission("veneer.hacks.alerts") && plugin.hasAlertsEnabled(ini.getUniqueId());
-        if (!gets) ini.sendMessage(msg);
-    }
 
     private void restoreCurrentSign(CheckPlayerData data) {
         Location loc = data.getSignLocation();
         if (loc == null) return;
         FoliaScheduler.runAtLocation(plugin, loc, () -> {
             try { if (data.getOriginalState() != null) data.getOriginalState().update(true, false); }
-            catch (Exception e) { plugin.getLogger().warning("[CheckHacks] Restore: " + e.getMessage()); }
+            catch (Exception e) { plugin.getLogger().warning("[Hacks] Restore: " + e.getMessage()); }
             if (data.isBarrierPlaced() && data.getBarrierLocation() != null) {
                 try { data.getBarrierLocation().getBlock().setType(Material.AIR, false); }
-                catch (Exception e) { plugin.getLogger().warning("[CheckHacks] Barrier: " + e.getMessage()); }
+                catch (Exception e) { plugin.getLogger().warning("[Hacks] Barrier: " + e.getMessage()); }
             }
         });
         data.setSignLocation(null);
@@ -422,57 +412,4 @@ public class CheckManager {
         lastAutoCheck.clear();
     }
 
-    private boolean isBedrockPlayer(Player target) {
-        ConfigManager cfg = plugin.getHackConfigManager();
-        if (cfg.isBedrockEnabled()) {
-            String name = target.getName();
-            for (String prefix : cfg.getBedrockPrefixes().isEmpty()
-                    ? DEFAULT_BEDROCK_PREFIXES : cfg.getBedrockPrefixes()) {
-                String p = prefix.trim();
-                if (!p.isEmpty() && name.startsWith(p)) return true;
-            }
-        }
-        return isGeyserPlayer(target.getUniqueId()) || isFloodgatePlayer(target.getUniqueId());
-    }
-
-    private static boolean isGeyserPlayer(UUID uuid) {
-        if (!geyserResolved) {
-            geyserResolved = true;
-            try {
-                Class.forName("org.geysermc.geyser.api.GeyserApi").getMethod("api").invoke(null);
-                geyserAvailable = true;
-            } catch (Throwable t) {
-                geyserAvailable = false;
-            }
-        }
-        if (!geyserAvailable) return false;
-        try {
-            Class<?> c = Class.forName("org.geysermc.geyser.api.GeyserApi");
-            Object api = c.getMethod("api").invoke(null);
-            return (Boolean) c.getMethod("isBedrockPlayer", UUID.class).invoke(api, uuid);
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    private static boolean isFloodgatePlayer(UUID uuid) {
-        if (!floodgateResolved) {
-            floodgateResolved = true;
-            try {
-                Class.forName("org.geysermc.floodgate.api.FloodgateApi")
-                        .getMethod("getInstance").invoke(null);
-                floodgateAvailable = true;
-            } catch (Throwable t) {
-                floodgateAvailable = false;
-            }
-        }
-        if (!floodgateAvailable) return false;
-        try {
-            Class<?> c = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
-            Object api = c.getMethod("getInstance").invoke(null);
-            return (Boolean) c.getMethod("isFloodgatePlayer", UUID.class).invoke(api, uuid);
-        } catch (Throwable t) {
-            return false;
-        }
-    }
 }

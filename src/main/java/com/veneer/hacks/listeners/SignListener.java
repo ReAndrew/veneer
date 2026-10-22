@@ -23,8 +23,8 @@ public class SignListener implements Listener {
         Player player = event.getPlayer();
         UUID   uuid   = player.getUniqueId();
 
-        boolean hackChecking = plugin.getCheckManager().isChecking(uuid);
-        boolean langChecking = plugin.getLangCheckManager().isChecking(uuid);
+        boolean hackChecking = plugin.hacks().checks().isChecking(uuid);
+        boolean langChecking = plugin.hacks().langChecks().isChecking(uuid);
         if (!hackChecking && !langChecking) return;
 
         event.setCancelled(true);
@@ -35,7 +35,7 @@ public class SignListener implements Listener {
             lines[i] = c != null ? PlainTextComponentSerializer.plainText().serialize(c) : "";
         }
 
-        if (hackChecking) plugin.getCheckManager().handleBatchResponse(player, lines);
-        else              plugin.getLangCheckManager().handleResponse(player, lines);
+        if (hackChecking) plugin.hacks().checks().handleBatchResponse(player, lines);
+        else              plugin.hacks().langChecks().handleResponse(player, lines);
     }
-}
+}

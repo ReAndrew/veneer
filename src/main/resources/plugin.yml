@@ -3,51 +3,50 @@ version: ${project.version}
 main: com.veneer.VeneerPlugin
 api-version: '1.21'
 folia-supported: true
-description: Client spoof detection and sign-translation hack detection in one plugin.
+description: Client spoof detection, mod detection and cache-based account linking in one plugin.
 authors: [GigaZelensky, Branduzzo]
+website: https://github.com/ReAndrew/veneer
 
 softdepend: [ProtocolLib, ProtocolSupport, ViaVersion, ViaBackwards, ViaRewind, Geyser-Spigot, PlaceholderAPI, LuckPerms, GrimAC, Vulcan, Spartan, Matrix, Intave, AAC, floodgate]
 loadbefore: [PacketEvents]
 
 commands:
+  veneer:
+    description: Veneer overview, per-player report, reload and alert toggle
+    usage: /veneer help
   spoof:
-    description: Inspect client brand/channels and manage the spoof detection module
+    description: Inspect client brand/channels and re-run spoof checks
     usage: /spoof help
     permission: veneer.spoof.use
   hackcheck:
-    description: Check a player for installed hacks/mods.
+    description: Scan a player for installed mods
     usage: /hackcheck <player> [hack1,hack2,...]
     permission: veneer.hacks.check
-  hackreload:
-    description: Reload the hack detection configuration.
-    usage: /hackreload
-    permission: veneer.hacks.reload
-  hackalerts:
-    description: Toggle hack detection alerts.
-    usage: /hackalerts
-    permission: veneer.hacks.alerts
   hacklang:
-    description: Check the client language of a player.
+    description: Check the client language of a player
     usage: /hacklang <player> [lang1,lang2,...]
     permission: veneer.hacks.lang
   hackeditor:
-    description: Open the hack detection web editor.
+    description: Open the web panel (scan history and manual scans)
     usage: /hackeditor
     permission: veneer.hacks.editor
   rptrack:
-    description: Show RPTrack (resource-pack cache) data and linked accounts.
+    description: Show a player's resource-pack cache fingerprint and linked accounts
     usage: /rptrack <player>
-    permission: veneer.hacks.rptrack
+    permission: veneer.rptrack
 
 permissions:
+  veneer.admin:
+    description: /veneer reload, info and version; update notices
+    default: op
+  veneer.alerts:
+    description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts)
+    default: op
   veneer.spoof.use:
     description: Use /spoof
     default: op
   veneer.spoof.admin:
-    description: Admin spoof commands such as reload
-    default: op
-  veneer.spoof.alerts:
-    description: Receive spoof alerts
+    description: Admin /spoof subcommands (check, blockedchannels, blockedbrands)
     default: op
   veneer.spoof.bypass:
     description: Bypass all spoof checks
@@ -55,21 +54,14 @@ permissions:
   veneer.hacks.check:
     description: Use /hackcheck
     default: op
-  veneer.hacks.rptrack:
-    description: Use /rptrack
-    default: op
-  veneer.hacks.reload:
-    description: Use /hackreload
-    default: op
-  veneer.hacks.alerts:
-    description: Receive hack alerts and use /hackalerts
-    default: op
   veneer.hacks.lang:
     description: Use /hacklang
     default: op
   veneer.hacks.editor:
     description: Use /hackeditor
     default: op
+  veneer.rptrack:
+    description: Use /rptrack
     default: op
   veneer.spoof.*:
     description: All spoof permissions
@@ -77,20 +69,19 @@ permissions:
     children:
       veneer.spoof.use: true
       veneer.spoof.admin: true
-      veneer.spoof.alerts: true
   veneer.hacks.*:
-    description: All hack detection permissions
+    description: All mod scan permissions
     default: false
     children:
       veneer.hacks.check: true
-      veneer.hacks.rptrack: true
-      veneer.hacks.reload: true
-      veneer.hacks.alerts: true
       veneer.hacks.lang: true
       veneer.hacks.editor: true
   veneer.*:
     description: Everything
     default: false
     children:
+      veneer.admin: true
+      veneer.alerts: true
+      veneer.rptrack: true
       veneer.spoof.*: true
       veneer.hacks.*: true

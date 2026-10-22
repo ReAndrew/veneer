@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CheckHacks | Editor</title>
+    <title>Veneer | Panel</title>
     <style>
         *{box-sizing:border-box;margin:0;padding:0}
         :root{
@@ -178,7 +178,7 @@
         document.getElementById('player-badge').innerHTML =
           '<img src="' + headUrl(info.player_uuid) + '" onerror="this.style.visibility=\'hidden\'" alt=""> ' + esc(info.player_name);
       } catch(e) {
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">Session expired. Run /cheditor in Minecraft.</div>';
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">Session expired. Run /hackeditor in Minecraft.</div>';
         return;
       }
       showHome();
@@ -418,4 +418,4 @@
     init();
 </script>
 </body>
-</html>
+</html>

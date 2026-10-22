@@ -1,18 +1,12 @@
 package com.veneer.hacks.listeners;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.hacks.ClientType;
 import com.veneer.hacks.HackDefinition;
-import com.veneer.hacks.utils.FoliaScheduler;
-import com.veneer.hacks.utils.MessageUtil;
-import org.bukkit.Bukkit;
+import com.veneer.core.FoliaScheduler;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.Map;
 import java.util.Set;
@@ -29,75 +23,36 @@ public class JoinListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onLogin(PlayerLoginEvent event) {
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-
-        FoliaScheduler.runAtEntityLater(plugin, player, () -> {
-            if (!player.isOnline()) return;
-            Set<String> channels = player.getListeningPluginChannels();
-            ClientType type = detectClientType(channels);
-            plugin.getClientDataManager().setClientType(uuid, type);
-            plugin.getLogger().info("[CheckHacks] " + player.getName() + " client type: " + type
-                    + " channels=" + channels);
-        }, 5L);
-    }
-
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        if (plugin.getHackConfigManager().isJoinCheckEnabled()) {
-            if (!plugin.getHackConfigManager().isOnlyFirstJoin() || alreadyHackChecked.add(uuid)) {
+        if (plugin.hacks().config().isJoinCheckEnabled()) {
+            if (!plugin.hacks().config().isOnlyFirstJoin() || alreadyHackChecked.add(uuid)) {
                 FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                     if (!player.isOnline()) return;
-                    java.util.List<HackDefinition> hacks = plugin.getHackConfigManager().getJoinCheckHacks();
+                    java.util.List<HackDefinition> hacks = plugin.hacks().config().getJoinCheckHacks();
                     if (hacks.isEmpty()) return;
-                    plugin.getMessageManager().broadcastAlerts(
-                            plugin.getMessageManager().get("join-check", Map.of("player", player.getName())));
-                    plugin.getCheckManager().startCheck(player, null, hacks, true, "Auto-join check");
+                    plugin.alerts().send(
+                            plugin.messages().get("join-check", Map.of("player", player.getName())));
+                    plugin.hacks().checks().startCheck(player, null, hacks, true, "Auto-join check");
                 }, 60L);
             }
         }
 
-        if (plugin.getHackConfigManager().isLangJoinCheckEnabled()) {
+        if (plugin.hacks().config().isLangJoinCheckEnabled()) {
             boolean isFirst = alreadyLangChecked.add(uuid);
-            if (!plugin.getHackConfigManager().isLangOnlyFirstJoin() || isFirst) {
+            if (!plugin.hacks().config().isLangOnlyFirstJoin() || isFirst) {
                 FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                     if (!player.isOnline()) return;
-                    Map<String, String> langs = plugin.getHackConfigManager().getLanguages();
+                    Map<String, String> langs = plugin.hacks().config().getLanguages();
                     if (langs.isEmpty()) return;
-                    plugin.getMessageManager().broadcastAlerts(
-                            plugin.getMessageManager().get("lang-join-check", Map.of("player", player.getName())));
-                    plugin.getLangCheckManager().startCheck(player, null, langs);
+                    plugin.alerts().send(
+                            plugin.messages().get("lang-join-check", Map.of("player", player.getName())));
+                    plugin.hacks().langChecks().startCheck(player, null, langs);
                 }, 80L);
             }
         }
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        plugin.getClientDataManager().remove(event.getPlayer().getUniqueId());
-    }
-
-    private ClientType detectClientType(Set<String> channels) {
-        for (String ch : channels) {
-            String lower = ch.toLowerCase();
-            if (lower.startsWith("fabric") || lower.contains("fabric-api")
-                    || lower.contains("fabric-networking") || lower.contains("fabric-screen")) {
-                return ClientType.FABRIC;
-            }
-        }
-        for (String ch : channels) {
-            String lower = ch.toLowerCase();
-            if (lower.startsWith("fml") || lower.startsWith("forge")
-                    || lower.contains("forge:") || lower.contains("fml:")) {
-                return ClientType.FORGE;
-            }
-        }
-        if (channels.isEmpty()) return ClientType.VANILLA;
-        return ClientType.UNKNOWN;
     }
 }

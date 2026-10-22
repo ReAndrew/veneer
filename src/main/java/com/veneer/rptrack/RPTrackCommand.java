@@ -1,7 +1,7 @@
-package com.veneer.hacks.rptrack;
+package com.veneer.rptrack;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.hacks.utils.FoliaScheduler;
+import com.veneer.core.FoliaScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -21,9 +21,9 @@ public class RPTrackCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
-        RPTrackManager fp = plugin.getRPTrackManager();
+        RPTrackManager fp = plugin.rptrack();
         if (fp == null || !fp.isEnabled()) {
-            sender.sendMessage("RPTrack is disabled (checkhacks.rptrack.enabled).");
+            sender.sendMessage("RPTrack is disabled (rptrack.enabled).");
             return true;
         }
         if (args.length < 1) {

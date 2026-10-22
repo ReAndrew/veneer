@@ -1,8 +1,6 @@
 package com.veneer.hacks.commands;
 
 import com.veneer.VeneerPlugin;
-import com.veneer.hacks.utils.MessageUtil;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -24,29 +22,27 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("veneer.hacks.lang")) {
-            sender.sendMessage(MessageUtil.parse(plugin, "no-permission", Map.of()));
+            sender.sendMessage(plugin.messages().get("no-permission", Map.of()));
             return true;
         }
         if (args.length < 1) {
-            sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                    plugin.getHackConfigManager().getPrefix()
-                            + "<red>Usage: /checklang <player> [lang1,lang2,...]"));
+            sender.sendMessage(plugin.messages().prefixed("<red>Usage: /hacklang <player> [lang1,lang2,...]"));
             return true;
         }
 
         Player target = Bukkit.getPlayerExact(args[0]);
         if (target == null) {
-            sender.sendMessage(MessageUtil.parse(plugin, "player-not-found",
+            sender.sendMessage(plugin.messages().get("player-not-found",
                     Map.of("player", args[0])));
             return true;
         }
-        if (plugin.getLangCheckManager().isChecking(target.getUniqueId())) {
-            sender.sendMessage(MessageUtil.parse(plugin, "already-checking",
+        if (plugin.hacks().langChecks().isChecking(target.getUniqueId())) {
+            sender.sendMessage(plugin.messages().get("already-checking",
                     Map.of("player", target.getName())));
             return true;
         }
 
-        Map<String, String> allLangs = plugin.getHackConfigManager().getLanguages();
+        Map<String, String> allLangs = plugin.hacks().config().getLanguages();
         Map<String, String> langs;
 
         if (args.length >= 2) {
@@ -54,9 +50,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
             for (String code : args[1].split(",")) {
                 String trimmed = code.trim().toLowerCase();
                 if (!allLangs.containsKey(trimmed)) {
-                    sender.sendMessage(MessageUtil.parseRaw(plugin,
-                            plugin.getHackConfigManager().getPrefix()
-                                    + "<red>Unknown language: <white>" + trimmed, Map.of()));
+                    sender.sendMessage(plugin.messages().prefixed("<red>Unknown language: <white>" + trimmed));
                     return true;
                 }
                 langs.put(trimmed, allLangs.get(trimmed));
@@ -66,7 +60,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
         }
 
         Player initiator = sender instanceof Player p ? p : null;
-        plugin.getLangCheckManager().startCheck(target, initiator, langs);
+        plugin.hacks().langChecks().startCheck(target, initiator, langs);
         return true;
     }
 
@@ -82,11 +76,11 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
             String typed   = args[1];
             String prefix  = typed.contains(",") ? typed.substring(0, typed.lastIndexOf(',') + 1) : "";
             String current = typed.contains(",") ? typed.substring(typed.lastIndexOf(',') + 1) : typed;
-            return plugin.getHackConfigManager().getLanguages().keySet().stream()
+            return plugin.hacks().config().getLanguages().keySet().stream()
                     .filter(id -> id.startsWith(current.toLowerCase()))
                     .map(id -> prefix + id)
                     .collect(Collectors.toList());
         }
         return List.of();
     }
-}
+}

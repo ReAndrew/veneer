@@ -1,8 +1,8 @@
-package com.veneer.hacks;
+package com.veneer.core;
 
 public enum ClientType {
     VANILLA,
     FABRIC,
     FORGE,
     UNKNOWN
-}
+}

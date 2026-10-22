@@ -1,4 +1,4 @@
-package com.veneer.hacks.utils;
+package com.veneer.core;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -83,7 +83,7 @@ public final class FoliaScheduler {
             Class<?> scheduledTask = Class.forName("io.papermc.paper.threadedregions.scheduler.ScheduledTask");
             scheduledTaskCancel = scheduledTask.getMethod("cancel");
         } catch (Throwable t) {
-            Bukkit.getLogger().severe("[CheckHacks] Failed to init Folia reflection: " + t);
+            Bukkit.getLogger().severe("[Veneer] Failed to init Folia reflection: " + t);
         }
     }
 
