@@ -30,7 +30,7 @@ public final class Webhook {
                 conn = (HttpURLConnection) URI.create(url.trim()).toURL().openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                conn.setRequestProperty("User-Agent", "Veneer/" + plugin.getDescription().getVersion());
+                conn.setRequestProperty("User-Agent", "Veneer/" + plugin.version());
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);

@@ -53,7 +53,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(CommandSender sender, String label) {
-        send(sender, "<gold>Veneer " + plugin.getDescription().getVersion() + "</gold>");
+        send(sender, "<gold>Veneer " + plugin.version() + "</gold>");
         send(sender, "<gray>/" + label + " info <player></gray> <white>- client, mod scan and RPTrack data of a player</white>");
         send(sender, "<gray>/" + label + " alerts</gray> <white>- toggle your staff alerts</white>");
         send(sender, "<gray>/" + label + " reload</gray> <white>- reload config.yml and the messages</white>");
@@ -81,7 +81,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private void version(CommandSender sender) {
         if (denied(sender, "veneer.admin")) return;
-        String current = plugin.getDescription().getVersion();
+        String current = plugin.version();
         send(sender, "<gray>Running Veneer</gray> <white>" + current + "</white>");
         plugin.updates().lookup(false);
         UpdateChecker.Status s = plugin.updates().status();
@@ -140,7 +140,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         Map<String, Object> latest = scans.get(0);
         List<Map<String, Object>> results = (List<Map<String, Object>>) latest.get("results");
         String found = results.stream()
-                .filter(r -> HackResult.DETECTED.name().equals(r.get("result")) || HackResult.PROTECTED.name().equals(r.get("result")))
+                .filter(r -> HackResult.DETECTED.name().equals(r.get("result")) || HackResult.PROTECTED.name().equals(r.get("result"))
+                        || HackResult.TIMEOUT.name().equals(r.get("result")))
                 .map(r -> r.get("hack_name") + " (" + String.valueOf(r.get("result")).toLowerCase(Locale.ROOT) + ")")
                 .collect(Collectors.joining(", "));
         String when = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date(((Number) latest.get("timestamp")).longValue()));

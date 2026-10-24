@@ -8,17 +8,11 @@ import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.configuration.client.WrapperConfigClientPluginMessage;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPluginMessage;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
-public class PlayerEventListener extends PacketListenerAbstract implements Listener {
+public class PlayerEventListener extends PacketListenerAbstract {
     private final VeneerPlugin plugin;
     private final ConfigManager config;
     
@@ -114,9 +108,7 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
         }, delayTicks);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
+    public void onPlayerJoin(Player player) {
         
         // Skip if player has bypass permission
         if (player.hasPermission("veneer.spoof.bypass")) return;
@@ -157,13 +149,5 @@ public class PlayerEventListener extends PacketListenerAbstract implements Liste
         // Then, do a complete check with required channels, but with a longer delay
         // This gives the client more time to register all its channels
         scheduleRequiredChannelsCheck(player, REQUIRED_CHANNEL_CHECK_DELAY);
-    }
-    
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
-        
-        // Use the centralized quit handler in plugin to clean up everything
-        plugin.spoof().handlePlayerQuit(uuid);
     }
 }

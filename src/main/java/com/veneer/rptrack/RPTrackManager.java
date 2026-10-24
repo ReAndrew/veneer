@@ -9,8 +9,6 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 
 import java.io.ByteArrayOutputStream;
@@ -34,8 +32,8 @@ import java.util.zip.ZipOutputStream;
  */
 public class RPTrackManager extends VeneerModule implements Listener {
 
-    private static final String DEAD_URL = "http://127.0.0.1:0";
-    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png";
+    private static final String DEAD_URL = "http://127.0.0.1:0"; // Tracker RP Tester
+    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png"; //For old LiquidBounce NextGen clients without ExploitPreventer 
     private static final UUID HIDE_ID = UUID.nameUUIDFromBytes("veneer-hide".getBytes(StandardCharsets.UTF_8));
     private static final String[] LANGS = ("af_za ar_sa ast_es az_az bar ba_ru be_by be_latn bg_bg brb br_fr bs_ba ca_es cs_cz cv_cu "
             + "cy_gb da_dk de_at de_ch de_de el_gr en_au en_ca en_gb en_nz enp en_pt en_ud en_us enws eo_uy esan es_ar es_cl es_ec "
@@ -278,17 +276,16 @@ public class RPTrackManager extends VeneerModule implements Listener {
 
     // ---------------------------------------------------------------- flow
 
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
+    @Override
+    public void playerJoin(Player player) {
         if (plugin.bedrock().isBedrock(player)) return;
         FoliaScheduler.runAtEntityLater(plugin, player, () -> startHide(player), delay);
     }
 
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        sessions.remove(event.getPlayer().getUniqueId());
-        results.remove(event.getPlayer().getUniqueId());
+    @Override
+    public void playerQuit(java.util.UUID uuid) {
+        sessions.remove(uuid);
+        results.remove(uuid);
     }
 
     private void startHide(Player player) {

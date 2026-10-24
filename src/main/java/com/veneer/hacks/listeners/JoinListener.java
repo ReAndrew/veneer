@@ -4,16 +4,13 @@ import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class JoinListener implements Listener {
+public class JoinListener {
 
     private final VeneerPlugin plugin;
     private final Set<UUID> alreadyHackChecked = ConcurrentHashMap.newKeySet();
@@ -23,9 +20,7 @@ public class JoinListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
+    public void onJoin(Player player) {
         UUID uuid = player.getUniqueId();
 
         if (plugin.hacks().config().isJoinCheckEnabled()) {

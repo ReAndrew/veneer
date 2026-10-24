@@ -26,6 +26,7 @@ public class HacksModule extends VeneerModule {
 
     private ConfigManager config;
     private CheckManager checks;
+    private JoinListener joinChecks;
     private LangCheckManager langChecks;
     private WebServerManager web;
 
@@ -36,6 +37,11 @@ public class HacksModule extends VeneerModule {
     @Override public String id() { return "hacks"; }
 
     @Override public List<String> commandNames() { return List.of("hackcheck", "hacklang", "hackeditor"); }
+
+    @Override
+    public void playerJoin(org.bukkit.entity.Player player) {
+        if (joinChecks != null) joinChecks.onJoin(player);
+    }
 
     @Override
     protected void enable() {
@@ -49,7 +55,7 @@ public class HacksModule extends VeneerModule {
         command("hackeditor", new HackEditorCommand(plugin));
 
         listen(new SignListener(plugin));
-        listen(new JoinListener(plugin));
+        joinChecks = new JoinListener(plugin);
         AntiCheatListener anticheat = listen(new AntiCheatListener(plugin));
         anticheat.registerHooks();
     }

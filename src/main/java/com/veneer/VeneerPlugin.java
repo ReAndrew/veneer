@@ -4,6 +4,7 @@ import com.veneer.core.Alerts;
 import com.veneer.core.Bedrock;
 import com.veneer.core.DatabaseManager;
 import com.veneer.core.Messages;
+import com.veneer.core.PlayerEvents;
 import com.veneer.core.PlayerProfile;
 import com.veneer.core.UpdateChecker;
 import com.veneer.core.VeneerCommand;
@@ -52,6 +53,7 @@ public class VeneerPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        long begin = System.currentTimeMillis();
         config = new VeneerConfig(this);
         messages = new Messages(this);
         alerts = new Alerts(this);
@@ -65,6 +67,7 @@ public class VeneerPlugin extends JavaPlugin {
         rptrack = new RPTrackManager(this);
         hooks = new HooksModule(this);
         modules = List.of(spoof, hacks, rptrack, hooks);
+        getServer().getPluginManager().registerEvents(new PlayerEvents(this), this);
 
         PluginCommand veneer = getCommand("veneer");
         if (veneer != null) {
@@ -90,9 +93,30 @@ public class VeneerPlugin extends JavaPlugin {
             }
         }
 
-        if (config.updateCheckEnabled()) updates.start();
-        getLogger().info("Veneer " + getDescription().getVersion() + " enabled, modules: "
-                + (started.isEmpty() ? "none" : started));
+        long loadedMs = System.currentTimeMillis() - begin;
+        if (config.updateCheckEnabled()) updates.start(() -> printBanner(loadedMs, started.toString()));
+        else printBanner(loadedMs, started.toString());
+    }
+
+    private void printBanner(long loadedMs, String started) {
+        UpdateChecker.Status status = updates.status();
+        String version = version();
+        if (status != null && status.latest() != null) version += " \\ " + status.latest();
+        String bar = "+-------------------------------------------------------+";
+        String[] lines = {
+                bar,
+                "|",
+                "|  /\\   /\\___ _ __   ___  ___ _ __",
+                "|  \\ \\ / / _ \\ '_ \\ / _ \\/ _ \\ '__|",
+                "|   \\ V /  __/ | | |  __/  __/ |",
+                "|    \\_/ \\___|_| |_|\\___|\\___|_|",
+                "|",
+                "|  Loaded in " + loadedMs + " ms!",
+                "|  Modules: " + (started.isEmpty() ? "none" : started),
+                "|  Running version " + version,
+                "|  By: ReAndrew",
+                bar};
+        for (String line : lines) getLogger().info(line);
     }
 
     @Override
@@ -101,6 +125,12 @@ public class VeneerPlugin extends JavaPlugin {
         profiles.clear();
         if (database != null) database.close();
         getLogger().info("Veneer disabled.");
+    }
+
+    /** The version from plugin.yml. Read through the Bukkit description so Spigot, which has no plugin meta, still works. */
+    @SuppressWarnings("deprecation")
+    public String version() {
+        return getDescription().getVersion();
     }
 
     /** Re-reads config.yml and the language files, then lets every running module refresh itself. */
@@ -143,6 +173,7 @@ public class VeneerPlugin extends JavaPlugin {
     public HacksModule hacks() { return hacks; }
     public RPTrackManager rptrack() { return rptrack; }
     public HooksModule hooks() { return hooks; }
+    public List<VeneerModule> modules() { return modules; }
 
     // ---------------------------------------------------------------- profiles
 

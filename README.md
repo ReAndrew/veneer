@@ -30,7 +30,7 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 ## Install
 
 1. Drop `veneer-<version>.jar` into `plugins/` and start the server.
-2. Edit `plugins/Veneer/config.yml`, then apply it with `/veneer reload`.
+2. Edit `plugins/Veneer/config.yml`, then apply it with `/veneer reload`. Requires Paper, Spigot or Folia 1.21+ on Java 21.
 3. Optional: install LuckPerms, PlaceholderAPI, Floodgate/Geyser, ViaVersion or an anticheat. Veneer picks them up automatically.
 
 ## Commands
@@ -100,12 +100,12 @@ debug: false                          # log every step to check how stable the s
 mvn -q -DskipTests package
 ```
 
-Produces `target/veneer-<version>.jar` (about 19 MB, PacketEvents and bStats shaded and relocated). Needs Java 21 or newer.
+Produces `target/veneer-<version>.jar` (about 24 MB, PacketEvents shaded and relocated). Needs Java 21 or newer.
 
 ## Notes
 
 - The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command.
-- Version `1.0.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- Version `0.9.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
 - **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. This is **experimental**: it compiles but has not been tested on a real Folia server.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 

@@ -5,10 +5,12 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.event.HandlerList;
+import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * One feature area of Veneer (spoof detection, mod scans, RPTrack, hooks). A module owns its
@@ -45,6 +47,12 @@ public abstract class VeneerModule {
 
     /** Re-reads the module's config section. Settings that need a restart should say so in the log. */
     protected void reload() {}
+
+    /** A player joined. Called by {@link PlayerEvents} for running modules only. */
+    public void playerJoin(Player player) {}
+
+    /** A player left. Called by {@link PlayerEvents} for running modules only. */
+    public void playerQuit(UUID uuid) {}
 
     public final void startup() {
         enable();

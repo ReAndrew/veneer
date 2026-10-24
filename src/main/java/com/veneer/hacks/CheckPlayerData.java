@@ -20,6 +20,7 @@ public class CheckPlayerData {
     private final boolean confirmScan;
     private final String reason;
     private long scanId = -1;
+    private boolean retried;
 
     private Location signLocation;
     private BlockState originalState;
@@ -50,7 +51,9 @@ public class CheckPlayerData {
     public UUID getInitiatorUUID()                     { return initiatorUUID; }
     public List<List<HackDefinition>> getBatches()     { return batches; }
     public int getCurrentBatch()                       { return currentBatch; }
-    public void incrementBatch()                       { currentBatch++; }
+    public void incrementBatch()                       { currentBatch++; retried = false; }
+    public boolean isRetried()                         { return retried; }
+    public void markRetried()                          { retried = true; }
     public Map<String, HackResult> getResults()        { return results; }
     public boolean isAutoCheck()                       { return autoCheck; }
     public boolean isConfirmScan()                     { return confirmScan; }
@@ -70,4 +73,4 @@ public class CheckPlayerData {
     public void setBarrierLocation(Location l)   { this.barrierLocation = l; }
     public WrappedTask getSignTimeoutTask()       { return signTimeoutTask; }
     public void setSignTimeoutTask(WrappedTask t) { this.signTimeoutTask = t; }
-}
+}

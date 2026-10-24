@@ -31,6 +31,7 @@ public class SpoofModule extends VeneerModule {
     private ConfigManager config;
     private AlertManager alertManager;
     private DetectionManager detection;
+    private PlayerEventListener events;
     private DiscordWebhookHandler discord;
 
     public SpoofModule(VeneerPlugin plugin) {
@@ -57,7 +58,7 @@ public class SpoofModule extends VeneerModule {
         plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, BRAND_CHANNEL,
                 (channel, player, message) -> onBrand(player, new String(message).substring(1)));
 
-        PlayerEventListener events = listen(new PlayerEventListener(plugin));
+        events = new PlayerEventListener(plugin);
         PacketEvents.getAPI().getEventManager().registerListener(events);
 
         command("spoof", new SpoofCommand(plugin));
@@ -102,11 +103,16 @@ public class SpoofModule extends VeneerModule {
         return plugin.brandOf(player);
     }
 
-    public void handlePlayerQuit(UUID uuid) {
+    @Override
+    public void playerJoin(Player player) {
+        if (events != null) events.onPlayerJoin(player);
+    }
+
+    @Override
+    public void playerQuit(UUID uuid) {
         detection.handlePlayerQuit(uuid);
         alertManager.handlePlayerQuit(uuid);
         discord.handlePlayerQuit(uuid);
-        plugin.dropProfile(uuid);
         plugin.debug("Cleaned up all data for player with UUID: " + uuid);
     }
 

@@ -147,6 +147,9 @@ spoof:
     # List of channels to block/whitelist
     values:
       - "^fabric-screen-handler-api-v1:open_screen$"
+      # World Downloader (1.13+ and legacy channel names)
+      - "^wdl:(init|control|request)$"
+      - "(?i)^wdl\\|(init|control|request)$"
       # Add more channels to block here
       # - "another:blocked:channel"
       # - "(?i).*litematica.*"
@@ -690,10 +693,24 @@ hacks:
     # ──────────────────────────────────────────────
     # PERFORMANCE / RELIABILITY
     # ──────────────────────────────────────────────
-    # Re-check DETECTED/PROTECTED results with a second confirmation scan to reduce false positives
+    # Re-check DETECTED/PROTECTED/TIMEOUT results with a second confirmation scan to reduce false positives
     doublecheck: true
+    # Leave the mods that were not found out of the check result (chat and Discord). The history keeps them.
+    hide-clean: true
+    # Add the plugin channels the client registered to the check result
+    show-channels: true
     # How long to wait for client response per sign (ticks, 20 = 1s)
+    # With adaptive-timeout on this is the upper limit.
     timeout-ticks: 200
+    # Wait for the answer as long as the player's ping needs plus a margin, instead of always timeout-ticks.
+    # A silent client is marked TIMEOUT sooner; a laggy one gets more time. Bedrock players are never scanned.
+    adaptive-timeout: true
+    # Added to the ping, in ticks (20 = 1s). Covers the 1 tick delay before the sign closes and ping jitter.
+    adaptive-margin-ticks: 4
+    # Lower limit of the adaptive wait (ticks)
+    adaptive-min-ticks: 20
+    # When a sign gets no answer, send it once more with twice the wait before marking it TIMEOUT
+    retry-on-timeout: true
     # Delay between signs when checking multiple hacks (ticks)
     between-sign-ticks: 5
 

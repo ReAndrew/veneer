@@ -137,13 +137,30 @@ public class CheckManager {
             CheckPlayerData d = activeChecks.get(uuid);
             if (d == null) return;
             restoreCurrentSign(d);
+            Player again = Bukkit.getPlayer(uuid);
+            if (plugin.hacks().config().isRetryOnTimeout() && !d.isRetried() && again != null && again.isOnline()) {
+                d.markRetried();
+                FoliaScheduler.runAtEntity(plugin, again, () -> processBatch(again, d));
+                return;
+            }
             for (HackDefinition h : batch)
-                d.getResults().put(h.getId(), HackResult.PROTECTED);
+                d.getResults().put(h.getId(), HackResult.TIMEOUT);
             d.incrementBatch();
             scheduleNextOrFinish(uuid);
-        }, plugin.hacks().config().getTimeoutTicks());
+        }, timeoutFor(target, data.isRetried()));
 
         data.setSignTimeoutTask(timeout);
+    }
+
+    /** Ticks to wait for the sign answer: ping plus a margin (capped by timeout-ticks), doubled on the retry. */
+    private long timeoutFor(Player target, boolean retry) {
+        ConfigManager cfg = plugin.hacks().config();
+        long max = cfg.getTimeoutTicks();
+        if (!cfg.isAdaptiveTimeout()) return max;
+        long pingTicks = (target.getPing() + 49) / 50;
+        long wait = Math.max(cfg.getAdaptiveMinTicks(), pingTicks + cfg.getAdaptiveMarginTicks());
+        if (retry) wait *= 2;
+        return Math.min(wait, max);
     }
 
     private Component buildComponent(HackDefinition hack) {
@@ -179,6 +196,11 @@ public class CheckManager {
         plugin.getLogger().info(log.toString());
 
         data.incrementBatch();
+        if (exploitPreventer) {
+            // The client answers every key with the raw key, so the remaining batches cannot tell anything; they stay SKIPPED.
+            finishCheck(uuid);
+            return;
+        }
         scheduleNextOrFinish(uuid);
     }
 
@@ -257,24 +279,41 @@ public class CheckManager {
         plugin.alerts().send(header);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), header);
 
+        boolean hideClean = plugin.hacks().config().isHideClean();
+        int shown = 0;
+        sendLine(data, plugin.messages().get("check-translation-header"));
+
         for (HackDefinition hack : allHacks) {
             HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
             if (r == HackResult.DETECTED)  { anyDetected = true;  allClean = false; }
-            if (r == HackResult.PROTECTED) { anyProtected = true; allClean = false; }
+            if (r == HackResult.PROTECTED || r == HackResult.TIMEOUT) { anyProtected = true; allClean = false; }
             if (r == HackResult.SKIPPED)     allClean = false;
+            if (hideClean && r == HackResult.NOT_DETECTED) continue;
+            shown++;
             resultText.append(hack.getDisplayName()).append(": ").append(r.name()).append("\n");
 
             String color = switch (r) {
                 case DETECTED     -> "<red>";
                 case NOT_DETECTED -> "<green>";
                 case PROTECTED    -> "<yellow>";
+                case TIMEOUT      -> "<yellow>";
                 case SKIPPED      -> "<gray>";
             };
             Component line = MM.deserialize(
                     plugin.config().prefix()
                             + "  <white>" + hack.getDisplayName() + ": " + color + r.name());
-            plugin.alerts().send(line);
-            plugin.alerts().notifyInitiator(data.getInitiatorUUID(), line);
+            sendLine(data, line);
+        }
+        if (shown == 0) sendLine(data, plugin.messages().get("check-nothing-found"));
+        if (resultText.isEmpty()) resultText.append("-");
+
+        if (plugin.hacks().config().isShowChannels() && targetPlayer != null) {
+            var profile = plugin.profileOf(uuid);
+            if (profile != null && !profile.getChannels().isEmpty()) {
+                String channels = String.join(", ", new java.util.TreeSet<>(profile.getChannels()));
+                sendLine(data, plugin.messages().get("check-channels", Map.of("channels", channels)));
+                resultText.append("\nChannels: ").append(channels);
+            }
         }
 
         List<Object[]> dbRows = new ArrayList<>(allHacks.size());
@@ -304,7 +343,7 @@ public class CheckManager {
             List<HackDefinition> flagged = new ArrayList<>();
             for (HackDefinition hack : allHacks) {
                 HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
-                if (r == HackResult.DETECTED || r == HackResult.PROTECTED) flagged.add(hack);
+                if (r == HackResult.DETECTED || r == HackResult.PROTECTED || r == HackResult.TIMEOUT) flagged.add(hack);
             }
             if (!flagged.isEmpty()) {
                 Player tp = Bukkit.getPlayer(uuid);
@@ -313,6 +352,11 @@ public class CheckManager {
         }
 
         executeResultActions(data, targetName, anyDetected, anyProtected, allClean, results, allHacks);
+    }
+
+    private void sendLine(CheckPlayerData data, Component line) {
+        plugin.alerts().send(line);
+        plugin.alerts().notifyInitiator(data.getInitiatorUUID(), line);
     }
 
     private boolean startConfirmScan(Player target, CheckPlayerData original, List<HackDefinition> flagged) {
@@ -344,13 +388,16 @@ public class CheckManager {
                 .map(HackDefinition::getDisplayName)
                 .reduce((a, b) -> a + ", " + b).orElse("");
         String protectedList = allHacks.stream()
-                .filter(h -> results.getOrDefault(h.getId(), HackResult.SKIPPED) == HackResult.PROTECTED)
+                .filter(h -> {
+                    HackResult r = results.getOrDefault(h.getId(), HackResult.SKIPPED);
+                    return r == HackResult.PROTECTED || r == HackResult.TIMEOUT;
+                })
                 .map(HackDefinition::getDisplayName)
                 .reduce((a, b) -> a + ", " + b).orElse("");
         String detectedOrProtectedList = allHacks.stream()
                 .filter(h -> {
                     HackResult r = results.getOrDefault(h.getId(), HackResult.SKIPPED);
-                    return r == HackResult.DETECTED || r == HackResult.PROTECTED;
+                    return r == HackResult.DETECTED || r == HackResult.PROTECTED || r == HackResult.TIMEOUT;
                 })
                 .map(HackDefinition::getDisplayName)
                 .reduce((a, b) -> a + ", " + b).orElse("");

@@ -33,6 +33,20 @@ public class Messages {
             file = new File(plugin.getDataFolder(), "messages/en.yml");
         }
         messages = YamlConfiguration.loadConfiguration(file);
+        messages.setDefaults(bundled(file.getName()));
+    }
+
+    /** The copy of a language file shipped in the jar (en when there is none), so keys added later still resolve. */
+    private YamlConfiguration bundled(String fileName) {
+        for (String name : new String[]{fileName, "en.yml"}) {
+            try (java.io.InputStream in = plugin.getResource("messages/" + name)) {
+                if (in != null)
+                    return YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+            } catch (java.io.IOException ignored) {
+                // fall through to the next candidate
+            }
+        }
+        return new YamlConfiguration();
     }
 
     private void ensureFile(String name) {

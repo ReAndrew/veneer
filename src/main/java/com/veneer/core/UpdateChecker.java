@@ -4,9 +4,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.Gson;
 import com.veneer.VeneerPlugin;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.io.IOException;
 import java.net.URI;
@@ -18,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Looks up the latest GitHub release of Veneer and tells admins when a newer one exists. */
-public final class UpdateChecker implements Listener {
+public final class UpdateChecker {
 
     public static final String REPO = "ReAndrew/veneer";
     public static final String PERMISSION = "veneer.admin";
@@ -46,33 +43,49 @@ public final class UpdateChecker implements Listener {
         return status;
     }
 
-    /** Starts the join notification and the first lookup. */
+    /** Starts the first lookup; join notices come from {@link PlayerEvents}. */
     public void start() {
-        plugin.getServer().getPluginManager().registerEvents(this, plugin);
-        lookup(true);
+        start(null);
+    }
+
+    /** As {@link #start()}; {@code done} runs after the first lookup finished, whether or not it succeeded. */
+    public void start(Runnable done) {
+        lookup(true, done);
     }
 
     /** Queries GitHub off the main thread and, when {@code announce} is set, logs a newer release. */
     public void lookup(boolean announce) {
+        lookup(announce, null);
+    }
+
+    private void lookup(boolean announce, Runnable done) {
         FoliaScheduler.runAsync(plugin, () -> {
-            String current = plugin.getDescription().getVersion();
             try {
-                status = fetch(current);
-            } catch (IOException | RuntimeException e) {
-                plugin.debug("Update check failed: " + e.getMessage());
-                return;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            if (announce && status.updateAvailable()) {
-                plugin.getLogger().info("Veneer " + status.latest() + " is available (running " + current + "): " + status.url());
-                if (plugin.config().updateNotifyOnJoin())
-                    for (Player p : plugin.getServer().getOnlinePlayers())
-                        if (p.hasPermission(PERMISSION))
-                            FoliaScheduler.runAtEntity(plugin, p, () -> notify(p, status));
+                check(announce);
+            } finally {
+                if (done != null) done.run();
             }
         });
+    }
+
+    private void check(boolean announce) {
+        String current = plugin.version();
+        try {
+            status = fetch(current);
+        } catch (IOException | RuntimeException e) {
+            plugin.debug("Update check failed: " + e.getMessage());
+            return;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        if (announce && status.updateAvailable()) {
+            plugin.getLogger().info("Veneer " + status.latest() + " is available (running " + current + "): " + status.url());
+            if (plugin.config().updateNotifyOnJoin())
+                for (Player p : plugin.getServer().getOnlinePlayers())
+                    if (p.hasPermission(PERMISSION))
+                        FoliaScheduler.runAtEntity(plugin, p, () -> notify(p, status));
+        }
     }
 
     private Status fetch(String current) throws IOException, InterruptedException {
@@ -90,9 +103,8 @@ public final class UpdateChecker implements Listener {
         return new Status(current, tag.startsWith("v") ? tag.substring(1) : tag, url);
     }
 
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
+    /** Tells a permitted player about a newer release; called from {@link PlayerEvents}. */
+    public void onJoin(Player player) {
         Status s = status;
         if (s == null || !s.updateAvailable() || !plugin.config().updateNotifyOnJoin()) return;
         if (!player.hasPermission(PERMISSION)) return;

@@ -23,8 +23,9 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
     }
 
     @Override public @NotNull String getIdentifier() { return "veneer"; }
+    @SuppressWarnings("deprecation")
     @Override public @NotNull String getAuthor() { return String.join(", ", plugin.getDescription().getAuthors()); }
-    @Override public @NotNull String getVersion() { return plugin.getDescription().getVersion(); }
+    @Override public @NotNull String getVersion() { return plugin.version(); }
     @Override public boolean persist() { return true; }
 
     @Override

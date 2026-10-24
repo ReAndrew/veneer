@@ -21,6 +21,12 @@ public class ConfigManager {
 
     private long timeoutTicks;
     private long betweenSignTicks;
+    private boolean hideClean;
+    private boolean showChannels;
+    private boolean adaptiveTimeout;
+    private long adaptiveMarginTicks;
+    private long adaptiveMinTicks;
+    private boolean retryOnTimeout;
     private boolean doubleCheck;
     private boolean commandIfPositiveEnabled;
     private String positiveCommand;
@@ -103,6 +109,12 @@ public class ConfigManager {
     private void cacheSettings() {
         timeoutTicks           = hacksConfig.getLong("timeout-ticks", 200);
         betweenSignTicks       = hacksConfig.getLong("between-sign-ticks", 5);
+        hideClean              = hacksConfig.getBoolean("hide-clean", true);
+        showChannels           = hacksConfig.getBoolean("show-channels", true);
+        adaptiveTimeout        = hacksConfig.getBoolean("adaptive-timeout", true);
+        adaptiveMarginTicks    = hacksConfig.getLong("adaptive-margin-ticks", 4);
+        adaptiveMinTicks       = hacksConfig.getLong("adaptive-min-ticks", 20);
+        retryOnTimeout         = hacksConfig.getBoolean("retry-on-timeout", true);
         doubleCheck            = hacksConfig.getBoolean("doublecheck", true);
         commandIfPositiveEnabled = hacksConfig.getBoolean("command-if-positive.enabled", false);
         positiveCommand        = hacksConfig.getString("command-if-positive.command", "");
@@ -167,6 +179,12 @@ public class ConfigManager {
 
     public long getTimeoutTicks()     { return timeoutTicks; }
     public long getBetweenSignTicks() { return betweenSignTicks; }
+    public boolean isHideClean()          { return hideClean; }
+    public boolean isShowChannels()       { return showChannels; }
+    public boolean isAdaptiveTimeout()    { return adaptiveTimeout; }
+    public long getAdaptiveMarginTicks()  { return adaptiveMarginTicks; }
+    public long getAdaptiveMinTicks()     { return adaptiveMinTicks; }
+    public boolean isRetryOnTimeout()     { return retryOnTimeout; }
 
     public Map<String, String> getLanguages() {
         Map<String, String> langs = new LinkedHashMap<>();
