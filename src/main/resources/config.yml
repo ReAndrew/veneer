@@ -537,6 +537,11 @@ hacks:
         key: "coffee.module.killaura.name"
         mode: TRANSLATE
 
+      accurate-block-placement:
+        display-name: "Accurate Block Placement"
+        key: "net.clayborn.accurateblockplacement.modplacementmodemessage"
+        mode: TRANSLATE
+
       world-downloader:
         display-name: "World Downloader"
         key: "key.wdl.startStop"

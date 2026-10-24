@@ -47,7 +47,7 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 | `/hackeditor` | `veneer.hacks.editor` | Link to the web panel: scan history and manual scans |
 | `/rptrack <player>` | `veneer.rptrack` | Show a player's cache fingerprint and linked accounts |
 
-Other permissions: `veneer.spoof.admin`, `veneer.spoof.bypass`. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
+Other permissions: `veneer.spoof.admin`. Bypass (all default `false`, not in `veneer.*`): `veneer.bypass` (everything), `veneer.bypass.<spoof|hacks|rptrack>` (that module, join and later), `veneer.bypass.<type>.join` (join-time check only). Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
 
 ## Configuration
 

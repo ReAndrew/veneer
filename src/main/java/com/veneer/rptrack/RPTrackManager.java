@@ -278,7 +278,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
 
     @Override
     public void playerJoin(Player player) {
-        if (plugin.bedrock().isBedrock(player)) return;
+        if (plugin.bedrock().isBedrock(player) || player.hasPermission("veneer.bypass.rptrack.join")) return;
         FoliaScheduler.runAtEntityLater(plugin, player, () -> startHide(player), delay);
     }
 
@@ -487,6 +487,6 @@ public class RPTrackManager extends VeneerModule implements Listener {
     private void report(Player player, String text) {
         String msg = "[RPTrack] " + player.getName() + ": " + text;
         plugin.getLogger().info(msg);
-        if (alert) plugin.alerts().sendToPlayers(net.kyori.adventure.text.Component.text(msg));
+        if (alert) plugin.alerts().sendToPlayers(plugin.messages().with("rptrack-report", "player", player.getName(), "text", text));
     }
 }

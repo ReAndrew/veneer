@@ -111,10 +111,10 @@ public class VeneerPlugin extends JavaPlugin {
                 "|   \\ V /  __/ | | |  __/  __/ |",
                 "|    \\_/ \\___|_| |_|\\___|\\___|_|",
                 "|",
-                "|  Loaded in " + loadedMs + " ms!",
-                "|  Modules: " + (started.isEmpty() ? "none" : started),
-                "|  Running version " + version,
-                "|  By: ReAndrew",
+                "|  " + messages.plain("banner-loaded", "ms", loadedMs),
+                "|  " + messages.plain("banner-modules", "modules", started.isEmpty() ? messages.plain("banner-no-modules") : started),
+                "|  " + messages.plain("banner-version", "version", version),
+                "|  " + messages.plain("banner-author"),
                 bar};
         for (String line : lines) getLogger().info(line);
     }
@@ -149,8 +149,7 @@ public class VeneerPlugin extends JavaPlugin {
 
     private void disableCommands(VeneerModule module) {
         CommandExecutor off = (sender, cmd, label, args) -> {
-            sender.sendMessage(messages.prefixed("<red>The " + module.id() + " module is not running"
-                    + " (check '" + module.id() + ".enabled' in config.yml).</red>"));
+            messages.send(sender, "module-not-running", "module", module.id());
             return true;
         };
         for (String name : module.commandNames()) {

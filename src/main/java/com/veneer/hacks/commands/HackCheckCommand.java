@@ -30,7 +30,7 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (args.length < 1) {
-            sender.sendMessage(plugin.messages().prefixed("<red>Usage: /hackcheck <player> [hack1,hack2,...]"));
+            plugin.messages().send(sender, "hackcheck-usage");
             return true;
         }
 
@@ -63,7 +63,7 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
         }
 
         if (hacks.isEmpty()) {
-            sender.sendMessage(plugin.messages().prefixed("<red>No valid hacks to check."));
+            plugin.messages().send(sender, "hackcheck-no-valid");
             return true;
         }
 
@@ -94,4 +94,4 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
         }
         return List.of();
     }
-}
+}

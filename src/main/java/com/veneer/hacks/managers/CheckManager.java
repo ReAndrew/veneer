@@ -23,7 +23,6 @@ public class CheckManager {
 
     private static final String CTRL_KEYBIND  = "key.forward";
     private static final int    LINES_PER_SIGN = 3;
-    private static final MiniMessage MM = MiniMessage.miniMessage();
 
     private final VeneerPlugin plugin;
     private final Map<UUID, CheckPlayerData> activeChecks  = new ConcurrentHashMap<>();
@@ -58,6 +57,8 @@ public class CheckManager {
             else plugin.alerts().send(msg);
             return;
         }
+
+        if (autoCheck && target.hasPermission("veneer.bypass.hacks")) return;
 
         if (autoCheck) lastAutoCheck.put(uuid, System.currentTimeMillis());
 
@@ -292,16 +293,8 @@ public class CheckManager {
             shown++;
             resultText.append(hack.getDisplayName()).append(": ").append(r.name()).append("\n");
 
-            String color = switch (r) {
-                case DETECTED     -> "<red>";
-                case NOT_DETECTED -> "<green>";
-                case PROTECTED    -> "<yellow>";
-                case TIMEOUT      -> "<yellow>";
-                case SKIPPED      -> "<gray>";
-            };
-            Component line = MM.deserialize(
-                    plugin.config().prefix()
-                            + "  <white>" + hack.getDisplayName() + ": " + color + r.name());
+            Component line = plugin.messages().with("check-result-line", "hack", hack.getDisplayName(),
+                    "result", plugin.messages().raw("result-" + r.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')));
             sendLine(data, line);
         }
         if (shown == 0) sendLine(data, plugin.messages().get("check-nothing-found"));

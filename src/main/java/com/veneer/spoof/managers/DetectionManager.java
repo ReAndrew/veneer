@@ -169,7 +169,8 @@ public class DetectionManager {
      * @param isJoinCheck Whether this is an initial join check
      */
     public void checkPlayerAsync(Player player, boolean isJoinCheck, boolean checkRequiredChannels) {
-        if (!player.isOnline() || player.hasPermission("veneer.spoof.bypass")) {
+        if (!player.isOnline() || player.hasPermission("veneer.bypass.spoof")
+                || (isJoinCheck && player.hasPermission("veneer.bypass.spoof.join"))) {
             return;
         }
         

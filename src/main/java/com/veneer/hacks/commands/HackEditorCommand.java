@@ -19,7 +19,7 @@ public class HackEditorCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Only players can open the editor.");
+            plugin.messages().send(sender, "editor-players-only");
             return true;
         }
         if (!player.hasPermission("veneer.hacks.editor")) {
@@ -43,4 +43,4 @@ public class HackEditorCommand implements CommandExecutor {
         player.sendMessage(plugin.messages().get("editor-url", Map.of("url", url)));
         return true;
     }
-}
+}

@@ -23,11 +23,11 @@ public class RPTrackCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         RPTrackManager fp = plugin.rptrack();
         if (fp == null || !fp.isEnabled()) {
-            sender.sendMessage("RPTrack is disabled (rptrack.enabled).");
+            plugin.messages().send(sender, "rptrack-disabled");
             return true;
         }
         if (args.length < 1) {
-            sender.sendMessage("Usage: /" + label + " <player>");
+            plugin.messages().send(sender, "rptrack-usage", "label", label);
             return true;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[0]);
@@ -35,13 +35,14 @@ public class RPTrackCommand implements CommandExecutor {
         FoliaScheduler.runAsync(plugin, () -> {
             long mask = fp.getMask(uuid);
             if (mask == 0) {
-                sender.sendMessage("No fingerprint stored for " + args[0] + ".");
+                plugin.messages().send(sender, "rptrack-none", "player", args[0]);
                 return;
             }
             List<String> linked = fp.findLinked(uuid, mask);
-            sender.sendMessage(args[0] + " cache: " + Long.toBinaryString(mask)
-                    + " (" + Long.bitCount(mask) + " packs)");
-            sender.sendMessage("Linked accounts: " + (linked.isEmpty() ? "none" : String.join(", ", linked)));
+            plugin.messages().send(sender, "rptrack-cache", "player", args[0],
+                    "mask", Long.toBinaryString(mask), "packs", Long.bitCount(mask));
+            plugin.messages().send(sender, "rptrack-linked",
+                    "linked", linked.isEmpty() ? plugin.messages().plain("veneer-rp-linked-none") : String.join(", ", linked));
         });
         return true;
     }

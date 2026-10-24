@@ -36,17 +36,21 @@ public class Messages {
         messages.setDefaults(bundled(file.getName()));
     }
 
-    /** The copy of a language file shipped in the jar (en when there is none), so keys added later still resolve. */
+    /** The jar's copy of a language file laid over the jar's en.yml, so a key an edited file lacks still resolves. */
     private YamlConfiguration bundled(String fileName) {
-        for (String name : new String[]{fileName, "en.yml"}) {
+        YamlConfiguration merged = new YamlConfiguration();
+        for (String name : new String[]{"en.yml", fileName}) {
             try (java.io.InputStream in = plugin.getResource("messages/" + name)) {
-                if (in != null)
-                    return YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+                if (in == null) continue;
+                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(
+                        new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+                for (String key : yaml.getKeys(true))
+                    if (!yaml.isConfigurationSection(key)) merged.set(key, yaml.get(key));
             } catch (java.io.IOException ignored) {
-                // fall through to the next candidate
+                // keep what was read so far
             }
         }
-        return new YamlConfiguration();
+        return merged;
     }
 
     private void ensureFile(String name) {
@@ -58,7 +62,8 @@ public class Messages {
     }
 
     public String getRaw(String key) {
-        return messages.getString(key, "<red>Missing message: " + key);
+        String text = messages.getString(key);   // without a fallback argument, so the bundled defaults apply
+        return text != null ? text : "<red>Missing message: " + key;
     }
 
     /** The message for {@code key} with {@code {prefix}} and {@code {name}} placeholders filled in. */
@@ -77,6 +82,44 @@ public class Messages {
             raw = raw.replace("{" + e.getKey() + "}", e.getValue());
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) raw = applyPapi(raw);
         return Text.mini(raw);
+    }
+
+    /** A placeholder value that is already MiniMessage; any other value is escaped so players cannot inject tags. */
+    public record Raw(String text) {}
+
+    /** The text of {@code key} as a placeholder value that is not escaped. */
+    public Raw raw(String key) {
+        return new Raw(getRaw(key));
+    }
+
+    /** Escapes text from players or the network (brands, channels, names) for use inside MiniMessage. */
+    public static String escape(String text) {
+        return text.replace("<", "\\<");
+    }
+
+    private Map<String, String> values(Object... pairs) {
+        Map<String, String> map = new java.util.HashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            Object v = pairs[i + 1];
+            map.put(String.valueOf(pairs[i]), v instanceof Raw r ? r.text() : escape(String.valueOf(v)));
+        }
+        return map;
+    }
+
+    /** The message {@code key} with placeholders given as name, value, name, value... */
+    public Component with(String key, Object... pairs) {
+        return get(key, values(pairs));
+    }
+
+    /** The message {@code key} as plain text with {@code {name}} placeholders filled in (no prefix, no formatting pass). */
+    public String plain(String key, Object... pairs) {
+        String text = getRaw(key);
+        for (Map.Entry<String, String> e : values(pairs).entrySet()) text = text.replace("{" + e.getKey() + "}", e.getValue());
+        return text;
+    }
+
+    public void send(org.bukkit.command.CommandSender to, String key, Object... pairs) {
+        to.sendMessage(with(key, pairs));
     }
 
     /** Prefixed one-liner for commands that have no entry in the language files. */

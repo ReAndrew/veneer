@@ -3,7 +3,6 @@ package com.veneer.core;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackResult;
 import com.veneer.rptrack.RPTrackManager;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -53,11 +52,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(CommandSender sender, String label) {
-        send(sender, "<gold>Veneer " + plugin.version() + "</gold>");
-        send(sender, "<gray>/" + label + " info <player></gray> <white>- client, mod scan and RPTrack data of a player</white>");
-        send(sender, "<gray>/" + label + " alerts</gray> <white>- toggle your staff alerts</white>");
-        send(sender, "<gray>/" + label + " reload</gray> <white>- reload config.yml and the messages</white>");
-        send(sender, "<gray>/" + label + " version</gray> <white>- running and latest release</white>");
+        for (String key : List.of("title", "info", "alerts", "reload", "version"))
+            plugin.messages().send(sender, "veneer-help-" + key, "label", label, "version", plugin.version());
     }
 
     private void reload(CommandSender sender) {
@@ -68,7 +64,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private void alerts(CommandSender sender) {
         if (!(sender instanceof Player player)) {
-            send(sender, "<red>Only players can toggle alerts.</red>");
+            plugin.messages().send(sender, "veneer-alerts-players-only");
             return;
         }
         if (!player.hasPermission(Alerts.PERMISSION)) {
@@ -82,19 +78,19 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     private void version(CommandSender sender) {
         if (denied(sender, "veneer.admin")) return;
         String current = plugin.version();
-        send(sender, "<gray>Running Veneer</gray> <white>" + current + "</white>");
+        plugin.messages().send(sender, "veneer-running", "version", current);
         plugin.updates().lookup(false);
         UpdateChecker.Status s = plugin.updates().status();
-        if (s == null) send(sender, "<gray>Latest release: checking, run this again in a moment.</gray>");
-        else if (s.latest() == null) send(sender, "<gray>No release is published on GitHub yet.</gray>");
-        else if (s.updateAvailable()) send(sender, "<green>Version " + s.latest() + " is available:</green> <aqua>" + s.url() + "</aqua>");
-        else send(sender, "<green>You are on the latest release (" + s.latest() + ").</green>");
+        if (s == null) plugin.messages().send(sender, "veneer-latest-checking");
+        else if (s.latest() == null) plugin.messages().send(sender, "veneer-latest-none");
+        else if (s.updateAvailable()) plugin.messages().send(sender, "veneer-update-available", "latest", s.latest(), "url", s.url());
+        else plugin.messages().send(sender, "veneer-latest-ok", "latest", s.latest());
     }
 
     private void info(CommandSender sender, String label, String[] args) {
         if (denied(sender, "veneer.admin")) return;
         if (args.length < 2) {
-            send(sender, "<red>Usage: /" + label + " info <player></red>");
+            plugin.messages().send(sender, "veneer-info-usage", "label", label);
             return;
         }
         String name = args[1];
@@ -102,8 +98,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         var offline = Bukkit.getOfflinePlayer(name);
         String uuid = (online != null ? online : offline).getUniqueId().toString();
 
-        send(sender, "<gold>Veneer</gold> <gray>report for</gray> <white>" + name + "</white>"
-                + (online == null ? " <gray>(offline)</gray>" : ""));
+        plugin.messages().send(sender, "veneer-info-title", "player", name,
+                "offline", online == null ? plugin.messages().raw("veneer-info-offline") : new Messages.Raw(""));
         if (online != null) clientSection(sender, online);
 
         FoliaScheduler.runAsync(plugin, () -> {
@@ -114,18 +110,18 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private void clientSection(CommandSender sender, Player player) {
         PlayerProfile profile = plugin.profileOf(player.getUniqueId());
-        String brand = plugin.brandOf(player) == null ? "unknown" : plugin.brandOf(player);
+        String brand = plugin.brandOf(player) == null ? plugin.messages().plain("veneer-unknown") : plugin.brandOf(player);
         int channels = profile == null ? 0 : profile.getChannels().size();
-        String type = profile == null ? "unknown" : profile.clientType().name().toLowerCase(Locale.ROOT);
-        send(sender, "<gray>Client:</gray> <white>" + escape(brand) + "</white> <gray>(" + type + ", " + channels + " channels)</gray>");
+        String type = profile == null ? plugin.messages().plain("veneer-unknown") : profile.clientType().name().toLowerCase(Locale.ROOT);
+        plugin.messages().send(sender, "veneer-info-client", "brand", brand, "type", type, "channels", channels);
 
         List<String> flags = new ArrayList<>();
-        if (plugin.bedrock().isBedrock(player)) flags.add("bedrock");
-        if (plugin.spoof().running() && plugin.spoof().isPlayerSpoofing(player)) flags.add("<red>flagged by spoof detection</red>");
-        if (!flags.isEmpty()) send(sender, "<gray>Status:</gray> <white>" + String.join(", ", flags) + "</white>");
+        if (plugin.bedrock().isBedrock(player)) flags.add(plugin.messages().getRaw("veneer-flag-bedrock"));
+        if (plugin.spoof().running() && plugin.spoof().isPlayerSpoofing(player)) flags.add(plugin.messages().getRaw("veneer-flag-spoof"));
+        if (!flags.isEmpty()) plugin.messages().send(sender, "veneer-info-status", "flags", new Messages.Raw(String.join(", ", flags)));
 
         String group = plugin.hooks().primaryGroup(player);
-        if (!group.isEmpty()) send(sender, "<gray>Group:</gray> <white>" + group + "</white>");
+        if (!group.isEmpty()) plugin.messages().send(sender, "veneer-info-group", "group", group);
     }
 
     @SuppressWarnings("unchecked")
@@ -134,7 +130,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         List<Map<String, Object>> scans = plugin.database().getPlayerScans(name).stream()
                 .filter(row -> "hack".equals(row.get("type"))).toList();
         if (scans.isEmpty()) {
-            send(sender, "<gray>Mod scan:</gray> <white>never scanned</white>");
+            plugin.messages().send(sender, "veneer-scan-never");
             return;
         }
         Map<String, Object> latest = scans.get(0);
@@ -145,9 +141,9 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
                 .map(r -> r.get("hack_name") + " (" + String.valueOf(r.get("result")).toLowerCase(Locale.ROOT) + ")")
                 .collect(Collectors.joining(", "));
         String when = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date(((Number) latest.get("timestamp")).longValue()));
-        send(sender, "<gray>Mod scan:</gray> <white>" + when + "</white> <gray>-</gray> "
-                + (found.isEmpty() ? "<green>clean</green>" : "<red>" + escape(found) + "</red>")
-                + " <gray>(" + scans.size() + " scans on record)</gray>");
+        plugin.messages().send(sender, "veneer-scan-line", "when", when, "count", scans.size(),
+                "result", found.isEmpty() ? plugin.messages().raw("veneer-scan-clean")
+                        : new Messages.Raw(plugin.messages().plain("veneer-scan-found", "found", found)));
     }
 
     private void rptrackSection(CommandSender sender, Player online, String uuid) {
@@ -155,22 +151,12 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         if (!rp.isEnabled()) return;
         long mask = rp.getMask(uuid);
         if (mask == 0) {
-            send(sender, "<gray>RPTrack:</gray> <white>no fingerprint stored</white>");
+            plugin.messages().send(sender, "veneer-rp-none");
             return;
         }
         List<String> linked = rp.findLinked(uuid, mask);
-        send(sender, "<gray>RPTrack:</gray> <white>" + Long.bitCount(mask) + " cached packs</white> <gray>- linked accounts:</gray> <white>"
-                + (linked.isEmpty() ? "none" : escape(String.join(", ", linked))) + "</white>");
-    }
-
-    private void send(CommandSender sender, String miniMessage) {
-        Component c = plugin.messages().prefixed(miniMessage);
-        sender.sendMessage(c);
-    }
-
-    /** Player-controlled text (client brand, mod names) must not be parsed as MiniMessage. */
-    private static String escape(String text) {
-        return text.replace("<", "\\<");
+        plugin.messages().send(sender, "veneer-rp-line", "packs", Long.bitCount(mask),
+                "linked", linked.isEmpty() ? plugin.messages().plain("veneer-rp-linked-none") : String.join(", ", linked));
     }
 
     @Override

@@ -26,7 +26,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (args.length < 1) {
-            sender.sendMessage(plugin.messages().prefixed("<red>Usage: /hacklang <player> [lang1,lang2,...]"));
+            plugin.messages().send(sender, "hacklang-usage");
             return true;
         }
 
@@ -50,7 +50,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
             for (String code : args[1].split(",")) {
                 String trimmed = code.trim().toLowerCase();
                 if (!allLangs.containsKey(trimmed)) {
-                    sender.sendMessage(plugin.messages().prefixed("<red>Unknown language: <white>" + trimmed));
+                    plugin.messages().send(sender, "hacklang-unknown", "lang", trimmed);
                     return true;
                 }
                 langs.put(trimmed, allLangs.get(trimmed));
@@ -83,4 +83,4 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
         }
         return List.of();
     }
-}
+}

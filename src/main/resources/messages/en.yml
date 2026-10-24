@@ -1,25 +1,246 @@
-﻿no-permission: "{prefix}<red>You don't have permission to do this."
+﻿# Veneer messages (en). Each section below is one part of the plugin.
+# Texts are MiniMessage. Keep the {placeholders}; a key you delete falls back to en.yml.
+
+# ======================================================================
+# GENERAL
+# Shared by every command. {prefix} is general.prefix from config.yml; {player}, {label} and similar are filled in by the plugin.
+# ======================================================================
+no-permission: "{prefix}<red>You don't have permission to do this."
 player-not-found: "{prefix}<red>Player <white>{player} <red>not found."
-already-checking: "{prefix}<yellow>{player} <white>is already being checked."
+reload-done: "{prefix}<green>Configuration reloaded."
+alerts-enabled: "{prefix}<green>Alerts enabled."
+alerts-disabled: "{prefix}<red>Alerts disabled."
+bedrock-skip: "{prefix}<yellow>{player} <gray>is a Bedrock player - check skipped."
+module-not-running: "{prefix}<red>The {module} module is not running (check '{module}.enabled' in config.yml).</red>"
+update-available: "{prefix}<green>Veneer {latest} is available</green> <gray>(running {current})</gray> <aqua><click:open_url:'{url}'>{url}</click></aqua>"
+
+# ======================================================================
+# MOD SCAN  (/hackcheck, join and anticheat checks)
+# Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
+# ======================================================================
 check-started: "{prefix}<white>Starting check on <yellow>{player}<white>..."
 check-complete: "{prefix}<white>Check complete for <yellow>{player}<white>:"
 check-timeout: "{prefix}<yellow>{player} <white>did not respond - marked as <red>TIMEOUT<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>flagged - running confirmation scan..."
-reload-done: "{prefix}<green>Configuration reloaded."
 anticheat-trigger: "{prefix}<gray>Anticheat flagged <yellow>{player}<gray>. Queuing auto-check..."
 join-check: "{prefix}<gray>Auto-checking <yellow>{player} <gray>on join..."
+already-checking: "{prefix}<yellow>{player} <white>is already being checked."
 invalid-hack: "{prefix}<red>Unknown hack: <white>{hack}"
-bedrock-skip: "{prefix}<yellow>{player} <gray>is a Bedrock player - check skipped."
-alerts-enabled: "{prefix}<green>Alerts enabled."
-alerts-disabled: "{prefix}<red>Alerts disabled."
+hackcheck-usage: "{prefix}<red>Usage: /hackcheck \\<player> [hack1,hack2,...]</red>"
+hackcheck-no-valid: "{prefix}<red>No valid hacks to check.</red>"
+
+# ======================================================================
+# MOD SCAN  (result block)
+# check-result-line: {hack}, {result}. The result texts are shown as they are; the words match the values kept in the history database.
+# check-nothing-found is shown when every mod was clean and hide-clean is on; check-channels shows {channels} when show-channels is on.
+# ======================================================================
+check-translation-header: "{prefix}<gray>  Translation Detect:"
+check-result-line: "{prefix}  <white>{hack}<gray>: {result}"
+result-detected: "<red>DETECTED"
+result-not-detected: "<green>NOT_DETECTED"
+result-protected: "<yellow>PROTECTED"
+result-timeout: "<yellow>TIMEOUT"
+result-skipped: "<gray>SKIPPED"
+check-nothing-found: "{prefix}<green>    Nothing detected"
+check-channels: "{prefix}<white>  Channels<gray>: <aqua>{channels}"
+
+# ======================================================================
+# LANGUAGE CHECK  (/hacklang)
+# Placeholders: {player}, {lang}, {response}.
+# ======================================================================
+hacklang-usage: "{prefix}<red>Usage: /hacklang \\<player> [lang1,lang2,...]</red>"
+hacklang-unknown: "{prefix}<red>Unknown language: <white>{lang}</white></red>"
 lang-check-started: "{prefix}<white>Checking language of <yellow>{player}<white>..."
 lang-check-complete: "{prefix}<white>Language of <yellow>{player}<white>: <yellow>{lang} <gray>({response})"
 lang-check-unknown: "{prefix}<white>Language of <yellow>{player}<white>: <red>Unknown <gray>({response})"
 lang-check-protected: "{prefix}<white>Language of <yellow>{player}<white>: <yellow>PROTECTED"
 lang-check-timeout: "{prefix}<yellow>{player} <white>did not respond - language check failed."
 lang-join-check: "{prefix}<gray>Auto-checking language of <yellow>{player}<gray>..."
+
+# ======================================================================
+# WEB EDITOR  (/hackeditor)
+# Placeholders: {url}.
+# ======================================================================
 editor-url: "{prefix}<white>Editor: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Web editor is disabled in config.yml."
-check-translation-header: "{prefix}<gray>  Translation Detect:"
-check-nothing-found: "{prefix}<green>    Nothing detected"
-check-channels: "{prefix}<white>  Channels<gray>: <aqua>{channels}"
+editor-players-only: "{prefix}<red>Only players can open the editor.</red>"
+
+# ======================================================================
+# SPOOF  /spoof - general
+# Texts use MiniMessage. Values that come from the game (brands, channels, names) are escaped, so they never become tags.
+# Placeholders: {label} {sub} {count} {player} {value}. {value} and {mode} receive the short texts from the 'words' block below.
+# ======================================================================
+spoof-usage: "<red>Usage: /{label} {sub} \\<player>"
+spoof-no-data: "<yellow>No data available for this player."
+spoof-unknown-sub: "<red>Unknown subcommand: {sub}"
+spoof-run-all: "<aqua>Running check for all online players..."
+spoof-run-done: "<green>Check triggered for {count} players."
+spoof-run-note: "<yellow>Note: This only re-analyzes existing data, players might need to rejoin for fresh data."
+spoof-run-player: "<aqua>Running check for player {player}..."
+spoof-run-player-done: "<green>Check triggered for {player}."
+
+# ======================================================================
+# SPOOF  words used inside other lines
+# Short texts placed into {value}, {mode} and {brand}. No prefix, no placeholders.
+# ======================================================================
+spoof-yes: "<green>Yes"
+spoof-no: "<red>No"
+spoof-mode-whitelist: "Whitelist"
+spoof-mode-blacklist: "Blacklist"
+spoof-mode-whitelist-simple: "Whitelist (Simple)"
+spoof-mode-whitelist-strict: "Whitelist (Strict)"
+spoof-mode-simple: "Simple"
+spoof-mode-strict: "Strict"
+spoof-brand-unknown: "unknown"
+
+# ======================================================================
+# SPOOF  /spoof blockedbrands and /spoof blockedchannels
+# Placeholders: {value} (an entry of the list, or yes/no), {mode}.
+# ======================================================================
+spoof-brands-title: "<aqua>=== Blocked Brands Configuration ==="
+spoof-channels-title: "<aqua>=== Blocked Channels Configuration ==="
+spoof-enabled: "<gray>Enabled: {value}"
+spoof-match-type: "<gray>Match Type: <white>Regex Pattern"
+spoof-mode: "<gray>Mode: <white>{mode}"
+spoof-brands-none-blocked: "<yellow>No brands are currently blocked."
+spoof-brands-none-whitelisted: "<yellow>No brands are currently whitelisted."
+spoof-brands-list-blocked: "<aqua>Blocked Brands:"
+spoof-brands-list-whitelisted: "<aqua>Whitelisted Brands:"
+spoof-channels-none-blocked: "<yellow>No channels are currently blocked."
+spoof-channels-none-whitelisted: "<yellow>No channels are currently whitelisted."
+spoof-channels-list-blocked: "<aqua>Blocked Channels:"
+spoof-channels-list-whitelisted: "<aqua>Whitelisted Channels:"
+spoof-list-item: "<gray>- <white>{value}"
+
+# ======================================================================
+# SPOOF  /spoof check
+# Placeholders: {player}, {brand}, {count}, {reason}, {value}, {channel}, {mode}.
+# ======================================================================
+spoof-no-brand-yet: "<aqua>{player}<yellow> has no client brand information yet."
+spoof-flagged: "<aqua>{player}<red> has been flagged!"
+spoof-not-spoofing: "<aqua>{player}<green> does not appear to be spoofing."
+spoof-client-brand: "<gray>Client brand: <white>{brand}"
+spoof-violations: "<red>Violations detected ({count}):"
+spoof-violation-item: "<red>• {reason}"
+spoof-brand-status-blocked: "<gray>Brand status: <red>Blocked"
+spoof-brand-status-blocked-noflag: "<gray>Brand status: <red>Blocked<gray> (but not counting as flag)"
+spoof-brand-status-allowed: "<gray>Brand status: <green>Allowed"
+spoof-has-channels: "<gray>Has channels: {value}"
+spoof-whitelist-mode: "<gray>Channel whitelist mode: <white>{mode}"
+spoof-whitelist-status: "<gray>Channel whitelist status:"
+spoof-channels-header: "<gray>Channels:"
+spoof-channel-line: "<white>{channel}"
+spoof-channel-ok: "<green>{channel}"
+spoof-channel-not-whitelisted: "<red>{channel}<gray> (not in whitelist)"
+spoof-channel-bad: "<red>{channel}"
+spoof-missing-header: "<gray>Missing required channels:"
+spoof-blocked-header: "<gray>Blocked channel detected:"
+spoof-flagging-title: "<aqua>=== Players Currently Flagging ==="
+spoof-flagging-line: "<red>{player}<gray> - Brand: <white>{brand}"
+spoof-none-flagging: "<green>No players are currently detected as spoofing."
+
+# ======================================================================
+# SPOOF  violation reasons
+# Plain text, no tags. Listed under 'Violations detected'. Placeholders: {channel}, {channels}, {brand}.
+# ======================================================================
+spoof-reason-non-vanilla: "Non-vanilla client detected"
+spoof-reason-vanilla-channels: "Vanilla client with plugin channels"
+spoof-reason-geyser: "Spoofing Geyser client"
+spoof-reason-brand-not-whitelisted: "Client brand is not in whitelist"
+spoof-reason-brand-blocked: "Using blocked client brand"
+spoof-reason-missing-channels: "Missing required channels: {channels}"
+spoof-reason-whitelist-mismatch: "Channels don't match whitelist requirements"
+spoof-reason-no-whitelisted: "No whitelisted channels detected"
+spoof-reason-blocked-channel: "Using blocked channel: {channel}"
+spoof-reason-missing-brand-channels: "Missing required channels for {brand}: {channels}"
+spoof-reason-unknown: "Unknown reason (check configuration)"
+
+# ======================================================================
+# SPOOF  /spoof channels and /spoof brand
+# Placeholders: {player}, {channel}, {brand}.
+# ======================================================================
+spoof-channels-for: "<aqua>Channels for {player}:"
+spoof-channels-empty: "<gray>No channels registered."
+spoof-ch-whitelisted: "<gray>- <green>{channel}<gray> (whitelisted)"
+spoof-ch-blocked: "<gray>- <red>{channel}<gray> (blocked)"
+spoof-ch-not-whitelisted: "<gray>- <red>{channel}<gray> (not whitelisted)"
+spoof-ch-plain: "<gray>- <white>{channel}"
+spoof-brand-none: "<yellow>{player} has no client brand information."
+spoof-brand-blocked: "<aqua>Client brand for {player}: <red>{brand}<gray> (Blocked)"
+spoof-brand-ok: "<aqua>Client brand for {player}: <green>{brand}"
+spoof-brand-plain: "<aqua>Client brand for {player}: <white>{brand}"
+spoof-status-not-whitelisted: "<gray>Status: <red>Not in whitelist"
+spoof-status-blocked: "<gray>Status: <red>Blocked"
+spoof-status-in-whitelist: "<gray>Status: <green>In whitelist"
+spoof-status-allowed: "<gray>Status: <green>Allowed"
+
+# ======================================================================
+# SPOOF  /spoof help
+# ======================================================================
+spoof-help-title: "<aqua>=== Veneer spoof commands ==="
+spoof-help-channels: "<gray>/spoof channels \\<player> <white>- Show player's plugin channels"
+spoof-help-brand: "<gray>/spoof brand \\<player> <white>- Show player's client brand"
+spoof-help-check: "<gray>/spoof check [player|*] <white>- Check if player is spoofing"
+spoof-help-runcheck: "<gray>/spoof runcheck [player|*] <white>- Re-run checks on player(s)"
+spoof-help-blockedchannels: "<gray>/spoof blockedchannels <white>- Show blocked channel config"
+spoof-help-blockedbrands: "<gray>/spoof blockedbrands <white>- Show blocked brand config"
+spoof-help-help: "<gray>/spoof help <white>- Show this help message"
+
+# ======================================================================
+# VENEER  /veneer help, version, alerts
+# Placeholders: {label}, {version}, {latest}, {current}, {url}.
+# ======================================================================
+veneer-help-title: "{prefix}<gold>Veneer {version}</gold>"
+veneer-help-info: "{prefix}<gray>/{label} info \\<player></gray> <white>- client, mod scan and RPTrack data of a player</white>"
+veneer-help-alerts: "{prefix}<gray>/{label} alerts</gray> <white>- toggle your staff alerts</white>"
+veneer-help-reload: "{prefix}<gray>/{label} reload</gray> <white>- reload config.yml and the messages</white>"
+veneer-help-version: "{prefix}<gray>/{label} version</gray> <white>- running and latest release</white>"
+veneer-alerts-players-only: "{prefix}<red>Only players can toggle alerts.</red>"
+veneer-running: "{prefix}<gray>Running Veneer</gray> <white>{version}</white>"
+veneer-latest-checking: "{prefix}<gray>Latest release: checking, run this again in a moment.</gray>"
+veneer-latest-none: "{prefix}<gray>No release is published on GitHub yet.</gray>"
+veneer-update-available: "{prefix}<green>Version {latest} is available:</green> <aqua>{url}</aqua>"
+veneer-latest-ok: "{prefix}<green>You are on the latest release ({latest}).</green>"
+
+# ======================================================================
+# VENEER  /veneer info <player>
+# Placeholders: {player}, {offline}, {brand}, {type}, {channels}, {flags}, {group}, {when}, {count}, {result}, {packs}, {linked}.
+# The short 'words' (unknown, bedrock, none, clean) are put into the lines above.
+# ======================================================================
+veneer-info-usage: "{prefix}<red>Usage: /{label} info \\<player></red>"
+veneer-info-title: "{prefix}<gold>Veneer</gold> <gray>report for</gray> <white>{player}</white>{offline}"
+veneer-info-offline: " <gray>(offline)</gray>"
+veneer-info-client: "{prefix}<gray>Client:</gray> <white>{brand}</white> <gray>({type}, {channels} channels)</gray>"
+veneer-info-status: "{prefix}<gray>Status:</gray> <white>{flags}</white>"
+veneer-info-group: "{prefix}<gray>Group:</gray> <white>{group}</white>"
+veneer-scan-never: "{prefix}<gray>Mod scan:</gray> <white>never scanned</white>"
+veneer-scan-line: "{prefix}<gray>Mod scan:</gray> <white>{when}</white> <gray>-</gray> {result} <gray>({count} scans on record)</gray>"
+veneer-rp-none: "{prefix}<gray>RPTrack:</gray> <white>no fingerprint stored</white>"
+veneer-rp-line: "{prefix}<gray>RPTrack:</gray> <white>{packs} cached packs</white> <gray>- linked accounts:</gray> <white>{linked}</white>"
+veneer-unknown: "unknown"
+veneer-flag-bedrock: "bedrock"
+veneer-flag-spoof: "<red>flagged by spoof detection</red>"
+veneer-scan-clean: "<green>clean</green>"
+veneer-scan-found: "<red>{found}</red>"
+veneer-rp-linked-none: "none"
+
+# ======================================================================
+# RPTRACK  /rptrack and staff report
+# Placeholders: {label}, {player}, {mask}, {packs}, {linked}, {text}. {text} of rptrack-report is a technical line and stays English.
+# ======================================================================
+rptrack-disabled: "{prefix}<red>RPTrack is disabled (rptrack.enabled).</red>"
+rptrack-usage: "{prefix}<red>Usage: /{label} \\<player></red>"
+rptrack-none: "{prefix}<gray>No fingerprint stored for</gray> <white>{player}</white><gray>.</gray>"
+rptrack-cache: "{prefix}<white>{player}</white> <gray>cache:</gray> <white>{mask}</white> <gray>({packs} packs)</gray>"
+rptrack-linked: "{prefix}<gray>Linked accounts:</gray> <white>{linked}</white>"
+rptrack-report: "{prefix}<gray>[RPTrack]</gray> <white>{player}</white><gray>:</gray> {text}"
+
+# ======================================================================
+# STARTUP BANNER  (console, shown inside the frame)
+# Plain text, no tags. {ms}, {modules}, {version} (running, then latest when known). The logo itself is in the plugin code.
+# ======================================================================
+banner-loaded: "Loaded in {ms} ms!"
+banner-modules: "Modules: {modules}"
+banner-version: "Running version {version}"
+banner-author: "By: ReAndrew"
+banner-no-modules: "none"

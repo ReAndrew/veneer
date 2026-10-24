@@ -48,8 +48,36 @@ permissions:
   veneer.spoof.admin:
     description: Admin /spoof subcommands (check, blockedchannels, blockedbrands)
     default: op
-  veneer.spoof.bypass:
-    description: Bypass all spoof checks
+  veneer.bypass:
+    description: Skip every automatic check (spoof, mod scan, RPTrack), join and later
+    default: false
+    children:
+      veneer.bypass.spoof: true
+      veneer.bypass.hacks: true
+      veneer.bypass.rptrack: true
+  veneer.bypass.spoof:
+    description: Skip all spoof checks
+    default: false
+    children:
+      veneer.bypass.spoof.join: true
+  veneer.bypass.spoof.join:
+    description: Skip the spoof check on join only
+    default: false
+  veneer.bypass.hacks:
+    description: Skip the automatic mod scans (join, anticheat flag, spoof flag); /hackcheck still works
+    default: false
+    children:
+      veneer.bypass.hacks.join: true
+  veneer.bypass.hacks.join:
+    description: Skip the mod scan and language check on join only
+    default: false
+  veneer.bypass.rptrack:
+    description: Skip the RPTrack resource pack fingerprint
+    default: false
+    children:
+      veneer.bypass.rptrack.join: true
+  veneer.bypass.rptrack.join:
+    description: Skip the RPTrack fingerprint on join (it only runs on join)
     default: false
   veneer.hacks.check:
     description: Use /hackcheck

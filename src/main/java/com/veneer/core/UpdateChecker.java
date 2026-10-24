@@ -113,8 +113,7 @@ public final class UpdateChecker {
 
     private void notify(Player player, Status s) {
         if (!player.isOnline()) return;
-        player.sendMessage(plugin.messages().prefixed("<green>Veneer " + s.latest() + " is available</green> <gray>(running "
-                + s.current() + ")</gray> <aqua><click:open_url:'" + s.url() + "'>" + s.url() + "</click></aqua>"));
+        plugin.messages().send(player, "update-available", "latest", s.latest(), "current", s.current(), "url", s.url());
     }
 
     /** True when {@code latest} has a higher numeric version than {@code current} (1.10.0 &gt; 1.9.0). */

@@ -31,7 +31,7 @@ public class PlayerEventListener extends PacketListenerAbstract {
         Player player = (Player) event.getPlayer();
         
         // Skip if player has bypass permission
-        if (player.hasPermission("veneer.spoof.bypass")) return;
+        if (player.hasPermission("veneer.bypass.spoof")) return;
         
         // Handle plugin messages based on the packet type
         if (event.getPacketType() == PacketType.Play.Client.PLUGIN_MESSAGE) {
@@ -111,7 +111,7 @@ public class PlayerEventListener extends PacketListenerAbstract {
     public void onPlayerJoin(Player player) {
         
         // Skip if player has bypass permission
-        if (player.hasPermission("veneer.spoof.bypass")) return;
+        if (player.hasPermission("veneer.bypass.spoof.join")) return;
         
         // Make sure the profile exists (channels may have registered during the configuration phase)
         plugin.profile(player);

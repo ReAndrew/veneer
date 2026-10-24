@@ -1,10 +1,10 @@
 package com.veneer.spoof.commands;
 
 import com.veneer.VeneerPlugin;
+import com.veneer.core.Messages;
 import com.veneer.core.PlayerProfile;
 import com.veneer.spoof.managers.ConfigManager;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -27,6 +27,23 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         this.plugin = plugin;
     }
 
+    private Messages.Raw raw(String key) {
+        return plugin.messages().raw(key);
+    }
+
+    /** Sends the language-file message {@code key}; {@code pairs} are placeholder name and value. */
+    private void send(CommandSender sender, String key, Object... pairs) {
+        plugin.messages().send(sender, key, pairs);
+    }
+
+    private String plain(String key, Object... pairs) {
+        return plugin.messages().plain(key, pairs);
+    }
+
+    private Messages.Raw yesNo(boolean value) {
+        return raw(value ? "spoof-yes" : "spoof-no");
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (args.length == 0) {
@@ -38,7 +55,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         
         // Check permission
         if (!sender.hasPermission("veneer.spoof.use")) {
-            sender.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+            send(sender, "no-permission");
             return true;
         }
 
@@ -50,7 +67,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         // Command to show blocked channels
         if (subCommand.equals("blockedchannels")) {
             if (!sender.hasPermission("veneer.spoof.admin")) {
-                sender.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+                send(sender, "no-permission");
                 return true;
             }
             
@@ -61,7 +78,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         // Command to show blocked brands
         if (subCommand.equals("blockedbrands")) {
             if (!sender.hasPermission("veneer.spoof.admin")) {
-                sender.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+                send(sender, "no-permission");
                 return true;
             }
             
@@ -78,7 +95,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         // Handle check command
         if (subCommand.equals("check")) {
             if (!sender.hasPermission("veneer.spoof.admin")) {
-                sender.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+                send(sender, "no-permission");
                 return true;
             }
             
@@ -97,7 +114,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             
             Player target = Bukkit.getPlayer(playerName);
             if (target == null) {
-                sender.sendMessage(ChatColor.RED + "Player not found!");
+                send(sender, "player-not-found", "player", args.length > 1 ? args[1] : "");
                 return true;
             }
             
@@ -107,20 +124,20 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         
         // Commands that require a player argument
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.RED + "Usage: /" + label + " " + subCommand + " <player>");
+            send(sender, "spoof-usage", "label", label, "sub", subCommand);
             return true;
         }
         
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage(ChatColor.RED + "Player not found!");
+            send(sender, "player-not-found", "player", args.length > 1 ? args[1] : "");
             return true;
         }
         
         UUID targetUUID = target.getUniqueId();
         PlayerProfile data = plugin.profiles().get(targetUUID);
         if (data == null) {
-            sender.sendMessage(ChatColor.YELLOW + "No data available for this player.");
+            send(sender, "spoof-no-data");
             return true;
         }
         
@@ -133,7 +150,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 showBrand(sender, target);
                 break;
             default:
-                sender.sendMessage(ChatColor.RED + "Unknown subcommand: " + subCommand);
+                send(sender, "spoof-unknown-sub", "sub", subCommand);
                 showHelp(sender);
         }
         
@@ -142,48 +159,33 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     
     private void handleRunCheckCommand(CommandSender sender, String[] args) {
         if (!sender.hasPermission("veneer.spoof.admin")) {
-            sender.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+            send(sender, "no-permission");
             return;
         }
 
-        if (args.length < 2) {
-            // Run check for all online players
-            sender.sendMessage(ChatColor.AQUA + "Running check for all online players...");
+        if (args.length < 2 || args[1].equals("*")) {
+            send(sender, "spoof-run-all");
             int count = 0;
             for (Player player : Bukkit.getOnlinePlayers()) {
                 plugin.spoof().detection().checkPlayerAsync(player, false, true);
                 count++;
             }
-            sender.sendMessage(ChatColor.GREEN + "Check triggered for " + count + " players.");
-            sender.sendMessage(ChatColor.YELLOW + "Note: This only re-analyzes existing data, players might need to rejoin for fresh data.");
+            send(sender, "spoof-run-done", "count", count);
+            send(sender, "spoof-run-note");
             return;
         }
 
-        // Check specific player
         String playerName = args[1];
-        if (playerName.equals("*")) {
-            // Also run for all players if * is specified
-            sender.sendMessage(ChatColor.AQUA + "Running check for all online players...");
-            int count = 0;
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                plugin.spoof().detection().checkPlayerAsync(player, false, true);
-                count++;
-            }
-            sender.sendMessage(ChatColor.GREEN + "Check triggered for " + count + " players.");
-            sender.sendMessage(ChatColor.YELLOW + "Note: This only re-analyzes existing data, players might need to rejoin for fresh data.");
-            return;
-        }
-
         Player target = Bukkit.getPlayer(playerName);
         if (target == null) {
-            sender.sendMessage(ChatColor.RED + "Player not found!");
+            send(sender, "player-not-found", "player", args.length > 1 ? args[1] : "");
             return;
         }
 
-        sender.sendMessage(ChatColor.AQUA + "Running check for player " + target.getName() + "...");
+        send(sender, "spoof-run-player", "player", target.getName());
         plugin.spoof().detection().checkPlayerAsync(target, false, true);
-        sender.sendMessage(ChatColor.GREEN + "Check triggered for " + target.getName() + ".");
-        sender.sendMessage(ChatColor.YELLOW + "Note: This only re-analyzes existing data, players might need to rejoin for fresh data.");
+        send(sender, "spoof-run-player-done", "player", target.getName());
+        send(sender, "spoof-run-note");
     }
     
     private void showBlockedBrands(CommandSender sender) {
@@ -191,17 +193,16 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         boolean whitelistMode = plugin.spoof().config().isBrandWhitelistEnabled();
         List<String> blockedBrands = plugin.spoof().config().getBlockedBrands();
         
-        sender.sendMessage(ChatColor.AQUA + "=== Blocked Brands Configuration ===");
-        sender.sendMessage(ChatColor.GRAY + "Enabled: " + (enabled ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
-        sender.sendMessage(ChatColor.GRAY + "Match Type: " + ChatColor.WHITE + "Regex Pattern");
-        sender.sendMessage(ChatColor.GRAY + "Mode: " + (whitelistMode ? ChatColor.WHITE + "Whitelist" : ChatColor.WHITE + "Blacklist"));
-        
+        send(sender, "spoof-brands-title");
+        send(sender, "spoof-enabled", "value", yesNo(enabled));
+        send(sender, "spoof-match-type");
+        send(sender, "spoof-mode", "mode", raw(whitelistMode ? "spoof-mode-whitelist" : "spoof-mode-blacklist"));
+
         if (blockedBrands.isEmpty()) {
-            sender.sendMessage(ChatColor.YELLOW + "No brands are currently " + (whitelistMode ? "whitelisted" : "blocked") + ".");
+            send(sender, whitelistMode ? "spoof-brands-none-whitelisted" : "spoof-brands-none-blocked");
         } else {
-            sender.sendMessage(ChatColor.AQUA + (whitelistMode ? "Whitelisted" : "Blocked") + " Brands:");
-            blockedBrands.forEach(brand -> 
-                sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.WHITE + brand));
+            send(sender, whitelistMode ? "spoof-brands-list-whitelisted" : "spoof-brands-list-blocked");
+            blockedBrands.forEach(brand -> send(sender, "spoof-list-item", "value", brand));
         }
     }
     
@@ -210,27 +211,20 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
         List<String> blockedChannels = plugin.spoof().config().getBlockedChannels();
         
-        sender.sendMessage(ChatColor.AQUA + "=== Blocked Channels Configuration ===");
-        sender.sendMessage(ChatColor.GRAY + "Enabled: " + (enabled ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
-        sender.sendMessage(ChatColor.GRAY + "Match Type: " + ChatColor.WHITE + "Regex Pattern");
-        
-        String modeDisplay;
-        if (whitelistMode.equals("FALSE")) {
-            modeDisplay = "Blacklist";
-        } else if (whitelistMode.equals("SIMPLE")) {
-            modeDisplay = "Whitelist (Simple)";
-        } else {
-            modeDisplay = "Whitelist (Strict)";
-        }
-        sender.sendMessage(ChatColor.GRAY + "Mode: " + ChatColor.WHITE + modeDisplay);
-        
+        boolean blacklist = whitelistMode.equals("FALSE");
+        send(sender, "spoof-channels-title");
+        send(sender, "spoof-enabled", "value", yesNo(enabled));
+        send(sender, "spoof-match-type");
+
+        String modeKey = blacklist ? "spoof-mode-blacklist"
+                : whitelistMode.equals("SIMPLE") ? "spoof-mode-whitelist-simple" : "spoof-mode-whitelist-strict";
+        send(sender, "spoof-mode", "mode", raw(modeKey));
+
         if (blockedChannels.isEmpty()) {
-            sender.sendMessage(ChatColor.YELLOW + "No channels are currently " + 
-                (whitelistMode.equals("FALSE") ? "blocked" : "whitelisted") + ".");
+            send(sender, blacklist ? "spoof-channels-none-blocked" : "spoof-channels-none-whitelisted");
         } else {
-            sender.sendMessage(ChatColor.AQUA + (whitelistMode.equals("FALSE") ? "Blocked" : "Whitelisted") + " Channels:");
-            blockedChannels.forEach(channel -> 
-                sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.WHITE + channel));
+            send(sender, blacklist ? "spoof-channels-list-blocked" : "spoof-channels-list-whitelisted");
+            blockedChannels.forEach(channel -> send(sender, "spoof-list-item", "value", channel));
         }
     }
     
@@ -241,10 +235,10 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         
         if (brand == null) {
             if (!plugin.spoof().config().shouldBlockNonVanillaWithChannels()) {
-                sender.sendMessage(ChatColor.AQUA + target.getName() + ChatColor.YELLOW + " has no client brand information yet.");
+                send(sender, "spoof-no-brand-yet", "player", target.getName());
                 return;
             }
-            flagReasons.add("Non-vanilla client detected");
+            flagReasons.add(plain("spoof-reason-non-vanilla"));
         }
         
         PlayerProfile data = plugin.profiles().get(target.getUniqueId());
@@ -253,25 +247,25 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         
         // Display channels first regardless of spoof status
         if (hasChannels) {
-            sender.sendMessage(ChatColor.GRAY + "Channels:");
-            data.getChannels().forEach(channel -> sender.sendMessage(ChatColor.WHITE + channel));
+            send(sender, "spoof-channels-header");
+            data.getChannels().forEach(channel -> send(sender, "spoof-channel-line", "channel", channel));
         }
         
         // Determine all reasons for flagging
         if (isSpoofing) {
             // Check for vanilla client with channels
             if (claimsVanilla && hasChannels && plugin.spoof().config().isVanillaCheckEnabled()) {
-                flagReasons.add("Vanilla client with plugin channels");
+                flagReasons.add(plain("spoof-reason-vanilla-channels"));
             }
             
             // Check for Geyser spoofing
             if (plugin.spoof().isSpoofingGeyser(target)) {
-                flagReasons.add("Spoofing Geyser client");
+                flagReasons.add(plain("spoof-reason-geyser"));
             }
             
             // Check for strict non-vanilla
             if (plugin.spoof().config().shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
-                flagReasons.add("Non-vanilla client detected");
+                flagReasons.add(plain("spoof-reason-non-vanilla"));
             }
             
             // Check for blocked brand
@@ -280,9 +274,9 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 
                 if (brandBlocked) {
                     if (plugin.spoof().config().isBrandWhitelistEnabled()) {
-                        flagReasons.add("Client brand is not in whitelist");
+                        flagReasons.add(plain("spoof-reason-brand-not-whitelisted"));
                     } else {
-                        flagReasons.add("Using blocked client brand");
+                        flagReasons.add(plain("spoof-reason-brand-blocked"));
                     }
                 }
             }
@@ -323,19 +317,19 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                             }
                             
                             if (!missingChannels.isEmpty()) {
-                                flagReasons.add("Missing required channels: " + String.join(", ", missingChannels));
+                                flagReasons.add(plain("spoof-reason-missing-channels", "channels", String.join(", ", missingChannels)));
                             } else {
-                                flagReasons.add("Channels don't match whitelist requirements");
+                                flagReasons.add(plain("spoof-reason-whitelist-mismatch"));
                             }
                         } else {
-                            flagReasons.add("No whitelisted channels detected");
+                            flagReasons.add(plain("spoof-reason-no-whitelisted"));
                         }
                     }
                 } else {
                     // Blacklist mode - check for blocked channels
                     String blockedChannel = plugin.spoof().detection().findBlockedChannel(filtered);
                     if (blockedChannel != null) {
-                        flagReasons.add("Using blocked channel: " + blockedChannel);
+                        flagReasons.add(plain("spoof-reason-blocked-channel", "channel", blockedChannel));
                     }
                 }
             }
@@ -374,28 +368,28 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     }
                     
                     if (!missingRequiredChannels.isEmpty()) {
-                        flagReasons.add("Missing required channels for " + matchedBrand + ": " + String.join(", ", missingRequiredChannels));
+                        flagReasons.add(plain("spoof-reason-missing-brand-channels", "brand", matchedBrand, "channels", String.join(", ", missingRequiredChannels)));
                     }
                 }
             }
             
             // Add default reason if none found
             if (flagReasons.isEmpty()) {
-                flagReasons.add("Unknown reason (check configuration)");
+                flagReasons.add(plain("spoof-reason-unknown"));
             }
         }
         
         // Display player status and brand information after channels
         if (isSpoofing) {
-            sender.sendMessage(ChatColor.AQUA + target.getName() + ChatColor.RED + " has been flagged!");
+            send(sender, "spoof-flagged", "player", target.getName());
             
             // Show client brand first
-            sender.sendMessage(ChatColor.GRAY + "Client brand: " + ChatColor.WHITE + brand);
+            send(sender, "spoof-client-brand", "brand", String.valueOf(brand));
             
             // Show all violations
-            sender.sendMessage(ChatColor.RED + "Violations detected (" + flagReasons.size() + "):");
+            send(sender, "spoof-violations", "count", flagReasons.size());
             for (String reason : flagReasons) {
-                sender.sendMessage(ChatColor.RED + "• " + reason);
+                send(sender, "spoof-violation-item", "reason", reason);
             }
             
             // Check if the brand is blocked/not whitelisted and display with appropriate color
@@ -403,13 +397,13 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
                 
                 if (brandBlocked) {
-                    sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.RED + "Blocked");
+                    send(sender, "spoof-brand-status-blocked");
                 } else {
-                    sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.GREEN + "Allowed");
+                    send(sender, "spoof-brand-status-allowed");
                 }
             }
             
-            sender.sendMessage(ChatColor.GRAY + "Has channels: " + (hasChannels ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
+            send(sender, "spoof-has-channels", "value", yesNo(hasChannels));
             
             // Channel whitelist/blacklist checks
             if (hasChannels && plugin.spoof().config().isBlockedChannelsEnabled()) {
@@ -417,19 +411,18 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 
                 if (!whitelistMode.equals("FALSE")) {
                     // Whitelist mode
-                    sender.sendMessage(ChatColor.GRAY + "Channel whitelist mode: " + 
-                        ChatColor.WHITE + (whitelistMode.equals("STRICT") ? "Strict" : "Simple"));
-                    
-                    sender.sendMessage(ChatColor.GRAY + "Channel whitelist status:");
+                    send(sender, "spoof-whitelist-mode", "mode", raw(whitelistMode.equals("STRICT") ? "spoof-mode-strict" : "spoof-mode-simple"));
+
+                    send(sender, "spoof-whitelist-status");
                     
                     // First, list all player channels and if they're whitelisted
                     for (String channel : data.getChannels()) {
                         boolean whitelisted = plugin.spoof().config().matchesChannelPattern(channel);
                         
                         if (whitelisted) {
-                            sender.sendMessage(ChatColor.GREEN + channel);
+                            send(sender, "spoof-channel-ok", "channel", channel);
                         } else {
-                            sender.sendMessage(ChatColor.RED + channel + ChatColor.GRAY + " (not in whitelist)");
+                            send(sender, "spoof-channel-not-whitelisted", "channel", channel);
                         }
                     }
                     
@@ -460,9 +453,9 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                         }
                         
                         if (!missingWhitelistedChannels.isEmpty()) {
-                            sender.sendMessage(ChatColor.GRAY + "Missing required channels:");
+                            send(sender, "spoof-missing-header");
                             for (String missingChannel : missingWhitelistedChannels) {
-                                sender.sendMessage(ChatColor.RED + missingChannel);
+                                send(sender, "spoof-channel-bad", "channel", missingChannel);
                             }
                         }
                     }
@@ -480,69 +473,62 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                     
                     // Display all blocked channels under one header
                     if (!blockedChannels.isEmpty()) {
-                        sender.sendMessage(ChatColor.GRAY + "Blocked channel detected:");
+                        send(sender, "spoof-blocked-header");
                         for (String channel : blockedChannels) {
-                            sender.sendMessage(ChatColor.RED + channel);
+                            send(sender, "spoof-channel-bad", "channel", channel);
                         }
                     }
                 }
             }
         } else {
-            sender.sendMessage(ChatColor.AQUA + target.getName() + ChatColor.GREEN + " does not appear to be spoofing.");
+            send(sender, "spoof-not-spoofing", "player", target.getName());
             
             // Show client brand
-            sender.sendMessage(ChatColor.GRAY + "Client brand: " + ChatColor.WHITE + brand);
+            send(sender, "spoof-client-brand", "brand", String.valueOf(brand));
             
             // Check if the brand is blocked/not whitelisted and display with appropriate color
             if (plugin.spoof().config().isBlockedBrandsEnabled()) {
                 boolean brandBlocked = plugin.spoof().config().isBrandBlocked(brand);
                 
                 if (brandBlocked) {
-                    sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.RED + "Blocked" + 
-                        ChatColor.GRAY + " (but not counting as flag)");
+                    send(sender, "spoof-brand-status-blocked-noflag");
                 } else {
-                    sender.sendMessage(ChatColor.GRAY + "Brand status: " + ChatColor.GREEN + "Allowed");
+                    send(sender, "spoof-brand-status-allowed");
                 }
             }
             
-            sender.sendMessage(ChatColor.GRAY + "Has channels: " + (hasChannels ? ChatColor.GREEN + "Yes" : ChatColor.RED + "No"));
+            send(sender, "spoof-has-channels", "value", yesNo(hasChannels));
         }
     }
     
     private void checkAllPlayers(CommandSender sender) {
-        sender.sendMessage(ChatColor.AQUA + "=== Players Currently Flagging ===");
+        send(sender, "spoof-flagging-title");
         
         boolean foundSpoofing = false;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (plugin.spoof().isPlayerSpoofing(player)) {
                 foundSpoofing = true;
                 String brand = plugin.spoof().getClientBrand(player);
-                sender.sendMessage(ChatColor.RED + player.getName() + ChatColor.GRAY + 
-                    " - Brand: " + ChatColor.WHITE + (brand != null ? brand : "unknown"));
+                send(sender, "spoof-flagging-line", "player", player.getName(),
+                        "brand", brand != null ? brand : plain("spoof-brand-unknown"));
             }
         }
         
         if (!foundSpoofing) {
-            sender.sendMessage(ChatColor.GREEN + "No players are currently detected as spoofing.");
+            send(sender, "spoof-none-flagging");
         }
     }
     
     private void showHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.AQUA + "=== Veneer spoof commands ===");
-        sender.sendMessage(ChatColor.GRAY + "/spoof channels <player> " + ChatColor.WHITE + "- Show player's plugin channels");
-        sender.sendMessage(ChatColor.GRAY + "/spoof brand <player> " + ChatColor.WHITE + "- Show player's client brand");
-        sender.sendMessage(ChatColor.GRAY + "/spoof check [player|*] " + ChatColor.WHITE + "- Check if player is spoofing");
-        sender.sendMessage(ChatColor.GRAY + "/spoof runcheck [player|*] " + ChatColor.WHITE + "- Re-run checks on player(s)");
-        sender.sendMessage(ChatColor.GRAY + "/spoof blockedchannels " + ChatColor.WHITE + "- Show blocked channel config");
-        sender.sendMessage(ChatColor.GRAY + "/spoof blockedbrands " + ChatColor.WHITE + "- Show blocked brand config");
-        sender.sendMessage(ChatColor.GRAY + "/spoof help " + ChatColor.WHITE + "- Show this help message");
+        for (String key : List.of("title", "channels", "brand", "check", "runcheck", "blockedchannels", "blockedbrands", "help"))
+            send(sender, "spoof-help-" + key);
     }
-    
+
     private void showChannels(CommandSender sender, Player target, PlayerProfile data) {
-        sender.sendMessage(ChatColor.AQUA + "Channels for " + target.getName() + ":");
+        send(sender, "spoof-channels-for", "player", target.getName());
         
         if (data.getChannels().isEmpty()) {
-            sender.sendMessage(ChatColor.GRAY + "No channels registered.");
+            send(sender, "spoof-channels-empty");
         } else {
             String whitelistMode = plugin.spoof().config().getChannelWhitelistMode();
             boolean isWhitelist = !whitelistMode.equals("FALSE");
@@ -552,15 +538,15 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 
                 if (isListed) {
                     if (isWhitelist) {
-                        sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + channel + ChatColor.GRAY + " (whitelisted)");
+                        send(sender, "spoof-ch-whitelisted", "channel", channel);
                     } else {
-                        sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + channel + ChatColor.GRAY + " (blocked)");
+                        send(sender, "spoof-ch-blocked", "channel", channel);
                     }
                 } else {
                     if (isWhitelist) {
-                        sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + channel + ChatColor.GRAY + " (not whitelisted)");
+                        send(sender, "spoof-ch-not-whitelisted", "channel", channel);
                     } else {
-                        sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.WHITE + channel);
+                        send(sender, "spoof-ch-plain", "channel", channel);
                     }
                 }
             });
@@ -570,7 +556,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     private void showBrand(CommandSender sender, Player target) {
         String brand = plugin.spoof().getClientBrand(target);
         if (brand == null || brand.isEmpty()) {
-            sender.sendMessage(ChatColor.YELLOW + target.getName() + " has no client brand information.");
+            send(sender, "spoof-brand-none", "player", target.getName());
         } else {
             // Check if the brand is in the whitelist/blacklist and display with appropriate color
             if (plugin.spoof().config().isBlockedBrandsEnabled()) {
@@ -578,27 +564,24 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 boolean whitelistMode = plugin.spoof().config().isBrandWhitelistEnabled();
                 
                 if (brandBlocked) {
-                    sender.sendMessage(ChatColor.AQUA + "Client brand for " + target.getName() + ": " + 
-                        ChatColor.RED + brand + ChatColor.GRAY + " (Blocked)");
+                    send(sender, "spoof-brand-blocked", "player", target.getName(), "brand", brand);
                     
                     if (whitelistMode) {
-                        sender.sendMessage(ChatColor.GRAY + "Status: " + ChatColor.RED + "Not in whitelist");
+                        send(sender, "spoof-status-not-whitelisted");
                     } else {
-                        sender.sendMessage(ChatColor.GRAY + "Status: " + ChatColor.RED + "Blocked");
+                        send(sender, "spoof-status-blocked");
                     }
                 } else {
-                    sender.sendMessage(ChatColor.AQUA + "Client brand for " + target.getName() + ": " + 
-                        ChatColor.GREEN + brand);
+                    send(sender, "spoof-brand-ok", "player", target.getName(), "brand", brand);
                     
                     if (whitelistMode) {
-                        sender.sendMessage(ChatColor.GRAY + "Status: " + ChatColor.GREEN + "In whitelist");
+                        send(sender, "spoof-status-in-whitelist");
                     } else {
-                        sender.sendMessage(ChatColor.GRAY + "Status: " + ChatColor.GREEN + "Allowed");
+                        send(sender, "spoof-status-allowed");
                     }
                 }
             } else {
-                sender.sendMessage(ChatColor.AQUA + "Client brand for " + target.getName() + ": " + 
-                    ChatColor.WHITE + brand);
+                send(sender, "spoof-brand-plain", "player", target.getName(), "brand", brand);
             }
         }
     }
