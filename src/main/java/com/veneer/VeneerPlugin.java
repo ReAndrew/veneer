@@ -121,9 +121,20 @@ public class VeneerPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        for (int i = modules.size() - 1; i >= 0; i--) modules.get(i).shutdown();
+        // Each step on its own: an exception in one module must not leave the others running or the database open
+        for (int i = modules.size() - 1; i >= 0; i--) {
+            try {
+                modules.get(i).shutdown();
+            } catch (Throwable t) {
+                getLogger().warning("Module '" + modules.get(i).id() + "' failed to shut down: " + t);
+            }
+        }
         profiles.clear();
-        if (database != null) database.close();
+        try {
+            if (database != null) database.close();
+        } catch (Throwable t) {
+            getLogger().warning("Database failed to close: " + t);
+        }
         getLogger().info("Veneer disabled.");
     }
 

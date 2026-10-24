@@ -450,6 +450,16 @@ hacks:
     bind: "127.0.0.1"
     port: 8080
     token-expire-minutes: 10
+    # Account graph: addresses accounts join from are stored to link accounts that share one
+    links:
+      # Days to keep an address after the account last used it (0 = forever)
+      retention-days: 90
+      # An address shared by more accounts than this is ignored (shared networks, mobile data)
+      max-accounts-per-ip: 8
+    # Scan history (mod scans and language checks with their results)
+    history:
+      # Days to keep a scan (0 = forever)
+      retention-days: 180
 
   # Discord webhook for mod scan results
   # Placeholders: &name& = player, &checker& = checker, &reason& = reason, &hacks& = hacks list, &results& = results
@@ -718,11 +728,25 @@ hacks:
     retry-on-timeout: true
     # Delay between signs when checking multiple hacks (ticks)
     between-sign-ticks: 5
+    # Oldest client version (the protocol the server sees, through Via too) that is scanned by mod and language
+    # checks. Tested: 1.17 and newer answer; with 1.16.5 and older the probe sign never shows up (ViaBackwards
+    # cannot send blocks below y=0 to them), the check times out, and on 1.12.2 the sign window stays open.
+    # Needs the spoof module (PacketEvents) to know the version; without it every client is scanned.
+    min-client-version: "1.17"
 
   language-check:
     auto-check-on-join:
       enabled: false
       only-first-join: false
+
+    # Real client version: two more lines on the language sign show which game version the client really is,
+    # and that is compared with the protocol version it connects with. A client on 1.21.2+ posing as 1.21.1 or
+    # older (or the other way round), as ViaFabricPlus or ViaProxy do, raises a "version-mismatch" alert.
+    # Works in every language for the 1.21.1 / 1.21.2 boundary; English clients also show 1.20.4 / 1.20.5.
+    version-check:
+      enabled: true
+      # Console command on a mismatch. Placeholders: %player%, %real% (e.g. "<=1.21.1"), %claimed% (e.g. "1.21.11")
+      command-if-mismatch: ""
 
     discord:
       enabled: false
@@ -733,57 +757,153 @@ hacks:
 
     timeout-ticks: 100
 
+    # What the client shows for the key.forward translation, per language (from the game's own language files,
+    # 1.21.1 and 1.21.11). Several texts for one language are separated by "|": English changed from
+    # "Walk Forwards" (up to 1.21.1) to "Walk Forward" (1.21.4). Languages that share a text are all reported.
     languages:
-      en_us: "Walk Forward"
-      lol_cat: "Walk Forwardz"
-      it_it: "Cammina in avanti"
-      fr_fr: "Avancer"
-      de_de: "Vorwärts"
-      es_es: "Caminar hacia delante"
-      pt: "Andar em frente"
-      ru_ru: "Идти вперёд"
-      zh_cn: "向前走"
-      zh_tw: "向前走"
-      ja_jp: "前に歩く"
-      ko_kr: "앞으로 걷기"
-      pl_pl: "Chód do przodu"
-      nl_nl: "Vooruit lopen"
-      tr_tr: "İleri yürü"
-      cs_cz: "Chůze dopředu"
-      sv_se: "Gå framåt"
-      da_dk: "Gå frem"
-      nb_no: "Gå fremover"
-      fi_fi: "Kävele eteenpäin"
-      hu_hu: "Előre séta"
-      ro_ro: "Mergi înainte"
-      uk_ua: "Іти вперед"
-      bg_bg: "Върви напред"
-      hr_hr: "Hodaj naprijed"
-      sk_sk: "Chôdza dopredu"
-      sl_si: "Hoja naprej"
-      lt_lt: "Eiti į priekį"
-      lv_lv: "Iet uz priekšu"
-      et_ee: "Kõnni edasi"
-      el_gr: "Περπάτα μπροστά"
-      ar_sa: "تمشي للأمام"
-      he_il: "ללכת קדימה"
-      th_th: "เดินไปข้างหน้า"
-      vi_vn: "Đi về phía trước"
-      id_id: "Berjalan ke depan"
-      ms_my: "Berjalan ke hadapan"
-      ca_es: "Caminar endavant"
-      af_za: "Loop vorentoe"
-      is_is: "Ganga áfram"
-      sr_rs: "Ходање напред"
-      mk_mk: "Оди напред"
-      be_by: "Ісці наперад"
-      az_az: "İrəli get"
-      ka_ge: "წინ გადი"
-      hy_am: "Գնա առաջ"
-      sq_al: "Ec përpara"
+      en_us: "Walk Forward|Walk Forwards"
+      af_za: "Loop Vorentoe"
+      ar_sa: "السير الى الامام"
+      ast_es: "Caminar p'alantre"
+      az_az: "İrəli Getmək"
+      ba_ru: "Алға"
+      bar: "Vorwärts"
+      be_by: "Уперад"
+      be_latn: "Upierad"
+      bg_bg: "Вървене напред"
+      br_fr: "Mont war-raok"
+      brb: "Verèùt lowpe"
       bs_ba: "Hodaj naprijed"
-      cy_gb: "Cerdded ymlaen"
-      ga_ie: "Siúil ar aghaidh"
+      ca_es: "Caminar endavant"
+      cs_cz: "Chůze dopředu"
+      cv_cu: "Малалла"
+      cy_gb: "Cerdded Ymlaen"
+      da_dk: "Gå fremad"
+      de_at: "Vorwärts"
+      de_ch: "Vorwärts"
+      de_de: "Vorwärts"
+      el_gr: "Βάδισμα Μπροστά"
+      en_au: "Walk Forwards"
+      en_ca: "Walk Forwards"
+      en_gb: "Walk Forwards"
+      en_nz: "Walk Forwards"
+      en_pt: "Hop ahead"
+      en_ud: "spɹɐʍɹoℲ ʞꞁɐM"
+      enp: "Walk Forward"
+      enws: "Stride Onwards"
+      eo_uy: "Paŝi antaŭen"
+      es_ar: "Caminar hacia delante"
+      es_cl: "Caminar hacia delante"
+      es_ec: "Caminar hacia delante"
+      es_es: "Caminar hacia delante"
+      es_mx: "Caminar hacia delante"
+      es_uy: "Caminar hacia delante"
+      es_ve: "Caminar hacia delante"
+      esan: "Caminâh p'alante"
+      et_ee: "Kõnni edasi"
+      eu_es: "Aurrera ibili"
+      fa_ir: "راه رفتن به جلو"
+      fi_fi: "Kävele eteenpäin"
+      fil_ph: "Lumakad na Pasulong"
+      fo_fo: "Gang frameftir"
+      fr_ca: "Avancer"
+      fr_ch: "Avancer"
+      fr_fr: "Avancer"
+      fra_de: "Vorwärdds"
+      fur_it: "Cjaminâ indenant"
+      fy_nl: "Foarút rinne"
+      ga_ie: "Siúl ar aghaidh"
+      gd_gb: "Coisich an comhair do bheòil"
+      gl_es: "Camiñar cara adiante"
+      go_fr: "Avancer"
+      got_de: "𐍈𐌰𐍂𐌱𐍉 𐍆𐌰𐌿𐍂"
+      hal_ua: "Вперід"
+      haw_us: "Neʻemua"
+      he_il: "הליכה קדימה"
+      hi_in: "आगे चलना"
+      hn_no: "Gakk framleides"
+      hr_hr: "Naprijed"
+      hu_hu: "Gyaloglás előre"
+      hy_am: "Քայլել առաջ"
+      id_id: "Maju"
+      ig_ng: "Gaanụ n’iru"
+      io_en: "Marchar adelante"
+      is_is: "Labba áfram"
+      isv: "Idti vprěd"
+      it_it: "Cammina in avanti"
+      ja_jp: "前進"
+      jbo_en: "crane"
+      ka_ge: "წინ სიარული"
+      kk_kz: "Алға"
+      kn_in: "ಮುಂದೆ ನಡೆಯಿರಿ"
+      ko_kr: "앞으로 걷기"
+      ksh: "Vörwärts"
+      kw_gb: "Kerdhes Yn-Rag"
+      ky_kg: "Алга"
+      la_la: "Ambula prorsum"
+      lb_lu: "Vijenzeg"
+      li_li: "Veuroet loupen"
+      lmo: "Camina inanz"
+      lo_la: "ຍ່າງໄປໜ້າ"
+      lol_us: "Walk Forwardz"
+      lt_lt: "Eiti pirmyn"
+      lv_lv: "Iet uz priekšu"
+      lzh: "進"
+      mk_mk: "Движење нанапред"
+      mn_mn: "Урагшаа алхах"
+      ms_my: "Jalan Ke Hadapan"
+      mt_mt: "Imxi 'l Quddiem"
+      nah: "Xinehnemi xitlāwak"
+      nds_de: "Vüörwes gaon"
+      nl_be: "Voorwaarts Lopen"
+      nl_nl: "Vooruit"
+      nn_no: "Gå framover"
+      no_no: "Gå fremover"
+      oc_fr: "Caminar davant"
+      ovd: "Wavel framyvyr"
+      pl_pl: "Idź do przodu"
+      pls: "Ditaun"
+      pt_br: "Andar em frente"
+      pt_pt: "Andar em frente"
+      qcb_es: "Caminar pa lanti"
+      qid: "Madjoe"
+      qya_aa: "Menë ompa"
+      ro_ro: "Mers înainte"
+      rpr: "Вперёдъ"
+      ru_ru: "Вперёд"
+      ry_ua: "Ити вперед"
+      sah_sah: "Инники"
+      se_no: "Vázzit ovddas guvlui"
+      sk_sk: "Ísť dopredu"
+      sl_si: "Hodi naprej"
+      so_so: "Weeraryahanada socda"
+      sq_al: "Ecni përpara"
+      sr_cs: "Hodaj napred"
+      sr_sp: "Ходај напред"
+      sv_se: "Gå framåt"
+      sxu: "Forwärds"
+      szl: "Idź ku przodku"
+      ta_in: "முன்னோக்கி நடக்க"
+      th_th: "เดินไปข้างหน้า"
+      tl_ph: "Lumakad na Pasulong"
+      tlh_aa: "Forwards yIt"
+      tok: "o tawa sinpin"
+      tr_tr: "İleri Yürüme"
+      tt_ru: "Алга"
+      tzo_mx: "Xanavan ta ba be"
+      uk_ua: "Іти вперед"
+      uz_uz: "Oldinga yurish"
+      val_es: "Caminar avant"
+      vec_it: "Camina inansi"
+      vi_vn: "Tiến lên phía trước"
+      vp_vl: "Yalaka fura"
+      vro: "Kõnniq edesi"
+      yi_de: "פֿארווערטס גיין"
+      yo_ng: "Lọ siwaju"
+      zh_cn: "向前移动"
+      zh_hk: "向前移動"
+      zh_tw: "前進"
+      zlm_arab: "جالن کهادڤن"
 
 # RPTrack: resource-pack cache fingerprint (https://alaggydev.github.io/posts/cytooxien/).
 # Links accounts/IPs of the same Minecraft installation via its pack download cache.

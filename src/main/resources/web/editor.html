@@ -22,6 +22,8 @@
         .player-badge{display:flex;align-items:center;gap:8px;color:var(--text2);font-size:13px;margin-left:8px}
         .player-badge img{border-radius:4px;image-rendering:pixelated;width:24px;height:24px}
         .layout{display:grid;grid-template-columns:240px 1fr 260px;flex:1;overflow:hidden}
+        .layout.wide{grid-template-columns:1fr}
+        .layout.wide > .panel{display:none}
         .panel{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
         .panel-right{border-right:none;border-left:1px solid var(--border)}
         .panel-title{padding:12px 16px 10px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -86,13 +88,34 @@
         .toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--green);color:var(--green);padding:10px 16px;border-radius:var(--radius);font-size:13px;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none}
         .toast.show{opacity:1}
         .error-msg{color:var(--red);font-size:12px;padding:8px 0}
-    </style>
+        .graph-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+        .graph-bar input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 10px;font-size:13px;font-family:var(--font);outline:none}
+        .graph-bar label{color:var(--text2);font-size:12px;display:flex;gap:4px;align-items:center}
+        .graph-box{height:calc(100vh - 150px);min-height:360px;border:1px solid var(--border);border-radius:var(--radius);background:#05080d;position:relative;overflow:hidden}
+        .graph-info{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--text2);display:flex;gap:16px;align-items:center}
+        .graph-info .legend{font-size:11px}
+        .legend .sq{display:inline-block;width:10px;height:10px;border:3px solid;border-radius:2px;margin:0 4px 0 12px;vertical-align:-1px}
+        .legend i{display:inline-block;width:16px;border-top:3px solid;margin:0 4px 0 12px;vertical-align:3px}
+        .dbg-log{position:absolute;left:10px;top:10px;width:520px;max-height:260px;overflow:auto;margin:0;padding:8px 10px;background:#0d1117e6;border:1px solid var(--border);border-radius:var(--radius);color:#7ee787;font:11px/1.45 monospace;z-index:6;white-space:pre-wrap;pointer-events:none}
+        .graph-info{z-index:3}
+        .node-card{position:absolute;top:12px;right:12px;width:270px;max-height:calc(100% - 24px);overflow-y:auto;background:#161b22f2;border:1px solid var(--border);border-radius:var(--radius);padding:14px;z-index:5;font-size:12px}
+        .node-card h3{font-size:16px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center}
+        .node-card h3 button{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px}
+        .node-card h4{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:12px 0 5px}
+        .node-card .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)}
+        .node-card .row span:last-child{color:var(--text2);white-space:nowrap}
+        .node-card .alt{cursor:pointer}.node-card .alt:hover{color:var(--blue)}
+        .node-card .bits{font-family:monospace;letter-spacing:1px;color:var(--text)}
+      .no-links .links-btn, .no-scan .run-btn { display: none; }
+</style>
 </head>
 <body>
 <header>
-    <span class="logo">Check<span>Hacks</span> Editor</span>
+    <span class="logo">Vene<span>er</span> Panel</span>
     <div class="header-spacer"></div>
     <div class="player-badge" id="player-badge"></div>
+    <button class="home-btn" onclick="showMods()">☢ Mods detected</button>
+    <button class="home-btn links-btn" onclick="showLinks()">⚯ Links</button>
     <button class="home-btn" onclick="showHome()">⌂ Home</button>
 </header>
 <div class="layout">
@@ -115,6 +138,8 @@
     </aside>
 </div>
 <div class="toast" id="toast"></div>
+<script src="/web/three.min.js"></script>
+<script src="/web/3d-force-graph.min.js"></script>
 <script>
     const token = new URLSearchParams(location.search).get('token');
 
@@ -175,6 +200,10 @@
     async function init() {
       try {
         const info = await apiFetch('validate');
+        // The server refuses what the token has no right to; hide those controls so they are not offered
+        const perms = String(info.perms || '').split(',');
+        document.body.classList.toggle('no-links', !perms.includes('links'));
+        document.body.classList.toggle('no-scan', !perms.includes('scan'));
         document.getElementById('player-badge').innerHTML =
           '<img src="' + headUrl(info.player_uuid) + '" onerror="this.style.visibility=\'hidden\'" alt=""> ' + esc(info.player_name);
       } catch(e) {
@@ -189,7 +218,342 @@
       setInterval(loadRecentScans, 15000);
     }
 
+
+    let graph3d = null, graphRaf = 0;
+
+    // Stops the graph completely: our label loop, the library's render loop, GPU buffers and the WebGL context.
+    // Without this every rebuild (filter toggle) and every tab switch leaves a live renderer behind, and the
+    // browser starts dropping contexts after about 16 of them.
+    function stopGraph() {
+      if (graphRaf) cancelAnimationFrame(graphRaf);
+      graphRaf = 0;
+      if (!graph3d) return;
+      const g = graph3d;
+      graph3d = null;
+      try {
+        g.scene().traverse(o => {
+          if (o.geometry) o.geometry.dispose();
+          [].concat(o.material || []).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+        });
+        g._destructor();
+        const r = g.renderer();
+        r.dispose();
+        r.forceContextLoss();
+        const c = g.controls();
+        if (c && c.dispose) c.dispose();
+      } catch (e) { console.warn('[links] stopGraph', e); }
+    }
+
+    // Cube with the player's skin on it: six faces cut from the 64x64 skin, hat layer drawn over the head layer
+    const FACES = [ // BoxGeometry order +x -x +y -y +z -z (player's left, right, top, bottom, front, back)
+      [16, 8], [0, 8], [8, 0], [16, 0], [8, 8], [24, 8]
+    ];
+    // Text as a 3D sprite: always faces the camera, shrinks with distance, and heads in front hide it
+    function textSprite(text, height, colour) {
+      const c = document.createElement('canvas'), g = c.getContext('2d');
+      const font = '600 48px system-ui, -apple-system, Segoe UI, sans-serif';
+      g.font = font;
+      c.width = Math.ceil(g.measureText(text).width) + 20; c.height = 64;
+      g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineJoin = 'round';
+      g.strokeText(text, c.width / 2, 33);
+      g.fillStyle = '#ffffff'; g.fillText(text, c.width / 2, 33);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: t, color: colour, transparent: true, depthWrite: false}));
+      sprite.scale.set(height * c.width / c.height, height, 1);
+      sprite.raycast = () => {};
+      return sprite;
+    }
+
+    function skinCube(n, size) {
+      const edge = size, colour = n.detected ? 0xf85149 : 0x4493f8;
+      const group = new THREE.Group();
+      const canvases = FACES.map(() => { const c = document.createElement('canvas'); c.width = c.height = 8; return c; });
+      const mats = canvases.map(c => {
+        const t = new THREE.CanvasTexture(c);
+        t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+        t.colorSpace = THREE.SRGBColorSpace;
+        return new THREE.MeshBasicMaterial({map: t, color: n.skin ? 0xffffff : colour});
+      });
+      if (n.skin) {
+        const img = new Image();
+        img.onload = () => {
+          // Like the game: a hat area with no transparent pixel belongs to a legacy skin and is not drawn
+          const probe = document.createElement('canvas'); probe.width = 32; probe.height = 16;
+          const pg = probe.getContext('2d'); pg.drawImage(img, 32, 0, 32, 16, 0, 0, 32, 16);
+          const px = pg.getImageData(0, 0, 32, 16).data;
+          let hat = false; for (let i = 3; i < px.length; i += 4) if (px[i] < 128) { hat = true; break; }
+          canvases.forEach((c, i) => {
+            const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+            g.drawImage(img, FACES[i][0], FACES[i][1], 8, 8, 0, 0, 8, 8);
+            if (hat) g.drawImage(img, FACES[i][0] + 32, FACES[i][1], 8, 8, 0, 0, 8, 8);
+            mats[i].map.needsUpdate = true;
+          });
+        };
+        img.src = 'data:image/png;base64,' + n.skin;
+      }
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(edge, edge, edge), mats);
+      group.add(cube);
+      // The library turns whichever mesh the pointer hit when dragging with the right button. An invisible
+      // twin takes the hits instead, so the visible head and its outline are never turned by the mouse.
+      cube.raycast = () => {};
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(edge, edge, edge), new THREE.MeshBasicMaterial({visible: false}));
+      group.add(hit);
+      n._hit = hit;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(edge * 1.12, edge * 1.12, edge * 1.12),
+        new THREE.MeshBasicMaterial({color: colour, side: THREE.BackSide}));
+      frame.raycast = () => {};
+      group.add(frame);
+      // The name hangs under the head on screen: the sprite sits at the head's centre and its anchor is moved
+      // up by the head's half-diagonal, which works from any camera angle
+      const label = textSprite(n.name, Math.max(7, edge * .75), 0xc9d1d9);
+      label.center.set(.5, 1 + edge * 1.05 / label.scale.y);
+      group.add(label);
+      n._label = label;
+      n._frame = frame;
+      n._edge = size;
+      n._cube = cube;
+      return group;
+    }
+
+    async function showMods() {
+      document.querySelector('.layout').classList.remove('wide');
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading">Loading...</div>';
+      let mods;
+      try { mods = await apiFetch('mods'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      if (!mods.length) {
+        main.innerHTML = '<div class="section-title">Mods detected</div><div class="empty-state">No mods have been detected yet.</div>';
+        return;
+      }
+      main.innerHTML = '<div class="section-title">Mods detected (' + mods.length + ')</div><div class="scan-cards">' +
+        mods.map(m =>
+          '<div class="scan-card" style="cursor:default"><div class="scan-card-header">' +
+          '<span class="scan-card-type" style="font-size:13px">' + esc(m.name) + '</span>' +
+          '<span class="scan-card-time">' + m.count + ' player' + (m.count === 1 ? '' : 's') + '</span></div>' +
+          '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px">' +
+          m.players.map(p => '<span class="player-item" style="padding:4px 8px" onclick="showPlayer(\'' + esc(p.name).replace(/'/g, '') + '\')" title="' + esc(timeAgo(p.last_seen)) + '">' +
+            '<img src="' + headUrl(p.uuid) + '" onerror="this.style.visibility=\'hidden\'" alt="" style="width:20px;height:20px"><span class="player-item-name">' + esc(p.name) + '</span></span>').join('') +
+          '</div></div>').join('') + '</div>';
+    }
+
+    async function showLinks() {
+      document.querySelector('.layout').classList.add('wide');
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading">Loading...</div>';
+      let data;
+      try { data = await apiFetch('links'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      if (!data.nodes.length) {
+        main.innerHTML = '<div class="section-title">Linked accounts</div><div class="empty-state">No linked accounts yet. Links appear when accounts join from the same address or share an RPTrack fingerprint.</div>';
+        return;
+      }
+      main.innerHTML =
+        '<div class="section-title">Linked accounts</div>' +
+        '<div class="graph-bar"><input id="g-search" placeholder="Find account...">' +
+        '<label><input type="checkbox" id="g-ip" checked> same address</label>' +
+        '<label><input type="checkbox" id="g-rp" checked> same fingerprint</label>' +
+        '<label><input type="checkbox" id="g-2d"> flat</label>' +
+        // The debug log is for diagnosing camera problems: shown only when the page is opened with &debug
+        (new URLSearchParams(location.search).has('debug') ? '<label><input type="checkbox" id="g-dbg"> debug</label>' : '<input type="checkbox" id="g-dbg" hidden>') +
+        '</div>' +
+        '<div class="graph-box" id="graph-box"></div>';
+      const box = document.getElementById('graph-box');
+      const info = document.createElement('div'); info.className = 'graph-info';
+      let hl = '', searchScale = 1, hover = null, selected = null, fitted = false, ownMoveUntil = 0, lastCam = null, lastLog = 0;
+      const dbgBox = document.createElement('pre'); dbgBox.className = 'dbg-log'; dbgBox.style.display = 'none';
+      const dbgOn = () => document.getElementById('g-dbg').checked;
+      const dbg = msg => {
+        if (!dbgOn()) return;
+        const t = new Date().toISOString().slice(11, 23);
+        console.log('[links] ' + msg);
+        dbgBox.textContent = (dbgBox.textContent + t + ' ' + msg + '\n').split('\n').slice(-16).join('\n');
+        dbgBox.scrollTop = dbgBox.scrollHeight;
+      };
+      const v3 = p => '(' + Math.round(p.x) + ', ' + Math.round(p.y) + ', ' + Math.round(p.z) + ')';
+      const moveCamera = (pos, look, ms, why) => {
+        const from = graph3d.camera().position;
+        dbg('camera ' + why + ': ' + v3(from) + ' -> ' + v3(pos) + ' looking at ' + v3(look) + ', ' + ms + ' ms');
+        ownMoveUntil = Date.now() + ms + 100;
+        graph3d.cameraPosition(pos, look, ms);
+      };
+      const card = document.createElement('div'); card.className = 'node-card'; card.style.display = 'none';
+      const build = () => {
+        const useIp = document.getElementById('g-ip').checked, useRp = document.getElementById('g-rp').checked;
+        // Reasons for one pair are merged: pct = 1 - product of (1 - p), so each extra shared sign raises it
+        const pairs = new Map();
+        data.edges.filter(e => (e.type === 'ip' ? useIp : useRp)).forEach(e => {
+          const key = e.source < e.target ? e.source + '|' + e.target : e.target + '|' + e.source;
+          const l = pairs.get(key) || {source: e.source, target: e.target, miss: 1, rp: false, why: []};
+          l.miss *= 1 - e.p; l.rp = l.rp || e.type === 'rptrack';
+          l.why.push((e.type === 'ip' ? 'address ' : 'fingerprint ') + e.label);
+          pairs.set(key, l);
+        });
+        const links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss}));
+        const deg = {}; links.forEach(l => { deg[l.source] = (deg[l.source]||0) + 1; deg[l.target] = (deg[l.target]||0) + 1; });
+        const nodes = data.nodes.filter(n => deg[n.id]).map(n => ({...n, links: deg[n.id]}));
+        stopGraph();
+        box.innerHTML = '';
+        // A rebuild makes new node objects: drop the old selection, hover and fit state that point at the old ones
+        selected = null; hover = null; fitted = false;
+        card.style.display = 'none';
+        graph3d = ForceGraph3D({controlType: 'orbit'})(box)
+          .width(box.clientWidth).height(box.clientHeight)
+          .backgroundColor('#05080d')
+          .showNavInfo(false)
+          .numDimensions(document.getElementById('g-2d').checked ? 2 : 3)
+          .nodeThreeObject(n => skinCube(n, 9 + Math.min(n.links, 8) * 1.5))
+          .nodeLabel(n => esc(n.name) + ' (' + n.links + ' links)')
+          .linkColor(l => l.rp ? '#3fb950' : '#8b949e')
+          .linkWidth(l => .4 + l.pct * 2.2)
+          .linkLabel(l => Math.round(l.pct * 100) + '% — ' + l.why.map(esc).join(', '))
+          .linkThreeObjectExtend(true)
+          .linkThreeObject(l => { const t = textSprite(Math.round(l.pct * 100) + '%', 6, 0x8b949e); t.visible = false; l._label = t; return t; })
+          .linkPositionUpdate((t, {start, end}) => { t.position.set((start.x + end.x) / 2, (start.y + end.y) / 2, ((start.z || 0) + (end.z || 0)) / 2); })
+          .onNodeClick((n, ev) => { dbg('click on node ' + n.name + (ev ? ' (button ' + ev.button + ')' : '')); select(n); })
+          .onBackgroundClick(() => { dbg('click on background'); select(null); })
+          .onNodeHover(n => { hover = n ? n.id : null; })
+          .warmupTicks(200)
+          // No tick limit: a fixed count cut the motion off mid-flight after a drag; the time limit is a safety net
+          .cooldownTicks(Infinity)
+          .cooldownTime(8000)
+          .d3VelocityDecay(.55)
+          .onEngineStop(() => {
+            if (fitted || selected) { dbg('layout settled: camera left alone (' + (selected ? 'a node is selected' : 'already fitted once') + ')'); return; }
+            fitted = true; dbg('layout settled: first fit'); fit(600, 'fit after layout');
+          })
+          .graphData({nodes, links});
+        const select = async n => {
+          if (n && n === selected) n = null;
+          selected = n;
+          if (!n) { card.style.display = 'none'; fit(700, 'back to overview'); return; }
+          const d = n.x === undefined ? null : n;
+          if (d) moveCamera({x: n.x + 50, y: n.y + 30, z: (n.z || 0) + 75}, {x: n.x, y: n.y, z: n.z || 0}, 700, 'zoom to ' + n.name);
+          card.style.display = '';
+          card.innerHTML = '<div class="loading">Loading...</div>';
+          let det;
+          try { det = await apiFetch('links/' + encodeURIComponent(n.id)); } catch(e) { card.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+          if (selected !== n) return;
+          const alts = links.filter(l => l.source.id === n.id || l.target.id === n.id)
+            .map(l => ({o: l.source.id === n.id ? l.target : l.source, pct: l.pct, why: l.why}))
+            .sort((a, b) => b.pct - a.pct || b.why.length - a.why.length || a.o.name.localeCompare(b.o.name));
+          const fp = det.fingerprint;
+          // LiquidBounce comes from the fingerprint, not a sign scan: it joins the other cheats in one list
+          const cheats = det.mods.slice();
+          if (fp && fp.liquidbounce && !cheats.some(m => m.name.toLowerCase() === 'liquidbounce'))
+            cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: 'resource-pack fingerprint'});
+          card.innerHTML =
+            '<h3>' + esc(n.name) + '<button title="Close">✕</button></h3>' +
+            '<div style="color:var(--text2)">' + (cheats.length ? '<span style="color:var(--red)">☢ mods detected</span>' : 'no mods detected') + '</div>' +
+            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="Last detected: ' + esc(new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '') + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
+            '<h4>Addresses</h4>' +
+            (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) + '</span><span>' + r.count + '× · ' + timeAgo(r.last_seen) + '</span></div>').join('') : '<div style="color:var(--text2)">none recorded</div>') +
+            '<h4>Fingerprint</h4>' +
+            (fp ? '<div class="row"><span class="bits">' + esc(fp.bits) + '</span><span>' + fp.packs + ' packs</span></div>' + '' : '<div style="color:var(--text2)">not tracked</div>') +
+            '<h4>Possible alts</h4>' +
+            (alts.length ? alts.map((a, i) => '<div class="row alt" data-i="' + i + '" title="' + esc(a.why.join(', ')) + '"><span>' + esc(a.o.name) + '<small style="display:block;color:var(--text2);font-size:10px">' + esc(a.why.join(', ')) + '</small></span><span>' + Math.round(a.pct * 100) + '%</span></div>').join('') : '<div style="color:var(--text2)">none</div>') +
+            '<div style="margin-top:12px"><button class="run-btn" style="margin:0;background:#2f6fd6;border-color:#4493f8;color:#fff" id="card-open">Open player</button></div>';
+          card.querySelector('h3 button').onclick = () => select(null);
+          card.querySelector('#card-open').onclick = () => showPlayer(n.name);
+          card.querySelectorAll('.alt').forEach(el => el.onclick = () => select(alts[+el.dataset.i].o));
+        };
+        const fit = (ms, why) => {
+          const ns = nodes.filter(n => n.x !== undefined);
+          if (!ns.length) return;
+          const cx = ns.reduce((a, n) => a + n.x, 0) / ns.length, cy = ns.reduce((a, n) => a + n.y, 0) / ns.length, cz = ns.reduce((a, n) => a + (n.z || 0), 0) / ns.length;
+          const r = Math.max(40, ...ns.map(n => Math.hypot(n.x - cx, n.y - cy, (n.z || 0) - cz)));
+          const half = Math.tan(graph3d.camera().fov * Math.PI / 360);
+          const dist = r * 1.25 / Math.min(half, half * box.clientWidth / box.clientHeight);
+          moveCamera({x: cx, y: cy, z: cz + dist}, {x: cx, y: cy, z: cz}, ms, why || 'fit');
+        };
+        graph3d.d3Force('link').distance(l => 170 - 90 * l.pct).strength(l => .1 + .9 * l.pct);
+        // Repulsion only reaches nearby heads: with a global -1100, dragging one head flung the whole graph around
+        graph3d.d3Force('charge').strength(-320).distanceMax(450);
+        // Keep heads from sitting inside each other (d3's collide force is not exposed by the bundle)
+        let simNodes = [];
+        const collide = () => {
+          for (let i = 0; i < simNodes.length; i++) for (let j = i + 1; j < simNodes.length; j++) {
+            const a = simNodes[i], b = simNodes[j];
+            const dx = b.x - a.x, dy = b.y - a.y, dz = (b.z || 0) - (a.z || 0);
+            const d = Math.hypot(dx, dy, dz) || .01, min = ((a._edge || 10) + (b._edge || 10)) * .85 + 44;
+            if (d >= min) continue;
+            const f = (min - d) / d * .2;
+            a.vx -= dx * f; a.vy -= dy * f; b.vx += dx * f; b.vy += dy * f;
+            if (a.vz !== undefined) { a.vz -= dz * f; b.vz += dz * f; }
+          }
+        };
+        collide.initialize = ns => { simNodes = ns; };
+        graph3d.d3Force('collide', collide);
+        // Weak pull to the centre so separate groups of accounts do not drift apart
+        let pullNodes = [];
+        const pull = alpha => { pullNodes.forEach(n => { n.vx -= n.x * .05 * alpha; n.vy -= n.y * .05 * alpha; if (n.vz !== undefined) n.vz -= (n.z || 0) * .05 * alpha; }); };
+        pull.initialize = ns => { pullNodes = ns; };
+        graph3d.d3Force('pull', pull);
+        info.innerHTML = '<span>' + nodes.length + ' accounts, ' + links.length + ' links</span>' +
+          '<span class="legend" title="Thicker line = higher match. Hover a head or a line for details.">' +
+          '<span class="sq" style="border-color:#4493f8"></span>account<span class="sq" style="border-color:#f85149"></span>mods detected' +
+          '<i style="border-color:#8b949e"></i>same address<i style="border-color:#3fb950"></i>same fingerprint</span>';
+        box.appendChild(info); box.appendChild(card); box.appendChild(dbgBox);
+        const place = () => {
+          if (!box.isConnected || !graph3d) { stopGraph(); return; } // another tab replaced the graph
+          const now = performance.now(), dt = Math.min(.1, (now - (place.last || now)) / 1000);
+          place.last = now;
+          links.forEach(l => { if (l._label) l._label.visible = !!hover && (l.source.id === hover || l.target.id === hover); });
+          nodes.forEach(n => {
+            if (n.x === undefined) return;
+            const hit = hl && n.name.toLowerCase().includes(hl);
+            if (n._label) {
+              n._label.material.color.set(hit ? 0xd29922 : 0xc9d1d9);
+              n._label.material.opacity = hl && !hit ? .3 : 1;
+            }
+            const obj = n.__threeObj;
+            const want = Math.max(selected === n ? 1.8 : 1, hit ? searchScale : 1);
+            if (obj) { const k = obj.scale.x + (want - obj.scale.x) * .15; obj.scale.setScalar(k); }
+            if (n._hit) n._hit.quaternion.set(0, 0, 0, 1);
+            // The selected head turns slowly; others settle back to facing front
+            if (n._cube) {
+              const r = n._cube.rotation;
+              if (selected === n) r.y += dt * 0.7;
+              else if (r.x || r.z || r.y % (2 * Math.PI)) {
+                const home = Math.round(r.y / (2 * Math.PI)) * 2 * Math.PI, e = Math.min(1, dt * 6);
+                r.x -= r.x * e; r.z -= r.z * e; r.y += (home - r.y) * e;
+              }
+            }
+            // Dragging with the right button turns only the cube the pointer hit: the frame follows it
+            if (n._frame && n._cube) n._frame.quaternion.copy(n._cube.quaternion);
+            if (n._frame) n._frame.material.color.set(hit ? 0xd29922 : (n.detected ? 0xf85149 : 0x4493f8));
+          });
+          // Camera moves we did not start (mouse controls) are logged too, at most four times a second
+          const cp = graph3d.camera().position;
+          if (lastCam && Date.now() > ownMoveUntil && Date.now() - lastLog > 250 &&
+              Math.hypot(cp.x - lastCam.x, cp.y - lastCam.y, cp.z - lastCam.z) > .5) {
+            lastLog = Date.now();
+            dbg('camera moved by controls/other: ' + v3(lastCam) + ' -> ' + v3(cp));
+          }
+          lastCam = {x: cp.x, y: cp.y, z: cp.z};
+          graphRaf = requestAnimationFrame(place);
+        };
+        place();
+        fit(0, 'initial');
+      };
+      document.getElementById('g-ip').onchange = build;
+      document.getElementById('g-rp').onchange = build;
+      document.getElementById('g-2d').onchange = build;
+      document.getElementById('g-dbg').onchange = e => { dbgBox.style.display = e.target.checked ? '' : 'none'; if (e.target.checked) dbg('debug on'); };
+      // Matching heads grow more the rarer the match: 1 + 0.35 * log2(all / matching), at most 2.2x.
+      // One match among 36 gets the full 2.2x, half of the graph matching gets 1.35x, everyone matching stays 1x.
+      document.getElementById('g-search').oninput = e => {
+        hl = e.target.value.trim().toLowerCase();
+        const all = graph3d ? graph3d.graphData().nodes : [];
+        const matching = hl ? all.filter(n => n.name.toLowerCase().includes(hl)).length : 0;
+        searchScale = matching ? Math.min(2.2, 1 + .35 * Math.log2(all.length / matching)) : 1;
+        dbg('search "' + hl + '": ' + matching + ' of ' + all.length + ' match, heads x' + searchScale.toFixed(2));
+      };
+      build();
+    }
+
     async function showHome() {
+      document.querySelector('.layout').classList.remove('wide');
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">Loading...</div>';
       try {
@@ -286,6 +650,7 @@
     }
 
     async function showPlayer(name) {
+      document.querySelector('.layout').classList.remove('wide');
       addHistory(name);
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">Loading ' + esc(name) + '...</div>';
@@ -418,4 +783,4 @@
     init();
 </script>
 </body>
-</html>
+</html>

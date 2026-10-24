@@ -14,12 +14,15 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class WebServerManager {
 
     private final VeneerPlugin plugin;
     private HttpServer server;
+    private ExecutorService executor;
+    private static final int MAX_BODY = 4096;
     private final Gson gson = new Gson();
     private volatile List<Map<String, Object>> cachedPlayers = new ArrayList<>();
 
@@ -35,7 +38,8 @@ public class WebServerManager {
             String bind = plugin.hacks().config().getWebBind();
             server = HttpServer.create(new InetSocketAddress(java.net.InetAddress.getByName(bind), port), 0);
             server.createContext("/", this::handle);
-            server.setExecutor(Executors.newFixedThreadPool(4));
+            executor = Executors.newFixedThreadPool(4);
+            server.setExecutor(executor);
             server.start();
             plugin.getLogger().info("Web panel listening on " + bind + ":" + port);
         } catch (Exception e) {
@@ -72,6 +76,11 @@ public class WebServerManager {
                 return;
             }
 
+            if (path.equals("/web/3d-force-graph.min.js") || path.equals("/web/three.min.js")) {
+                serveLibrary(ex, path.substring(1));
+                return;
+            }
+
             if (path.startsWith("/api/")) {
                 handleApi(ex, path, params);
                 return;
@@ -79,7 +88,12 @@ public class WebServerManager {
 
             sendJson(ex, 404, Map.of("error", "not found"));
         } catch (Exception e) {
-            try { sendJson(ex, 500, Map.of("error", e.getMessage())); } catch (Exception ignored) {}
+            // Map.of rejects a null value, and many exceptions have no message: the client would never get an answer
+            String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            plugin.getLogger().warning("[Hacks] Web panel request " + ex.getRequestURI().getPath() + " failed: " + error);
+            try { sendJson(ex, 500, Map.of("error", error)); } catch (Exception ignored) {}
+        } finally {
+            ex.close();
         }
     }
 
@@ -92,6 +106,18 @@ public class WebServerManager {
         try (InputStream is = plugin.getResource("web/editor.html")) {
             if (is == null) { sendHtml(ex, 500, "<h1>editor.html missing</h1>"); return; }
             sendHtml(ex, 200, new String(is.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    /** Bundled scripts; they are public library code, so no token is needed. */
+    private void serveLibrary(HttpExchange ex, String resource) throws IOException {
+        try (InputStream is = plugin.getResource(resource)) {
+            if (is == null) { sendJson(ex, 404, Map.of("error", "not found")); return; }
+            byte[] bytes = is.readAllBytes();
+            ex.getResponseHeaders().set("Content-Type", "text/javascript; charset=utf-8");
+            ex.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+            ex.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
         }
     }
 
@@ -116,16 +142,60 @@ public class WebServerManager {
             return;
         }
 
+        if (path.equals("/api/mods")) {
+            sendJson(ex, 200, plugin.database().getDetectedMods());
+            return;
+        }
+
+        if (path.startsWith("/api/links") && !can(playerInfo, "links")) {
+            sendJson(ex, 403, Map.of("error", "no permission: veneer.web.links"));
+            return;
+        }
+
+        if (path.startsWith("/api/links/")) {
+            Map<String, Object> details = plugin.database().getLinkDetails(
+                    URLDecoder.decode(path.substring("/api/links/".length()), StandardCharsets.UTF_8));
+            if (!can(playerInfo, "ips")) details.put("ips", List.of());
+            sendJson(ex, 200, details);
+            return;
+        }
+
+        if (path.equals("/api/links")) {
+            var cfg = plugin.config().section("hacks");
+            int maxPerIp = cfg != null ? cfg.getInt("web-editor.links.max-accounts-per-ip", 8) : 8;
+            var rp = plugin.config().section("rptrack");
+            int match = rp != null ? rp.getInt("match", 5) : 5;
+            Map<String, Object> graph = plugin.database().getLinkGraph(maxPerIp, match);
+            if (!can(playerInfo, "ips"))
+                for (Object e : (List<?>) graph.get("edges")) {
+                    @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
+                    if ("ip".equals(edge.get("type"))) edge.put("label", "(hidden)");
+                }
+            sendJson(ex, 200, graph);
+            return;
+        }
+
         if (path.equals("/api/scans")) {
             String type  = params.get("type");
-            int    limit = parseInt(params.get("limit"), 50);
+            // Clamped: limit=-1 means "no limit" to SQLite and would read the whole history under the DB lock
+            int    limit = Math.max(1, Math.min(500, parseInt(params.get("limit"), 50)));
             String validType = ("hack".equals(type) || "lang".equals(type)) ? type : null;
             sendJson(ex, 200, plugin.database().getRecentScans(validType, limit));
             return;
         }
 
         if (path.equals("/api/scan/run") && "POST".equals(method)) {
-            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            if (!can(playerInfo, "scan")) {
+                sendJson(ex, 403, Map.of("error", "no permission: veneer.web.scan"));
+                return;
+            }
+            // The body is a player name and a type; anything much bigger is not from the panel
+            byte[] raw = ex.getRequestBody().readNBytes(MAX_BODY + 1);
+            if (raw.length > MAX_BODY) {
+                sendJson(ex, 413, Map.of("error", "request too large"));
+                return;
+            }
+            String body = new String(raw, StandardCharsets.UTF_8);
             Map<?, ?> req = gson.fromJson(body, Map.class);
             String targetName = req != null ? (String) req.get("player") : null;
             String type       = req != null ? (String) req.get("type")   : "hack";
@@ -165,6 +235,10 @@ public class WebServerManager {
             try {
                 long id = Long.parseLong(idStr);
                 if ("DELETE".equals(method)) {
+                    if (!can(playerInfo, "delete")) {
+                        sendJson(ex, 403, Map.of("error", "no permission: veneer.web.delete"));
+                        return;
+                    }
                     boolean ok = plugin.database().deleteScan(id);
                     sendJson(ex, 200, Map.of("success", ok));
                 } else {
@@ -195,6 +269,11 @@ public class WebServerManager {
         }
 
         sendJson(ex, 404, Map.of("error", "endpoint not found"));
+    }
+
+    /** Whether the token was issued to a player with {@code veneer.web.<perm>} (rights are fixed at issue time). */
+    private static boolean can(Map<String, String> playerInfo, String perm) {
+        return Arrays.asList(playerInfo.getOrDefault("perms", "").split(",")).contains(perm);
     }
 
     private void addCorsHeaders(HttpExchange ex) {
@@ -234,5 +313,6 @@ public class WebServerManager {
 
     public void stop() {
         if (server != null) server.stop(0);
+        if (executor != null) executor.shutdownNow();
     }
-}
+}

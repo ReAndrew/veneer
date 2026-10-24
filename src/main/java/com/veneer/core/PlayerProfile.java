@@ -17,6 +17,9 @@ public class PlayerProfile {
     private volatile boolean alreadyPunished;
     private final long joinTime = System.currentTimeMillis();
     private volatile boolean initialChannelsRegistered;
+    private volatile String versionReal;
+    private volatile String versionClaimed;
+    private volatile boolean versionMismatch;
 
     /** An unmodifiable view of the plugin channels the client registered. */
     public Set<String> getChannels() {
@@ -47,6 +50,18 @@ public class PlayerProfile {
     public boolean isInitialChannelsRegistered() { return initialChannelsRegistered; }
 
     public void setInitialChannelsRegistered(boolean registered) { this.initialChannelsRegistered = registered; }
+
+    /** The real version range read by the language-check sign, or null when it has not run. */
+    public String getVersionReal()      { return versionReal; }
+    /** The protocol version the client connected with when the probe ran. */
+    public String getVersionClaimed()   { return versionClaimed; }
+    public boolean isVersionMismatch()  { return versionMismatch; }
+
+    public void setVersionProbe(String real, String claimed, boolean mismatch) {
+        this.versionReal = real;
+        this.versionClaimed = claimed;
+        this.versionMismatch = mismatch;
+    }
 
     /** Loader family guessed from the registered channels. */
     public ClientType clientType() {

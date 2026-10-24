@@ -114,6 +114,9 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         int channels = profile == null ? 0 : profile.getChannels().size();
         String type = profile == null ? plugin.messages().plain("veneer-unknown") : profile.clientType().name().toLowerCase(Locale.ROOT);
         plugin.messages().send(sender, "veneer-info-client", "brand", brand, "type", type, "channels", channels);
+        if (profile != null && profile.getVersionReal() != null)
+            plugin.messages().send(sender, profile.isVersionMismatch() ? "veneer-info-version-mismatch" : "veneer-info-version",
+                    "real", profile.getVersionReal(), "claimed", profile.getVersionClaimed());
 
         List<String> flags = new ArrayList<>();
         if (plugin.bedrock().isBedrock(player)) flags.add(plugin.messages().getRaw("veneer-flag-bedrock"));

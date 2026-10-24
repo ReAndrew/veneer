@@ -88,6 +88,26 @@ permissions:
   veneer.hacks.editor:
     description: Use /hackeditor
     default: op
+  veneer.web.scan:
+    description: Run scans from the web panel
+    default: op
+  veneer.web.delete:
+    description: Delete scans from the web panel
+    default: op
+  veneer.web.links:
+    description: See the account graph in the web panel
+    default: op
+  veneer.web.ips:
+    description: See players' IP addresses in the web panel
+    default: op
+  veneer.web.*:
+    description: All web panel rights
+    default: false
+    children:
+      veneer.web.scan: true
+      veneer.web.delete: true
+      veneer.web.links: true
+      veneer.web.ips: true
   veneer.rptrack:
     description: Use /rptrack
     default: op
@@ -113,3 +133,4 @@ permissions:
       veneer.rptrack: true
       veneer.spoof.*: true
       veneer.hacks.*: true
+      veneer.web.*: true

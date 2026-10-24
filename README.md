@@ -8,12 +8,12 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 
 ![Java 21](https://img.shields.io/badge/Java-21-orange)
 ![Paper 1.21+](https://img.shields.io/badge/Paper-1.21%2B-blue)
-![Folia](https://img.shields.io/badge/Folia-experimental-yellow)
+![Folia](https://img.shields.io/badge/Folia-1.21.11_tested-green)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
 </div>
 
-> **Status:** the plugin compiles and packages; it has **not yet been run on a live server**. Treat it as a pre-release.
+> **Status:** beta. Tested on Paper/Purpur and Folia 1.21.11 with test clients and real clients (including ViaFabricPlus and ViaProxy), not yet on a busy public server.
 
 ---
 
@@ -22,7 +22,9 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 | Module | What it does |
 |---|---|
 | **Spoof detection** (from AntiSpoof) | Compares the client brand and registered plugin channels against what the claimed client can actually send. Catches fake `vanilla`, fake Fabric/Forge/Lunar, blocked or required channels, Geyser impersonation. Uses PacketEvents and the `minecraft:brand` channel. |
-| **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite, and an embedded web panel shows the history. |
+| **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite. Clients older than `hacks.detection.min-client-version` (default 1.17) are not scanned: they do not answer the probe sign. |
+| **Language and version check** | `/hacklang` reads the client language, and from the same sign the client's real game version (keys Mojang removed or added in 1.20.5 and 1.21.2). A version that does not match the protocol the player connects with points to ViaFabricPlus, ViaProxy and the like; an alert and an optional command follow. |
+| **Web panel** | Scan history and manual scans, a list of every mod detected, and a 3D graph of linked accounts (shared addresses and RPTrack fingerprints) with player heads. |
 | **Anticheat bridge** | Flags from Grim (event bus), Vulcan, Spartan, Matrix, Intave and AAC can trigger a mod scan. A spoof flag can also queue one. |
 | **RPTrack** | Links accounts and IPs of the same Minecraft installation through its resource-pack download cache, and detects LiquidBounce's local server. **Off by default.** See [RPTrack](#rptrack). |
 | **Integrations** | LuckPerms (primary group), PlaceholderAPI (`%veneer_*%`), Floodgate/Geyser, Discord webhooks, Folia-aware scheduling. |
@@ -47,7 +49,9 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 | `/hackeditor` | `veneer.hacks.editor` | Link to the web panel: scan history and manual scans |
 | `/rptrack <player>` | `veneer.rptrack` | Show a player's cache fingerprint and linked accounts |
 
-Other permissions: `veneer.spoof.admin`. Bypass (all default `false`, not in `veneer.*`): `veneer.bypass` (everything), `veneer.bypass.<spoof|hacks|rptrack>` (that module, join and later), `veneer.bypass.<type>.join` (join-time check only). Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.*`.
+Other permissions: `veneer.spoof.admin`. Bypass (all default `false`, not in `veneer.*`): `veneer.bypass` (everything), `veneer.bypass.<spoof|hacks|rptrack>` (that module, join and later), `veneer.bypass.<type>.join` (join-time check only). Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.web.*`, `veneer.*`.
+
+Web panel rights (default op) are taken from the player when `/hackeditor` issues the token: `veneer.web.scan` (run scans), `veneer.web.delete` (delete scans), `veneer.web.links` (account graph), `veneer.web.ips` (see IP addresses; without it the graph hides them). Without any of them the token still shows the scan history.
 
 ## Configuration
 
@@ -104,9 +108,9 @@ Produces `target/veneer-<version>.jar` (about 24 MB, PacketEvents shaded and rel
 
 ## Notes
 
-- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command.
-- Version `0.9.0` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
-- **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. This is **experimental**: it compiles but has not been tested on a real Folia server.
+- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
+- Version `0.9.1` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. Tested on Folia 1.21.11 (mod scan, language check, web panel scans, death, world change and quitting mid-scan). A probe sign Folia does not let the plugin remove on shutdown is removed on the next start.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 
 ## Credits and license
@@ -115,5 +119,7 @@ Veneer merges two open-source plugins and adds new modules:
 
 - **AntiSpoof** by GigaZelensky (GPLv3)
 - **CheckHacks** by Branduzzo (MIT)
+
+The web panel bundles [3d-force-graph](https://github.com/vasturiano/3d-force-graph) and [three.js](https://github.com/mrdoob/three.js) (both MIT, texts in `src/main/resources/web/THIRD-PARTY-LICENSES.txt`).
 
 The combined work is released under **GPLv3**, see `LICENSE`; the CheckHacks MIT text is appended there for attribution.

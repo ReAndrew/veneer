@@ -3,6 +3,7 @@ package com.veneer.hacks.managers;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.*;
 import com.veneer.core.FoliaScheduler;
+import com.veneer.hacks.utils.ClientVersions;
 import com.veneer.hacks.utils.SignUtil;
 import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
@@ -39,9 +40,48 @@ public class CheckManager {
         return System.currentTimeMillis() - lastAutoCheck.getOrDefault(uuid, 0L) >= cooldownMs;
     }
 
+    /** True when the edited sign at {@code loc} is this player's current probe sign. */
+    public boolean ownsSign(UUID uuid, Location loc) {
+        CheckPlayerData data = activeChecks.get(uuid);
+        return data != null && SignUtil.sameBlock(data.getSignLocation(), loc);
+    }
+
+    /** True when {@code loc} is any running scan's probe sign. */
+    public boolean isProbeSign(Location loc) {
+        for (CheckPlayerData d : activeChecks.values())
+            if (SignUtil.sameBlock(d.getSignLocation(), loc)) return true;
+        return false;
+    }
+
+    /** The player left: drop the scan without results or punishments and put the blocks back. */
+    public void abort(UUID uuid) {
+        CheckPlayerData data = activeChecks.remove(uuid);
+        if (data == null) return;
+        if (data.getSignTimeoutTask() != null) data.getSignTimeoutTask().cancel();
+        restoreCurrentSign(data, false);
+        plugin.getLogger().info("[Hacks] Mod scan of " + uuid + " dropped: the player left or did not respawn.");
+    }
+
     public void startCheck(Player target, Player initiator,
                            List<HackDefinition> hacks, boolean autoCheck, String reason) {
+        startCheck(target, initiator, hacks, autoCheck, reason, 0);
+    }
+
+    private void startCheck(Player target, Player initiator,
+                            List<HackDefinition> hacks, boolean autoCheck, String reason, int waits) {
         UUID uuid = target.getUniqueId();
+
+        // Both scans use one sign spot and one sign editor: never run them on a player at the same time.
+        // A manual scan is refused, an automatic one waits for the language check (a few seconds at most).
+        if (plugin.hacks().langChecks().isChecking(uuid)) {
+            if (initiator != null) {
+                initiator.sendMessage(plugin.messages().get("already-checking", Map.of("player", target.getName())));
+            } else if (waits < 15) {
+                FoliaScheduler.runAtEntityLater(plugin, target,
+                        () -> { if (target.isOnline()) startCheck(target, null, hacks, autoCheck, reason, waits + 1); }, 40L);
+            }
+            return;
+        }
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
@@ -59,6 +99,16 @@ public class CheckManager {
         }
 
         if (autoCheck && target.hasPermission("veneer.bypass.hacks")) return;
+
+        String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
+        if (oldClient != null) {
+            Component msg = plugin.messages().get("client-too-old", Map.of("player", target.getName(),
+                    "version", oldClient, "min", plugin.hacks().config().getMinClientVersion()));
+            if (initiator != null) initiator.sendMessage(msg);
+            else plugin.alerts().send(msg);
+            return;
+        }
+
 
         if (autoCheck) lastAutoCheck.put(uuid, System.currentTimeMillis());
 
@@ -86,9 +136,20 @@ public class CheckManager {
 
     private void processBatch(Player target, CheckPlayerData data) {
         UUID uuid = target.getUniqueId();
+        if (activeChecks.get(uuid) != data) return;
+        // A dead or sleeping player cannot open the sign: wait instead of letting it time out, which would
+        // count as PROTECTED and may punish
+        if (SignUtil.cannotOpen(target)) {
+            if (data.waitWhileBusy() > 60) {
+                abort(uuid);
+                return;
+            }
+            FoliaScheduler.runAtEntityLater(plugin, target, () -> processBatch(target, data), 20L);
+            return;
+        }
         List<HackDefinition> batch = data.getCurrentBatchHacks();
 
-        Location signLoc = SignUtil.findAirBlock(target);
+        Location signLoc = SignUtil.findAirBlock(target, data.getLastSignLocation());
         if (signLoc == null) {
             finishCheck(uuid);
             return;
@@ -97,16 +158,10 @@ public class CheckManager {
         Block block = signLoc.getBlock();
         BlockState originalState = block.getState();
 
-        Location belowLoc    = signLoc.clone().subtract(0, 1, 0);
-        Block    belowBlock  = belowLoc.getBlock();
-        boolean  placedBarrier = belowBlock.getType().isAir();
-        if (placedBarrier) belowBlock.setType(Material.BARRIER, false);
-
         block.setType(Material.OAK_SIGN, false);
         BlockState freshState = block.getState();
         if (!(freshState instanceof Sign sign)) {
             originalState.update(true, false);
-            if (placedBarrier) belowBlock.setType(Material.AIR, false);
             finishCheck(uuid);
             return;
         }
@@ -118,9 +173,8 @@ public class CheckManager {
         sign.update(true, false);
 
         data.setSignLocation(signLoc);
+        data.setLastSignLocation(signLoc);
         data.setOriginalState(originalState);
-        data.setBarrierPlaced(placedBarrier);
-        data.setBarrierLocation(belowLoc);
 
         SignUtil.setAllowedEditor(signLoc, uuid, plugin);
 
@@ -137,8 +191,16 @@ public class CheckManager {
         WrappedTask timeout = FoliaScheduler.runAtLocationLater(plugin, signLoc, () -> {
             CheckPlayerData d = activeChecks.get(uuid);
             if (d == null) return;
-            restoreCurrentSign(d);
+            Location asked = d.getSignLocation();
+            restoreCurrentSign(d, false);
             Player again = Bukkit.getPlayer(uuid);
+            if (again != null && again.isOnline() && SignUtil.lostSign(again, asked)) {
+                // Died, slept, changed world or walked off with the sign open: no answer is not a refusal,
+                // ask again (counted, so a player who keeps doing it does not keep the check alive forever)
+                if (d.waitWhileBusy() > 60) { abort(uuid); return; }
+                FoliaScheduler.runAtEntity(plugin, again, () -> processBatch(again, d));
+                return;
+            }
             if (plugin.hacks().config().isRetryOnTimeout() && !d.isRetried() && again != null && again.isOnline()) {
                 d.markRetried();
                 FoliaScheduler.runAtEntity(plugin, again, () -> processBatch(again, d));
@@ -177,16 +239,25 @@ public class CheckManager {
         if (data == null) return;
 
         if (data.getSignTimeoutTask() != null) data.getSignTimeoutTask().cancel();
-        restoreCurrentSign(data);
+        restoreCurrentSign(data, false);
 
         List<HackDefinition> batch = data.getCurrentBatchHacks();
         String ctrlResp = lines.length > 3 ? lines[3].strip() : "";
 
         boolean exploitPreventer = ctrlResp.equalsIgnoreCase(CTRL_KEYBIND);
+        // Every vanilla client names the forward key ("W", or "Not Bound"); an empty control line means the client
+        // did not resolve the sign at all, so empty mod lines say nothing either: the scan cannot run on this client
+        boolean unsupported = ctrlResp.isEmpty();
 
         StringBuilder log = new StringBuilder("[Hacks] Batch ").append(data.getCurrentBatch())
                 .append(" from ").append(target.getName());
         if (exploitPreventer) log.append(" [ExploitPreventer DETECTED]");
+        if (unsupported) {
+            log.append(": the control line came back empty, the client does not resolve signs; the scan stops (SKIPPED)");
+            plugin.getLogger().info(log.toString());
+            finishCheck(uuid);
+            return;
+        }
         for (int i = 0; i < batch.size(); i++) {
             HackDefinition hack = batch.get(i);
             String resp = i < lines.length ? lines[i].strip() : "";
@@ -274,21 +345,46 @@ public class CheckManager {
         boolean anyDetected  = false;
         boolean anyProtected = false;
         boolean allClean     = true;
+        for (HackDefinition hack : allHacks) {
+            HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
+            if (r == HackResult.DETECTED)  { anyDetected = true;  allClean = false; }
+            if (r == HackResult.PROTECTED || r == HackResult.TIMEOUT) { anyProtected = true; allClean = false; }
+            if (r == HackResult.SKIPPED)     allClean = false;
+        }
+
+        ConfigManager cfg = plugin.hacks().config();
+
+        // A flagged first pass is only a suspicion: re-scan the flagged mods first and report once, with the
+        // confirmed results. Saving and announcing the first pass would leave false positives in the history.
+        if (cfg.isDoubleCheckEnabled() && !data.isConfirmScan() && (anyDetected || anyProtected)) {
+            List<HackDefinition> flagged = new ArrayList<>();
+            for (HackDefinition hack : allHacks) {
+                HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
+                if (r == HackResult.DETECTED || r == HackResult.PROTECTED || r == HackResult.TIMEOUT) flagged.add(hack);
+            }
+            if (!flagged.isEmpty() && targetPlayer != null && targetPlayer.isOnline()
+                    && startConfirmScan(targetPlayer, data, allHacks, flagged)) return;
+        }
+
+        // The report: on a confirmation scan, the first pass with the flagged mods replaced by their re-scan
+        List<HackDefinition> reportHacks = data.getFirstPassHacks() != null ? data.getFirstPassHacks() : allHacks;
+        Map<String, HackResult> report = new LinkedHashMap<>();
+        if (data.getFirstPassResults() != null) report.putAll(data.getFirstPassResults());
+        report.putAll(results);
+        boolean reportDetected = false;
         StringBuilder resultText = new StringBuilder();
 
         Component header = plugin.messages().get("check-complete", Map.of("player", targetName));
         plugin.alerts().send(header);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), header);
 
-        boolean hideClean = plugin.hacks().config().isHideClean();
+        boolean hideClean = cfg.isHideClean();
         int shown = 0;
         sendLine(data, plugin.messages().get("check-translation-header"));
 
-        for (HackDefinition hack : allHacks) {
-            HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
-            if (r == HackResult.DETECTED)  { anyDetected = true;  allClean = false; }
-            if (r == HackResult.PROTECTED || r == HackResult.TIMEOUT) { anyProtected = true; allClean = false; }
-            if (r == HackResult.SKIPPED)     allClean = false;
+        for (HackDefinition hack : reportHacks) {
+            HackResult r = report.getOrDefault(hack.getId(), HackResult.SKIPPED);
+            if (r == HackResult.DETECTED) reportDetected = true;
             if (hideClean && r == HackResult.NOT_DETECTED) continue;
             shown++;
             resultText.append(hack.getDisplayName()).append(": ").append(r.name()).append("\n");
@@ -300,7 +396,7 @@ public class CheckManager {
         if (shown == 0) sendLine(data, plugin.messages().get("check-nothing-found"));
         if (resultText.isEmpty()) resultText.append("-");
 
-        if (plugin.hacks().config().isShowChannels() && targetPlayer != null) {
+        if (cfg.isShowChannels() && targetPlayer != null) {
             var profile = plugin.profileOf(uuid);
             if (profile != null && !profile.getChannels().isEmpty()) {
                 String channels = String.join(", ", new java.util.TreeSet<>(profile.getChannels()));
@@ -309,17 +405,17 @@ public class CheckManager {
             }
         }
 
-        List<Object[]> dbRows = new ArrayList<>(allHacks.size());
-        for (HackDefinition hack : allHacks)
+        List<Object[]> dbRows = new ArrayList<>(reportHacks.size());
+        for (HackDefinition hack : reportHacks)
             dbRows.add(new Object[]{hack.getId(), hack.getDisplayName(),
-                    results.getOrDefault(hack.getId(), HackResult.SKIPPED).name()});
-        plugin.database().saveScanWithResults(
-                "hack", targetName, targetUUID, checkerName, data.getReason(), anyDetected, dbRows);
-
-        ConfigManager cfg = plugin.hacks().config();
+                    report.getOrDefault(hack.getId(), HackResult.SKIPPED).name()});
+        // Off the main thread: the database has one connection and the web panel may be holding it
+        final boolean detectedForDb = reportDetected;
+        FoliaScheduler.runAsync(plugin, () -> plugin.database().saveScanWithResults(
+                "hack", targetName, targetUUID, checkerName, data.getReason(), detectedForDb, dbRows));
 
         if (cfg.isDiscordEnabled()) {
-            String hacksChecked = allHacks.stream()
+            String hacksChecked = reportHacks.stream()
                     .map(HackDefinition::getDisplayName)
                     .reduce((a, b) -> a + ", " + b).orElse("none");
             String description = cfg.getDiscordMessage()
@@ -332,18 +428,6 @@ public class CheckManager {
                     description, cfg.isDiscordUseComponentsV2());
         }
 
-        if (cfg.isDoubleCheckEnabled() && !data.isConfirmScan() && (anyDetected || anyProtected)) {
-            List<HackDefinition> flagged = new ArrayList<>();
-            for (HackDefinition hack : allHacks) {
-                HackResult r = results.getOrDefault(hack.getId(), HackResult.SKIPPED);
-                if (r == HackResult.DETECTED || r == HackResult.PROTECTED || r == HackResult.TIMEOUT) flagged.add(hack);
-            }
-            if (!flagged.isEmpty()) {
-                Player tp = Bukkit.getPlayer(uuid);
-                if (tp != null && tp.isOnline() && startConfirmScan(tp, data, flagged)) return;
-            }
-        }
-
         executeResultActions(data, targetName, anyDetected, anyProtected, allClean, results, allHacks);
     }
 
@@ -352,12 +436,15 @@ public class CheckManager {
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), line);
     }
 
-    private boolean startConfirmScan(Player target, CheckPlayerData original, List<HackDefinition> flagged) {
+    private boolean startConfirmScan(Player target, CheckPlayerData original,
+                                     List<HackDefinition> allHacks, List<HackDefinition> flagged) {
         List<List<HackDefinition>> batches = buildBatches(flagged);
         if (batches.isEmpty()) return false;
 
         CheckPlayerData data = new CheckPlayerData(target.getUniqueId(),
-                original.getInitiatorUUID(), batches, false, original.getReason(), true);
+                original.getInitiatorUUID(), batches, original.isAutoCheck(), original.getReason(), true);
+        data.setFirstPass(allHacks, new LinkedHashMap<>(original.getResults()));
+        data.setLastSignLocation(original.getLastSignLocation());
         activeChecks.put(target.getUniqueId(), data);
 
         Component msg = plugin.messages().get("doublecheck", Map.of("player", target.getName()));
@@ -429,24 +516,18 @@ public class CheckManager {
     }
 
 
-    private void restoreCurrentSign(CheckPlayerData data) {
+    private void restoreCurrentSign(CheckPlayerData data, boolean now) {
         Location loc = data.getSignLocation();
         if (loc == null) return;
-        FoliaScheduler.runAtLocation(plugin, loc, () -> {
-            try { if (data.getOriginalState() != null) data.getOriginalState().update(true, false); }
-            catch (Exception e) { plugin.getLogger().warning("[Hacks] Restore: " + e.getMessage()); }
-            if (data.isBarrierPlaced() && data.getBarrierLocation() != null) {
-                try { data.getBarrierLocation().getBlock().setType(Material.AIR, false); }
-                catch (Exception e) { plugin.getLogger().warning("[Hacks] Barrier: " + e.getMessage()); }
-            }
-        });
+        SignUtil.restore(plugin, loc, data.getOriginalState(), now);
         data.setSignLocation(null);
     }
 
     public void cleanup() {
         for (CheckPlayerData d : activeChecks.values()) {
             if (d.getSignTimeoutTask() != null) d.getSignTimeoutTask().cancel();
-            restoreCurrentSign(d);
+            // On shutdown the scheduler refuses new tasks, so the blocks are put back right here
+            restoreCurrentSign(d, true);
         }
         activeChecks.clear();
         lastAutoCheck.clear();

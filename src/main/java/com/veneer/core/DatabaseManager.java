@@ -75,6 +75,22 @@ public class DatabaseManager {
                     last_seen INTEGER NOT NULL
                 )""");
             s.execute("""
+                CREATE TABLE IF NOT EXISTS joins (
+                    uuid TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    ip TEXT NOT NULL,
+                    first_seen INTEGER NOT NULL,
+                    last_seen INTEGER NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (uuid, ip)
+                )""");
+            s.execute("""
+                CREATE TABLE IF NOT EXISTS skins (
+                    uuid TEXT PRIMARY KEY,
+                    png TEXT NOT NULL,
+                    updated INTEGER NOT NULL
+                )""");
+            s.execute("""
                 CREATE TABLE IF NOT EXISTS editor_tokens (
                     token TEXT PRIMARY KEY,
                     player_uuid TEXT NOT NULL,
@@ -82,6 +98,17 @@ public class DatabaseManager {
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL
                 )""");
+            // veneer.web.* rights of the player when the token was issued, comma separated
+            try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
+            catch (SQLException alreadyThere) {}
+            // Results are read and cascade-deleted by scan id, history by time and player: without these
+            // every panel request scans the whole tables while holding the connection lock
+            s.execute("CREATE INDEX IF NOT EXISTS idx_hack_results_scan ON hack_results(scan_id)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_lang_results_scan ON lang_results(scan_id)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_scans_time ON scans(timestamp)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target_uuid)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_joins_ip ON joins(ip)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_joins_last ON joins(last_seen)");
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to create tables: " + e.getMessage());
         }
@@ -313,7 +340,7 @@ public class DatabaseManager {
         }
     }
 
-    public synchronized String saveToken(String playerUUID, String playerName, int expireMinutes) {
+    public synchronized String saveToken(String playerUUID, String playerName, int expireMinutes, String perms) {
         if (connection == null) return null;
         String token = UUID.randomUUID().toString().replace("-", "");
         long now     = System.currentTimeMillis();
@@ -330,12 +357,13 @@ public class DatabaseManager {
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO editor_tokens (token,player_uuid,player_name,created_at,expires_at) VALUES (?,?,?,?,?)")) {
+                    "INSERT INTO editor_tokens (token,player_uuid,player_name,created_at,expires_at,perms) VALUES (?,?,?,?,?,?)")) {
                 ps.setString(1, token);
                 ps.setString(2, playerUUID);
                 ps.setString(3, playerName);
                 ps.setLong(4, now);
                 ps.setLong(5, expires);
+                ps.setString(6, perms);
                 ps.executeUpdate();
             }
         } catch (SQLException e) {
@@ -347,7 +375,7 @@ public class DatabaseManager {
     public synchronized Map<String, String> validateToken(String token) {
         if (connection == null || token == null) return null;
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT player_uuid, player_name FROM editor_tokens WHERE token=? AND expires_at>?")) {
+                "SELECT player_uuid, player_name, perms FROM editor_tokens WHERE token=? AND expires_at>?")) {
             ps.setString(1, token);
             ps.setLong(2, System.currentTimeMillis());
             try (ResultSet rs = ps.executeQuery()) {
@@ -355,6 +383,7 @@ public class DatabaseManager {
                     Map<String, String> info = new LinkedHashMap<>();
                     info.put("player_uuid", rs.getString("player_uuid"));
                     info.put("player_name", rs.getString("player_name"));
+                    info.put("perms", rs.getString("perms"));
                     return info;
                 }
             }
@@ -405,6 +434,276 @@ public class DatabaseManager {
             plugin.getLogger().warning("getRPTracks: " + e.getMessage());
         }
         return out;
+    }
+
+    /** Notes that this account joined from this address (one row per account and address). */
+    public synchronized void recordJoin(String uuid, String name, String ip) {
+        if (connection == null) return;
+        long now = System.currentTimeMillis();
+        try (PreparedStatement ps = connection.prepareStatement("""
+                INSERT INTO joins (uuid, name, ip, first_seen, last_seen, count) VALUES (?,?,?,?,?,1)
+                ON CONFLICT(uuid, ip) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen,
+                    count = joins.count + 1""")) {
+            ps.setString(1, uuid);
+            ps.setString(2, name);
+            ps.setString(3, ip);
+            ps.setLong(4, now);
+            ps.setLong(5, now);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("recordJoin: " + e.getMessage());
+        }
+    }
+
+    public synchronized boolean hasFreshSkin(String uuid, long maxAgeMs) {
+        if (connection == null) return true;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT 1 FROM skins WHERE uuid = ? AND updated > ?")) {
+            ps.setString(1, uuid);
+            ps.setLong(2, System.currentTimeMillis() - maxAgeMs);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("hasFreshSkin: " + e.getMessage());
+            return true;
+        }
+    }
+
+    public synchronized void saveSkin(String uuid, String pngBase64) {
+        if (connection == null) return;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                INSERT INTO skins (uuid, png, updated) VALUES (?,?,?)
+                ON CONFLICT(uuid) DO UPDATE SET png = excluded.png, updated = excluded.updated""")) {
+            ps.setString(1, uuid);
+            ps.setString(2, pngBase64);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("saveSkin: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Deletes what is older than the given number of days (0 or less keeps it): addresses and skins of accounts
+     * not seen for {@code linkDays} (a skin is refreshed on join, so an old one belongs to an absent player), and
+     * scans with their results after {@code scanDays}.
+     */
+    public synchronized void purge(int linkDays, int scanDays) {
+        if (connection == null) return;
+        long now = System.currentTimeMillis();
+        try {
+            if (linkDays > 0) {
+                purgeOlder("DELETE FROM joins WHERE last_seen < ?", now - linkDays * 86_400_000L);
+                purgeOlder("DELETE FROM skins WHERE updated < ?", now - linkDays * 86_400_000L);
+            }
+            // results go with their scan (ON DELETE CASCADE)
+            if (scanDays > 0) purgeOlder("DELETE FROM scans WHERE timestamp < ?", now - scanDays * 86_400_000L);
+        } catch (SQLException e) {
+            plugin.getLogger().warning("purge: " + e.getMessage());
+        }
+    }
+
+    private void purgeOlder(String sql, long before) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, before);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Graph of linked accounts: {@code nodes} (id, name, detected, links, skin) and {@code edges} (source, target,
+     * type "ip" or "rptrack", label, p = how likely the two accounts are one person, 0 to 1). An address shared by
+     * more than {@code maxPerIp} accounts is skipped (shared networks); fingerprints link when they overlap by at
+     * least {@code minMatch} packs. Accounts without any link are left out.
+     * <p>
+     * Not synchronized as a whole: the rows are copied under the connection lock, and the pairwise comparison runs
+     * outside it, so a large graph does not hold up scan saves on the main thread.
+     */
+    public Map<String, Object> getLinkGraph(int maxPerIp, int minMatch) {
+        List<String[]> joinRows = new ArrayList<>();
+        Set<String> detected = new HashSet<>();
+        loadLinkRows(joinRows, detected);
+        List<Map<String, Object>> tracks = getRPTracks();
+
+        List<Map<String, Object>> edges = new ArrayList<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        Map<String, List<String>> byIp = new LinkedHashMap<>();
+        for (String[] r : joinRows) {
+            names.putIfAbsent(r[0], r[1]);
+            byIp.computeIfAbsent(r[2], k -> new ArrayList<>()).add(r[0]);
+        }
+        for (Map.Entry<String, List<String>> e : byIp.entrySet()) {
+            List<String> ids = e.getValue();
+            if (ids.size() < 2 || ids.size() > maxPerIp) continue;
+            for (int i = 0; i < ids.size(); i++)
+                for (int j = i + 1; j < ids.size(); j++)
+                    edges.add(edge(ids.get(i), ids.get(j), "ip", e.getKey(), 0.55 / Math.max(1.0, (ids.size() - 1) / 2.0)));
+        }
+        for (int i = 0; i < tracks.size(); i++) {
+            long a = ((Number) tracks.get(i).get("mask")).longValue();
+            for (int j = i + 1; j < tracks.size(); j++) {
+                long b = ((Number) tracks.get(j).get("mask")).longValue();
+                int common = Long.bitCount(a & b);
+                int needed = Math.max(1, Math.min(minMatch, Math.min(Long.bitCount(a), Long.bitCount(b))));
+                if (common < needed) continue;
+                String ua = (String) tracks.get(i).get("uuid"), ub = (String) tracks.get(j).get("uuid");
+                names.putIfAbsent(ua, (String) tracks.get(i).get("name"));
+                names.putIfAbsent(ub, (String) tracks.get(j).get("name"));
+                edges.add(edge(ua, ub, "rptrack", common + " packs", Math.min(0.97, 0.8 + 0.03 * (common - needed))));
+            }
+        }
+
+        Map<String, Integer> degree = new LinkedHashMap<>();
+        for (Map<String, Object> e : edges) {
+            degree.merge((String) e.get("source"), 1, Integer::sum);
+            degree.merge((String) e.get("target"), 1, Integer::sum);
+        }
+        Map<String, String> skins = getSkins(degree.keySet());
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (Map.Entry<String, Integer> d : degree.entrySet()) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", d.getKey());
+            n.put("name", names.getOrDefault(d.getKey(), d.getKey()));
+            n.put("detected", detected.contains(d.getKey()));
+            n.put("links", d.getValue());
+            n.put("skin", skins.get(d.getKey()));
+            nodes.add(n);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("nodes", nodes);
+        out.put("edges", edges);
+        return out;
+    }
+
+    /** Join rows (uuid, name, ip) and the players whose latest mod scan found something. */
+    private synchronized void loadLinkRows(List<String[]> joinRows, Set<String> detected) {
+        if (connection == null) return;
+        try (Statement st = connection.createStatement()) {
+            try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip FROM joins ORDER BY last_seen DESC")) {
+                while (rs.next()) joinRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3)});
+            }
+            try (ResultSet rs = st.executeQuery("""
+                    SELECT target_uuid FROM scans
+                    WHERE id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
+                      AND has_detected = 1""")) {
+                while (rs.next()) detected.add(rs.getString(1));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getLinkGraph: " + e.getMessage());
+        }
+    }
+
+    /** Stored skins of the given accounts only; loading every skin ever saved would grow with the whole player base. */
+    private synchronized Map<String, String> getSkins(Collection<String> uuids) {
+        Map<String, String> out = new HashMap<>();
+        if (connection == null || uuids.isEmpty()) return out;
+        List<String> ids = new ArrayList<>(uuids);
+        for (int from = 0; from < ids.size(); from += 500) {
+            List<String> chunk = ids.subList(from, Math.min(from + 500, ids.size()));
+            String marks = String.join(",", Collections.nCopies(chunk.size(), "?"));
+            try (PreparedStatement ps = connection.prepareStatement("SELECT uuid, png FROM skins WHERE uuid IN (" + marks + ")")) {
+                for (int i = 0; i < chunk.size(); i++) ps.setString(i + 1, chunk.get(i));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.put(rs.getString(1), rs.getString(2));
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().warning("getSkins: " + e.getMessage());
+            }
+        }
+        return out;
+    }
+
+    /** Mods found by each player's latest mod scan (a later clean scan clears the player): one entry per mod, most players first. */
+    public synchronized List<Map<String, Object>> getDetectedMods() {
+        Map<String, Map<String, Object>> byMod = new LinkedHashMap<>();
+        if (connection == null) return new ArrayList<>();
+        try (Statement st = connection.createStatement();
+             ResultSet rs = st.executeQuery("""
+                SELECT r.hack_id, r.hack_name, s.target_name, s.target_uuid, MAX(s.timestamp) AS ts
+                FROM hack_results r JOIN scans s ON s.id = r.scan_id
+                WHERE r.result = 'DETECTED'
+                  AND s.id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
+                GROUP BY r.hack_id, s.target_uuid
+                ORDER BY ts DESC""")) {
+            while (rs.next()) {
+                Map<String, Object> mod = byMod.computeIfAbsent(rs.getString(1), k -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", k);
+                    m.put("players", new ArrayList<Map<String, Object>>());
+                    return m;
+                });
+                mod.put("name", rs.getString(2));
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> players = (List<Map<String, Object>>) mod.get("players");
+                Map<String, Object> pl = new LinkedHashMap<>();
+                pl.put("name", rs.getString(3));
+                pl.put("uuid", rs.getString(4));
+                pl.put("last_seen", rs.getLong(5));
+                players.add(pl);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getDetectedMods: " + e.getMessage());
+        }
+        List<Map<String, Object>> out = new ArrayList<>(byMod.values());
+        for (Map<String, Object> m : out) m.put("count", ((List<?>) m.get("players")).size());
+        out.sort((a, b) -> Integer.compare((Integer) b.get("count"), (Integer) a.get("count")));
+        return out;
+    }
+
+    /** One account for the graph's detail card: addresses it joined from and its RPTrack fingerprint, if any. */
+    public synchronized Map<String, Object> getLinkDetails(String uuid) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> ips = new ArrayList<>();
+        out.put("ips", ips);
+        out.put("fingerprint", null);
+        List<Map<String, Object>> mods = new ArrayList<>();
+        out.put("mods", mods);
+        if (connection == null) return out;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT r.hack_name, MAX(s.timestamp) AS ts
+                FROM hack_results r JOIN scans s ON s.id = r.scan_id
+                WHERE s.target_uuid = ? AND r.result = 'DETECTED'
+                GROUP BY r.hack_id ORDER BY ts DESC""")) {
+            ps.setString(1, uuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("name", rs.getString(1));
+                    m.put("last_seen", rs.getLong(2));
+                    mods.add(m);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getLinkDetails mods: " + e.getMessage());
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT ip, first_seen, last_seen, count FROM joins WHERE uuid = ? ORDER BY last_seen DESC")) {
+            ps.setString(1, uuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ips.add(rowToMap(rs));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getLinkDetails: " + e.getMessage());
+        }
+        for (Map<String, Object> row : getRPTracks()) {
+            if (!uuid.equals(row.get("uuid"))) continue;
+            long mask = ((Number) row.get("mask")).longValue();
+            Map<String, Object> fp = new LinkedHashMap<>();
+            fp.put("bits", Long.toBinaryString(mask));
+            fp.put("packs", Long.bitCount(mask));
+            fp.put("liquidbounce", ((Number) row.get("liquidbounce")).intValue() != 0);
+            fp.put("last_seen", row.get("last_seen"));
+            out.put("fingerprint", fp);
+        }
+        return out;
+    }
+
+    private static Map<String, Object> edge(String a, String b, String type, String label, double p) {
+        Map<String, Object> e = new LinkedHashMap<>();
+        e.put("source", a);
+        e.put("target", b);
+        e.put("type", type);
+        e.put("label", label);
+        e.put("p", p);
+        return e;
     }
 
     public synchronized void close() {

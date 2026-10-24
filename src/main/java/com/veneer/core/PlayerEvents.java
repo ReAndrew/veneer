@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 public final class PlayerEvents implements Listener {
 
     private final VeneerPlugin plugin;
+    private volatile long lastPurge;
 
     public PlayerEvents(VeneerPlugin plugin) {
         this.plugin = plugin;
@@ -23,6 +24,28 @@ public final class PlayerEvents implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
         plugin.profile(event.getPlayer());
+        var address = event.getPlayer().getAddress();
+        if (address != null && address.getAddress() != null) {
+            var uuid = event.getPlayer().getUniqueId().toString();
+            var name = event.getPlayer().getName();
+            var ip = address.getAddress().getHostAddress();
+            var skin = event.getPlayer().getPlayerProfile().getTextures().getSkin();
+            var skinUrl = skin != null ? skin.toString() : null;
+            FoliaScheduler.runAsync(plugin, () -> {
+                plugin.database().recordJoin(uuid, name, ip);
+                if (skinUrl != null && !plugin.database().hasFreshSkin(uuid, 7 * 86_400_000L)) {
+                    String skinPng = Heads.fetch(skinUrl);
+                    if (skinPng != null) plugin.database().saveSkin(uuid, skinPng);
+                }
+                long now = System.currentTimeMillis();
+                if (now - lastPurge > 3_600_000L) {
+                    lastPurge = now;
+                    var hacks = plugin.config().section("hacks");
+                    plugin.database().purge(hacks.getInt("web-editor.links.retention-days", 90),
+                            hacks.getInt("web-editor.history.retention-days", 180));
+                }
+            });
+        }
         for (VeneerModule module : plugin.modules()) {
             if (!module.running()) continue;
             try {

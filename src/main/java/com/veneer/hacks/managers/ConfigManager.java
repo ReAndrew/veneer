@@ -179,6 +179,7 @@ public class ConfigManager {
 
     public long getTimeoutTicks()     { return timeoutTicks; }
     public long getBetweenSignTicks() { return betweenSignTicks; }
+    public String getMinClientVersion() { return hacksConfig.getString("min-client-version", "1.17"); }
     public boolean isHideClean()          { return hideClean; }
     public boolean isShowChannels()       { return showChannels; }
     public boolean isAdaptiveTimeout()    { return adaptiveTimeout; }
@@ -201,6 +202,8 @@ public class ConfigManager {
     public String  getLangWebhookUrl()      { return plugin.config().webhook(langConfig.getString("discord.webhook-url", "")); }
     public int     getLangEmbedColor()      { return langConfig.getInt("discord.embed-color", 5763719); }
     public String  getLangDiscordMessage()  { return langConfig.getString("discord.message", ""); }
+    public boolean isVersionCheckEnabled()  { return langConfig.getBoolean("version-check.enabled", true); }
+    public String  getVersionMismatchCommand() { return langConfig.getString("version-check.command-if-mismatch", ""); }
     public boolean isLangDiscordUseComponentsV2() { return langConfig.getBoolean("discord.use-components-v2", true); }
     public int     getLangTimeoutTicks()    { return langConfig.getInt("timeout-ticks", 100); }
 }

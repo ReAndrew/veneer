@@ -21,12 +21,20 @@ public class CheckPlayerData {
     private final String reason;
     private long scanId = -1;
     private boolean retried;
+    private int deadWaits;
+
+    /**
+     * Counts one more wait (a second while the player cannot open a sign, or one sign asked again because the
+     * player died, slept, changed world or moved away); the check gives up after 60 of them.
+     */
+    public int waitWhileBusy() { return ++deadWaits; }
 
     private Location signLocation;
     private BlockState originalState;
-    private boolean barrierPlaced;
-    private Location barrierLocation;
     private WrappedTask signTimeoutTask;
+    private Location lastSignLocation;
+    private List<HackDefinition> firstPassHacks;
+    private Map<String, HackResult> firstPassResults;
 
     public CheckPlayerData(UUID targetUUID, UUID initiatorUUID,
                            List<List<HackDefinition>> batches,
@@ -67,10 +75,16 @@ public class CheckPlayerData {
     public void setSignLocation(Location l)      { this.signLocation = l; }
     public BlockState getOriginalState()         { return originalState; }
     public void setOriginalState(BlockState s)   { this.originalState = s; }
-    public boolean isBarrierPlaced()             { return barrierPlaced; }
-    public void setBarrierPlaced(boolean b)      { this.barrierPlaced = b; }
-    public Location getBarrierLocation()         { return barrierLocation; }
-    public void setBarrierLocation(Location l)   { this.barrierLocation = l; }
     public WrappedTask getSignTimeoutTask()       { return signTimeoutTask; }
     public void setSignTimeoutTask(WrappedTask t) { this.signTimeoutTask = t; }
+    public Location getLastSignLocation()         { return lastSignLocation; }
+    public void setLastSignLocation(Location l)   { this.lastSignLocation = l; }
+
+    /** On a confirmation scan: the first pass it re-checks, so the report covers every mod, not only the flagged ones. */
+    public List<HackDefinition> getFirstPassHacks()        { return firstPassHacks; }
+    public Map<String, HackResult> getFirstPassResults()   { return firstPassResults; }
+    public void setFirstPass(List<HackDefinition> hacks, Map<String, HackResult> results) {
+        this.firstPassHacks = hacks;
+        this.firstPassResults = results;
+    }
 }

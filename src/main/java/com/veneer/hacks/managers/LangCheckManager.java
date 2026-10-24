@@ -2,7 +2,9 @@ package com.veneer.hacks.managers;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.LangCheckData;
+import com.veneer.hacks.VersionProbe;
 import com.veneer.core.FoliaScheduler;
+import com.veneer.hacks.utils.ClientVersions;
 import com.veneer.hacks.utils.SignUtil;
 import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
@@ -34,8 +36,61 @@ public class LangCheckManager {
     public boolean isChecking(UUID uuid)   { return activeChecks.containsKey(uuid); }
     public Set<UUID> getFirstJoinChecked() { return firstJoinChecked; }
 
+    /** True when the edited sign at {@code loc} is this player's language probe sign. */
+    public boolean ownsSign(UUID uuid, Location loc) {
+        LangCheckData data = activeChecks.get(uuid);
+        return data != null && SignUtil.sameBlock(data.getSignLocation(), loc);
+    }
+
+    /** True when {@code loc} is any running check's probe sign. */
+    public boolean isProbeSign(Location loc) {
+        for (LangCheckData d : activeChecks.values())
+            if (SignUtil.sameBlock(d.getSignLocation(), loc)) return true;
+        return false;
+    }
+
+    /** The player left: drop the check and put the blocks back. */
+    public void abort(UUID uuid) {
+        LangCheckData data = activeChecks.remove(uuid);
+        if (data == null) return;
+        if (data.getTimeoutTask() != null) data.getTimeoutTask().cancel();
+        restoreSign(data, false);
+    }
+
     public void startCheck(Player target, Player initiator, Map<String, String> languages) {
+        startCheck(target, initiator, languages, 0);
+    }
+
+    private void startCheck(Player target, Player initiator, Map<String, String> languages, int waits) {
         UUID uuid = target.getUniqueId();
+
+        if (plugin.bedrock().isBedrock(target)) {
+            Component msg = plugin.messages().get("bedrock-skip", Map.of("player", target.getName()));
+            if (initiator != null) initiator.sendMessage(msg);
+            return;
+        }
+        if (initiator == null && target.hasPermission("veneer.bypass.hacks")) return;
+
+        String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
+        if (oldClient != null) {
+            Component msg = plugin.messages().get("client-too-old", Map.of("player", target.getName(),
+                    "version", oldClient, "min", plugin.hacks().config().getMinClientVersion()));
+            if (initiator != null) initiator.sendMessage(msg);
+            else plugin.alerts().send(msg);
+            return;
+        }
+
+
+        // One sign spot and one sign editor per player: wait for a running mod scan (manual checks are refused)
+        if (plugin.hacks().checks().isChecking(uuid)) {
+            if (initiator != null) {
+                initiator.sendMessage(plugin.messages().get("already-checking", Map.of("player", target.getName())));
+            } else if (waits < 30) {
+                FoliaScheduler.runAtEntityLater(plugin, target,
+                        () -> { if (target.isOnline()) startCheck(target, null, languages, waits + 1); }, 40L);
+            }
+            return;
+        }
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
@@ -57,34 +112,41 @@ public class LangCheckManager {
 
     private void setupLangSign(Player target, LangCheckData data) {
         UUID uuid = target.getUniqueId();
+        if (activeChecks.get(uuid) != data) return;
+        // Dead or in bed the sign cannot open: wait (up to a minute) instead of timing out
+        if (SignUtil.cannotOpen(target)) {
+            if (data.waitWhileBusy() > 60) {
+                abort(uuid);
+                return;
+            }
+            FoliaScheduler.runAtEntityLater(plugin, target, () -> setupLangSign(target, data), 20L);
+            return;
+        }
 
-        Location signLoc = SignUtil.findAirBlock(target);
+        Location signLoc = SignUtil.findAirBlock(target, null);
         if (signLoc == null) { activeChecks.remove(uuid); return; }
 
         Block block = signLoc.getBlock();
         BlockState originalState = block.getState();
 
-        Location belowLoc   = signLoc.clone().subtract(0, 1, 0);
-        Block    belowBlock = belowLoc.getBlock();
-        boolean  placedBarrier = belowBlock.getType().isAir();
-        if (placedBarrier) belowBlock.setType(Material.BARRIER, false);
-
         block.setType(Material.OAK_SIGN, false);
         BlockState freshState = block.getState();
         if (!(freshState instanceof Sign sign)) {
             originalState.update(true, false);
-            if (placedBarrier) belowBlock.setType(Material.AIR, false);
             activeChecks.remove(uuid);
             return;
         }
 
-        sign.getSide(Side.FRONT).line(0, Component.translatable(LANG_KEY, LANG_FALLBACK));
+        var front = sign.getSide(Side.FRONT);
+        front.line(0, Component.translatable(LANG_KEY, LANG_FALLBACK));
+        if (plugin.hacks().config().isVersionCheckEnabled()) {
+            front.line(1, VersionProbe.removedLine());
+            front.line(2, VersionProbe.maceLine());
+        }
         sign.update(true, false);
 
         data.setSignLocation(signLoc);
         data.setOriginalState(originalState);
-        data.setBarrierPlaced(placedBarrier);
-        data.setBarrierLocation(belowLoc);
 
         SignUtil.setAllowedEditor(signLoc, uuid, plugin);
 
@@ -100,7 +162,13 @@ public class LangCheckManager {
 
         WrappedTask timeout = FoliaScheduler.runAtLocationLater(plugin, signLoc, () -> {
             if (!activeChecks.containsKey(uuid)) return;
-            restoreSign(data);
+            Location asked = data.getSignLocation();
+            restoreSign(data, false);
+            if (target.isOnline() && SignUtil.lostSign(target, asked)) {
+                if (data.waitWhileBusy() > 60) { abort(uuid); return; }
+                FoliaScheduler.runAtEntity(plugin, target, () -> setupLangSign(target, data));
+                return;
+            }
             activeChecks.remove(uuid);
             Component msg = plugin.messages().get("lang-check-timeout",
                     Map.of("player", target.getName()));
@@ -117,7 +185,7 @@ public class LangCheckManager {
         if (data == null) return;
 
         if (data.getTimeoutTask() != null) data.getTimeoutTask().cancel();
-        restoreSign(data);
+        restoreSign(data, false);
 
         String response = lines.length > 0 ? lines[0].strip() : "";
         plugin.getLogger().info("[Hacks] LangCheck response from " + target.getName() + ": '" + response + "'");
@@ -127,22 +195,27 @@ public class LangCheckManager {
                     Map.of("player", target.getName()));
             plugin.alerts().send(msg);
             plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
-            plugin.database().saveScan("lang", target.getName(),
-                    target.getUniqueId().toString(),
-                    data.getInitiatorUUID() != null
-                            ? Optional.ofNullable(Bukkit.getPlayer(data.getInitiatorUUID()))
-                            .map(Player::getName).orElse("AutoCheck")
-                            : "AutoCheck",
-                    "Lang check", false);
+            String name = target.getName(), id = target.getUniqueId().toString();
+            String checker = data.getInitiatorUUID() != null
+                    ? Optional.ofNullable(Bukkit.getPlayer(data.getInitiatorUUID()))
+                    .map(Player::getName).orElse("AutoCheck")
+                    : "AutoCheck";
+            FoliaScheduler.runAsync(plugin, () -> plugin.database().saveScan("lang", name, id, checker, "Lang check", false));
             return;
         }
 
-        String detected = null;
+        // A language may list several texts ("a|b", game versions differ), and several languages can share a
+        // text (pt_br and pt_pt, the English variants): every matching language is reported
+        List<String> matches = new ArrayList<>();
         for (Map.Entry<String, String> entry : data.getLanguages().entrySet()) {
-            if (entry.getValue().equalsIgnoreCase(response)) { detected = entry.getKey(); break; }
+            for (String text : entry.getValue().split("\\|")) {
+                if (text.strip().equalsIgnoreCase(response)) { matches.add(entry.getKey()); break; }
+            }
         }
+        String detected = matches.isEmpty() ? null : String.join(", ", matches);
 
         String display = detected != null ? detected : "Unknown";
+        String versionNote = checkVersion(target, response, lines);
         String msgKey  = detected != null ? "lang-check-complete" : "lang-check-unknown";
         Component msg  = plugin.messages().get(msgKey,
                 Map.of("player", target.getName(), "lang", display, "response", response));
@@ -154,9 +227,12 @@ public class LangCheckManager {
                 .map(Player::getName).orElse("Console")
                 : "AutoCheck";
 
-        long scanId = plugin.database().saveScan("lang", target.getName(),
-                target.getUniqueId().toString(), checkerName, "Lang check", false);
-        plugin.database().saveLangResult(scanId, display, response);
+        // Off the main thread: the database has one connection and the web panel may be holding it
+        String name = target.getName(), id = target.getUniqueId().toString();
+        FoliaScheduler.runAsync(plugin, () -> {
+            long scanId = plugin.database().saveScan("lang", name, id, checkerName, "Lang check", false);
+            plugin.database().saveLangResult(scanId, display, versionNote == null ? response : response + " | " + versionNote);
+        });
 
         ConfigManager cfg = plugin.hacks().config();
         if (cfg.isLangDiscordEnabled()) {
@@ -170,24 +246,47 @@ public class LangCheckManager {
     }
 
 
-    private void restoreSign(LangCheckData data) {
-        Location loc = data.getSignLocation();
-        if (loc == null) return;
-        FoliaScheduler.runAtLocation(plugin, loc, () -> {
-            try { if (data.getOriginalState() != null) data.getOriginalState().update(true, false); }
-            catch (Exception e) { plugin.getLogger().warning("[Hacks] LangRestore: " + e.getMessage()); }
-            if (data.isBarrierPlaced() && data.getBarrierLocation() != null) {
-                try { data.getBarrierLocation().getBlock().setType(Material.AIR, false); }
-                catch (Exception e) { plugin.getLogger().warning("[Hacks] LangBarrier: " + e.getMessage()); }
+    /**
+     * Compares the real client version read from the sign with the protocol version the client connects with.
+     * Called only when line 0 came back translated, so a client that blocks translations is not misread as new.
+     * Returns a note for the scan history, or null when the probe is off or told nothing.
+     */
+    private String checkVersion(Player target, String forward, String[] lines) {
+        ConfigManager cfg = plugin.hacks().config();
+        if (!cfg.isVersionCheckEnabled()) return null;
+        VersionProbe.Range real = VersionProbe.evaluate(forward,
+                lines.length > 1 ? lines[1].strip() : "", lines.length > 2 ? lines[2].strip() : "");
+        if (!real.known()) return null;
+        var protocol = ClientVersions.of(target);
+        String claimed = protocol == null ? "?" : VersionProbe.protocolName(protocol);
+        boolean mismatch = !real.fits(protocol);
+
+        var profile = plugin.profile(target);
+        profile.setVersionProbe(real.text(), claimed, mismatch);
+        plugin.getLogger().info("[Hacks] Version probe for " + target.getName() + ": client " + real.text()
+                + ", connects as " + claimed + (mismatch ? " - MISMATCH" : ""));
+        if (mismatch) {
+            plugin.alerts().send(plugin.messages().get("version-mismatch",
+                    Map.of("player", target.getName(), "real", real.text(), "claimed", claimed)));
+            String cmd = cfg.getVersionMismatchCommand();
+            if (!cmd.isBlank()) {
+                String run = cmd.replace("%player%", target.getName()).replace("%real%", real.text()).replace("%claimed%", claimed);
+                FoliaScheduler.runGlobal(plugin, () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), run));
             }
-        });
+        }
+        return "client " + real.text() + ", connects as " + claimed + (mismatch ? " (mismatch)" : "");
+    }
+
+    private void restoreSign(LangCheckData data, boolean now) {
+        SignUtil.restore(plugin, data.getSignLocation(), data.getOriginalState(), now);
+        data.setSignLocation(null);
     }
 
     public void cleanup() {
         for (LangCheckData d : activeChecks.values()) {
             if (d.getTimeoutTask() != null) d.getTimeoutTask().cancel();
-            restoreSign(d);
+            restoreSign(d, true);
         }
         activeChecks.clear();
     }
-}
+}

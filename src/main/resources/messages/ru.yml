@@ -11,6 +11,7 @@ reload-done: "{prefix}<green>Конфигурация перезагружена
 alerts-enabled: "{prefix}<green>Оповещения включены."
 alerts-disabled: "{prefix}<red>Оповещения выключены."
 bedrock-skip: "{prefix}<yellow>{player} <gray>— игрок Bedrock, проверка пропущена."
+client-too-old: "{prefix}<yellow>{player} <gray>играет на {version}: проверке табличками нужна {min} или новее, пропущено."
 module-not-running: "{prefix}<red>Модуль {module} не запущен (проверьте '{module}.enabled' в config.yml).</red>"
 update-available: "{prefix}<green>Доступен Veneer {latest}</green> <gray>(запущен {current})</gray> <aqua><click:open_url:'{url}'>{url}</click></aqua>"
 
@@ -54,6 +55,7 @@ lang-check-started: "{prefix}<white>Проверка языка игрока <ye
 lang-check-complete: "{prefix}<white>Язык игрока <yellow>{player}<white>: <yellow>{lang} <gray>({response})"
 lang-check-unknown: "{prefix}<white>Язык игрока <yellow>{player}<white>: <red>Неизвестно <gray>({response})"
 lang-check-protected: "{prefix}<white>Язык игрока <yellow>{player}<white>: <yellow>ЗАЩИЩЕН"
+version-mismatch: "{prefix}<red>{player}</red> <white>заходит как <yellow>{claimed}</yellow>, но клиент на самом деле <yellow>{real}</yellow> <gray>(ViaFabricPlus, ViaProxy или похожее)"
 lang-check-timeout: "{prefix}<yellow>{player} <white>не ответил — проверка языка не удалась."
 lang-join-check: "{prefix}<gray>Автоматическая проверка языка игрока <yellow>{player}<gray>..."
 
@@ -211,6 +213,8 @@ veneer-info-usage: "{prefix}<red>Использование: /{label} info \\<pl
 veneer-info-title: "{prefix}<gold>Veneer</gold> <gray>отчёт по игроку</gray> <white>{player}</white>{offline}"
 veneer-info-offline: " <gray>(не в сети)</gray>"
 veneer-info-client: "{prefix}<gray>Клиент:</gray> <white>{brand}</white> <gray>({type}, каналов: {channels})</gray>"
+veneer-info-version: "{prefix}<gray>Версия:</gray> <white>{claimed}</white> <gray>(по табличке: {real})</gray>"
+veneer-info-version-mismatch: "{prefix}<gray>Версия:</gray> <white>{claimed}</white> <red>, но по табличке {real}</red>"
 veneer-info-status: "{prefix}<gray>Статус:</gray> <white>{flags}</white>"
 veneer-info-group: "{prefix}<gray>Группа:</gray> <white>{group}</white>"
 veneer-scan-never: "{prefix}<gray>Проверка модов:</gray> <white>ни разу не проверялся</white>"

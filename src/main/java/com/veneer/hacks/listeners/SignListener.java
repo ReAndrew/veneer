@@ -1,5 +1,6 @@
 package com.veneer.hacks.listeners;
 
+import com.destroystokyo.paper.event.block.BlockDestroyEvent;
 import com.veneer.VeneerPlugin;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
@@ -18,13 +19,24 @@ public class SignListener implements Listener {
         this.plugin = plugin;
     }
 
+    /** Probe signs stand in the air with nothing under them: an update from below would break them into an item. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onDestroy(BlockDestroyEvent event) {
+        var at = event.getBlock().getLocation();
+        if (plugin.hacks().checks().isProbeSign(at) || plugin.hacks().langChecks().isProbeSign(at))
+            event.setCancelled(true);
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onSignChange(SignChangeEvent event) {
         Player player = event.getPlayer();
         UUID   uuid   = player.getUniqueId();
 
-        boolean hackChecking = plugin.hacks().checks().isChecking(uuid);
-        boolean langChecking = plugin.hacks().langChecks().isChecking(uuid);
+        // Only the player's current probe sign counts. Any other sign (one they really edit, or an old probe the
+        // answer arrived too late for) is left alone, so it can neither be swallowed nor scored as a scan answer.
+        var at = event.getBlock().getLocation();
+        boolean hackChecking = plugin.hacks().checks().ownsSign(uuid, at);
+        boolean langChecking = !hackChecking && plugin.hacks().langChecks().ownsSign(uuid, at);
         if (!hackChecking && !langChecking) return;
 
         event.setCancelled(true);
@@ -38,4 +50,4 @@ public class SignListener implements Listener {
         if (hackChecking) plugin.hacks().checks().handleBatchResponse(player, lines);
         else              plugin.hacks().langChecks().handleResponse(player, lines);
     }
-}
+}

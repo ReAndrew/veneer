@@ -13,6 +13,7 @@ import com.veneer.hacks.managers.CheckManager;
 import com.veneer.hacks.managers.ConfigManager;
 import com.veneer.hacks.managers.LangCheckManager;
 import com.veneer.hacks.managers.WebServerManager;
+import com.veneer.hacks.utils.SignUtil;
 import org.bukkit.entity.Player;
 
 import java.util.List;
@@ -43,8 +44,16 @@ public class HacksModule extends VeneerModule {
         if (joinChecks != null) joinChecks.onJoin(player);
     }
 
+    /** A scan of a player who left is dropped: no results, no punishment, the probe blocks are put back. */
+    @Override
+    public void playerQuit(UUID uuid) {
+        if (checks != null) checks.abort(uuid);
+        if (langChecks != null) langChecks.abort(uuid);
+    }
+
     @Override
     protected void enable() {
+        SignUtil.clearLeftovers(plugin);
         config = new ConfigManager(plugin);
         checks = new CheckManager(plugin);
         langChecks = new LangCheckManager(plugin);
@@ -64,6 +73,7 @@ public class HacksModule extends VeneerModule {
     protected void disable() {
         checks.cleanup();
         langChecks.cleanup();
+        SignUtil.saveLeftovers(plugin);
         if (web != null) web.stop();
         web = null;
     }
