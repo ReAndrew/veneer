@@ -214,18 +214,24 @@ public class DatabaseManager {
     }
 
     public synchronized List<Map<String, Object>> getRecentScans(String type, int limit) {
+        return getRecentScans(type, limit, 0, false);
+    }
+
+    /** A page of the scan history, newest first: {@code type} "hack", "lang" or null for both, {@code detectedOnly} keeps scans that found a mod. */
+    public synchronized List<Map<String, Object>> getRecentScans(String type, int limit, int offset, boolean detectedOnly) {
         List<Map<String, Object>> list = new ArrayList<>();
         if (connection == null) return list;
 
         List<Long> ids = new ArrayList<>();
         List<Map<String, Object>> rows = new ArrayList<>();
 
-        String sql = type != null
-                ? "SELECT * FROM scans WHERE type=? ORDER BY timestamp DESC LIMIT ?"
-                : "SELECT * FROM scans ORDER BY timestamp DESC LIMIT ?";
+        String sql = "SELECT * FROM scans WHERE (? IS NULL OR type=?)" + (detectedOnly ? " AND has_detected=1" : "")
+                + " ORDER BY timestamp DESC LIMIT ? OFFSET ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            if (type != null) { ps.setString(1, type); ps.setInt(2, limit); }
-            else ps.setInt(1, limit);
+            ps.setString(1, type);
+            ps.setString(2, type);
+            ps.setInt(3, limit);
+            ps.setInt(4, Math.max(0, offset));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> row = rowToMap(rs);
@@ -336,6 +342,105 @@ public class DatabaseManager {
         return list;
     }
 
+    /** Counts for the panel's overview: scans by type, players whose latest mod scan found something, known accounts. */
+    public synchronized Map<String, Object> getStats() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (connection == null) return out;
+        try (Statement st = connection.createStatement()) {
+            out.put("hack_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'hack'"));
+            out.put("lang_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'lang'"));
+            out.put("detected_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'hack' AND has_detected = 1"));
+            out.put("detected_players", count(st, """
+                    SELECT COUNT(*) FROM scans
+                    WHERE id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid) AND has_detected = 1"""));
+            out.put("accounts", count(st, "SELECT COUNT(*) FROM (SELECT uuid FROM joins UNION SELECT target_uuid FROM scans)"));
+            out.put("fingerprints", count(st, "SELECT COUNT(*) FROM rptrack"));
+            out.put("scans_today", count(st, "SELECT COUNT(*) FROM scans WHERE timestamp > " + (System.currentTimeMillis() - 86_400_000L)));
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getStats: " + e.getMessage());
+        }
+        return out;
+    }
+
+    private static long count(Statement st, String sql) throws SQLException {
+        try (ResultSet rs = st.executeQuery(sql)) { return rs.next() ? rs.getLong(1) : 0; }
+    }
+
+    /**
+     * Accounts whose name starts with {@code prefix} (any case), from joins, scans and stored clients: name, uuid and
+     * when they were last seen, most recent first.
+     */
+    public synchronized List<Map<String, Object>> searchPlayers(String prefix, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (connection == null) return out;
+        String like = prefix.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT name, uuid, MAX(ts) AS last_seen FROM (
+                    SELECT name, uuid, last_seen AS ts FROM joins
+                    UNION ALL SELECT target_name, target_uuid, timestamp FROM scans
+                    UNION ALL SELECT name, uuid, updated FROM clients
+                ) WHERE LOWER(name) LIKE ? ESCAPE '\\'
+                GROUP BY LOWER(name) ORDER BY last_seen DESC LIMIT ?""")) {
+            ps.setString(1, like);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(rowToMap(rs));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("searchPlayers: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /**
+     * What is stored about the account last seen with this name: {@code uuid}, {@code first_seen} and {@code last_seen}
+     * (joins), and {@code client} (brand, channels list, updated) from the last quit. Empty when the name is unknown.
+     */
+    public synchronized Map<String, Object> getPlayerRecord(String name) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (connection == null) return out;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT uuid FROM (
+                    SELECT uuid, last_seen AS ts, name FROM joins
+                    UNION ALL SELECT target_uuid, timestamp, target_name FROM scans
+                    UNION ALL SELECT uuid, updated, name FROM clients
+                ) WHERE LOWER(name) = LOWER(?) ORDER BY ts DESC LIMIT 1""")) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) out.put("uuid", rs.getString(1));
+            }
+            String uuid = (String) out.get("uuid");
+            if (uuid == null) return out;
+            try (PreparedStatement q = connection.prepareStatement(
+                    "SELECT MIN(first_seen), MAX(last_seen), SUM(count) FROM joins WHERE uuid = ?")) {
+                q.setString(1, uuid);
+                try (ResultSet rs = q.executeQuery()) {
+                    if (rs.next() && rs.getObject(1) != null) {
+                        out.put("first_seen", rs.getLong(1));
+                        out.put("last_seen", rs.getLong(2));
+                        out.put("joins", rs.getLong(3));
+                    }
+                }
+            }
+            try (PreparedStatement q = connection.prepareStatement("SELECT brand, channels, updated FROM clients WHERE uuid = ?")) {
+                q.setString(1, uuid);
+                try (ResultSet rs = q.executeQuery()) {
+                    if (rs.next()) {
+                        Map<String, Object> client = new LinkedHashMap<>();
+                        client.put("brand", rs.getString(1));
+                        String channels = rs.getString(2);
+                        client.put("channels", channels.isEmpty() ? List.of() : List.of(channels.split(",")));
+                        client.put("updated", rs.getLong(3));
+                        out.put("client", client);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getPlayerRecord: " + e.getMessage());
+        }
+        return out;
+    }
+
     public synchronized boolean deleteScan(long id) {
         if (connection == null) return false;
         try (PreparedStatement ps = connection.prepareStatement("DELETE FROM scans WHERE id=?")) {
@@ -383,7 +488,7 @@ public class DatabaseManager {
     public synchronized Map<String, String> validateToken(String token) {
         if (connection == null || token == null) return null;
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT player_uuid, player_name, perms FROM editor_tokens WHERE token=? AND expires_at>?")) {
+                "SELECT player_uuid, player_name, perms, expires_at FROM editor_tokens WHERE token=? AND expires_at>?")) {
             ps.setString(1, token);
             ps.setLong(2, System.currentTimeMillis());
             try (ResultSet rs = ps.executeQuery()) {
@@ -392,6 +497,7 @@ public class DatabaseManager {
                     info.put("player_uuid", rs.getString("player_uuid"));
                     info.put("player_name", rs.getString("player_name"));
                     info.put("perms", rs.getString("perms"));
+                    info.put("expires_at", String.valueOf(rs.getLong("expires_at")));
                     return info;
                 }
             }

@@ -107,23 +107,63 @@
         .node-card .row span:last-child{color:var(--text2);white-space:nowrap}
         .node-card .alt{cursor:pointer}.node-card .alt:hover{color:var(--blue)}
         .node-card .bits{font-family:monospace;letter-spacing:1px;color:var(--text)}
-      .no-links .links-btn, .no-scan .run-btn { display: none; }
+        .badge-TIMEOUT{background:#2a2135;border:1px solid #4b3a63;color:#a371f7}
+        .stat-row.wide{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+        .stat-card.link{cursor:pointer;transition:border-color .15s}.stat-card.link:hover{border-color:var(--blue)}
+        .danger-btn{background:#3d1a1a;border:1px solid #7c2020;color:var(--red);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-size:13px;font-family:var(--font);transition:all .15s;margin-left:8px}
+        .danger-btn:hover{background:var(--red);color:#fff}
+        .toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:0;margin-bottom:6px}
+        .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:18px}
+        .info-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;font-size:12px;min-width:0}
+        .info-card h4{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:8px}
+        .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--border)}
+        .kv:last-child{border-bottom:none}
+        .kv span:first-child{color:var(--text2)}
+        .kv span:last-child{color:var(--text);text-align:right;overflow-wrap:anywhere}
+        .kv small{display:block;color:var(--text2);font-size:10px}
+        .kv.alt{cursor:pointer}.kv.alt:hover span:first-child{color:var(--blue)}
+        .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+        .chip{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font:11px monospace;color:var(--text2)}
+        .muted{color:var(--text2)}
+        .warn{color:var(--yellow)}
+        .more-btn{display:block;margin:12px auto 0;background:none;border:1px solid var(--border);color:var(--text2);border-radius:var(--radius);padding:7px 18px;cursor:pointer;font-family:var(--font)}
+        .more-btn:hover{border-color:var(--blue);color:var(--text)}
+        .scan-item.hit,.scan-card.hit{border-left:3px solid var(--red)}
+        .session{font-size:11px;color:var(--text2);border:1px solid var(--border);border-radius:20px;padding:2px 9px}
+        .session.low{color:var(--yellow);border-color:#5a3d10}
+        .no-links .links-btn, .no-scan .run-btn, .no-delete .danger-btn { display: none; }
+        @media (max-width: 900px) {
+          body{height:auto;min-height:100vh;overflow:auto}
+          header{height:auto;flex-wrap:wrap;padding:8px 12px;gap:8px}
+          .header-spacer{display:none}
+          .layout{display:flex;flex-direction:column;overflow:visible}
+          main{overflow:visible;padding:14px 12px;order:1}
+          .panel{order:2;border-right:none;border-top:1px solid var(--border);max-height:360px}
+          .layout.wide > .panel{display:none}
+          .stat-row{grid-template-columns:repeat(2,1fr)}
+          .graph-box{height:70vh}
+          .node-card{width:auto;left:12px}
+          .dbg-log{width:auto;right:10px}
+        }
 </style>
 </head>
 <body>
 <header>
     <span class="logo">Vene<span>er</span> Panel</span>
     <div class="header-spacer"></div>
+    <span class="session" id="session"></span>
     <div class="player-badge" id="player-badge"></div>
-    <button class="home-btn" onclick="showMods()" data-t="☢ Mods detected">☢ Mods detected</button>
-    <button class="home-btn links-btn" onclick="showLinks()" data-t="⚯ Links">⚯ Links</button>
-    <button class="home-btn" onclick="showHome()" data-t="⌂ Home">⌂ Home</button>
+    <button class="home-btn" onclick="nav('history')" data-t="☰ History">☰ History</button>
+    <button class="home-btn" onclick="nav('mods')" data-t="☢ Mods detected">☢ Mods detected</button>
+    <button class="home-btn links-btn" onclick="nav('links')" data-t="⚯ Links">⚯ Links</button>
+    <button class="home-btn" onclick="nav('home')" data-t="⌂ Home">⌂ Home</button>
 </header>
 <div class="layout">
     <aside class="panel">
         <div class="panel-title" data-t="Players">Players</div>
         <div class="search-wrap">
-            <input type="text" id="search-input" placeholder="Search player..." data-tp="Search player..." onkeydown="if(event.key==='Enter')searchPlayer()">
+            <input type="text" id="search-input" list="search-list" autocomplete="off" placeholder="Search player..." data-tp="Search player..." onkeydown="if(event.key==='Enter')searchPlayer()">
+            <datalist id="search-list"></datalist>
             <button onclick="searchPlayer()" data-t="Search">Search</button>
         </div>
         <div class="panel-scroll" id="offline-history"></div>
@@ -160,9 +200,34 @@
       const text = await r.text();
       let json;
       try { json = JSON.parse(text); } catch(e) { throw new Error('Invalid JSON: ' + text.slice(0,100)); }
+      if (r.status === 401) { sessionExpired(); throw new Error(t('Session expired. Run /hackeditor in Minecraft.')); }
       if (!r.ok) throw new Error(json.error || r.status);
       return json;
     }
+
+    function sessionExpired() {
+      stopGraph();
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">' + esc(t('Session expired. Run /hackeditor in Minecraft.')) + '</div>';
+    }
+
+    // Pages live in the address hash (#player/Name, #scan/12, ...), so the browser's back button and reload work
+    function nav(route) {
+      if (location.hash.slice(1) === route) render(); else location.hash = route;
+    }
+    function render() {
+      const h = location.hash.slice(1), i = h.indexOf('/');
+      const page = i < 0 ? h : h.slice(0, i), arg = i < 0 ? '' : decodeURIComponent(h.slice(i + 1));
+      document.querySelector('.layout').classList.toggle('wide', page === 'links' && perms.includes('links'));
+      if (page === 'player' && arg) showPlayer(arg);
+      else if (page === 'scan' && arg) showScan(+arg);
+      else if (page === 'mods') showMods();
+      else if (page === 'history') showHistory();
+      else if (page === 'links' && perms.includes('links')) showLinks(arg);
+      else showHome();
+    }
+    window.addEventListener('hashchange', render);
+    const playerRoute = name => 'player/' + encodeURIComponent(name);
+    let perms = [];
 
     async function apiPost(path, body) {
       return apiFetch(path, {
@@ -211,21 +276,53 @@
       try {
         const info = await apiFetch('validate');
         // The server refuses what the token has no right to; hide those controls so they are not offered
-        const perms = String(info.perms || '').split(',');
+        perms = String(info.perms || '').split(',');
         document.body.classList.toggle('no-links', !perms.includes('links'));
         document.body.classList.toggle('no-scan', !perms.includes('scan'));
+        document.body.classList.toggle('no-delete', !perms.includes('delete'));
         document.getElementById('player-badge').innerHTML =
           '<img src="' + headUrl(info.player_uuid) + '" onerror="this.style.visibility=\'hidden\'" alt=""> ' + esc(info.player_name);
+        startSessionClock(Number(info.expires_at) || 0);
       } catch(e) {
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">' + esc(t('Session expired. Run /hackeditor in Minecraft.')) + '</div>';
+        sessionExpired();
         return;
       }
-      showHome();
+      render();
       loadOnlinePlayers();
       loadRecentScans();
       renderOfflineHistory();
       setInterval(loadOnlinePlayers, 10000);
       setInterval(loadRecentScans, 15000);
+      const input = document.getElementById('search-input');
+      let suggestTimer = 0;
+      input.addEventListener('input', () => {
+        clearTimeout(suggestTimer);
+        suggestTimer = setTimeout(() => suggestPlayers(input.value.trim()), 200);
+      });
+    }
+
+    // Minutes left on the token; the page goes to the expired screen when it runs out
+    function startSessionClock(expiresAt) {
+      const el = document.getElementById('session');
+      if (!expiresAt) { el.style.display = 'none'; return; }
+      const tick = () => {
+        const left = expiresAt - Date.now();
+        if (left <= 0) { clearInterval(timer); sessionExpired(); return; }
+        const min = Math.ceil(left / 60000);
+        el.textContent = t('session: {0} min', min);
+        el.classList.toggle('low', min <= 2);
+      };
+      const timer = setInterval(tick, 15000);
+      tick();
+    }
+
+    async function suggestPlayers(q) {
+      const list = document.getElementById('search-list');
+      if (!q) { list.innerHTML = ''; return; }
+      try {
+        const found = await apiFetch('players/search?q=' + encodeURIComponent(q));
+        list.innerHTML = found.map(p => '<option value="' + esc(p.name) + '">').join('');
+      } catch(e) {}
     }
 
 
@@ -328,7 +425,6 @@
     }
 
     async function showMods() {
-      document.querySelector('.layout').classList.remove('wide');
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let mods;
@@ -361,8 +457,7 @@
       return s;
     }
 
-    async function showLinks() {
-      document.querySelector('.layout').classList.add('wide');
+    async function showLinks(focus) {
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let data;
@@ -453,7 +548,12 @@
           .d3VelocityDecay(.55)
           .onEngineStop(() => {
             if (fitted || selected) { dbg('layout settled: camera left alone (' + (selected ? 'a node is selected' : 'already fitted once') + ')'); return; }
-            fitted = true; dbg('layout settled: first fit'); fit(600, 'fit after layout');
+            fitted = true;
+            // Opened for one account (from its player page): go straight to it once the layout has settled
+            const target = focus && nodes.find(n => n.id === focus);
+            focus = null;
+            if (target) { dbg('layout settled: select ' + target.name); select(target); return; }
+            dbg('layout settled: first fit'); fit(600, 'fit after layout');
           })
           .graphData({nodes, links});
         const select = async n => {
@@ -489,7 +589,7 @@
             (alts.length ? alts.map((a, i) => '<div class="row alt" data-i="' + i + '" title="' + esc(a.why.join(', ')) + '"><span>' + esc(a.o.name) + '<small style="display:block;color:var(--text2);font-size:10px">' + esc(a.why.join(', ')) + '</small></span><span>' + Math.round(a.pct * 100) + '%</span></div>').join('') : '<div style="color:var(--text2)">' + t('none') + '</div>') +
             '<div style="margin-top:12px"><button class="run-btn" style="margin:0;background:#2f6fd6;border-color:#4493f8;color:#fff" id="card-open">' + t('Open player') + '</button></div>';
           card.querySelector('h3 button').onclick = () => select(null);
-          card.querySelector('#card-open').onclick = () => showPlayer(n.name);
+          card.querySelector('#card-open').onclick = () => nav(playerRoute(n.name));
           card.querySelectorAll('.alt').forEach(el => el.onclick = () => select(alts[+el.dataset.i].o));
         };
         const fit = (ms, why) => {
@@ -592,46 +692,83 @@
     }
 
     async function showHome() {
-      document.querySelector('.layout').classList.remove('wide');
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       try {
-        const [hackScans, langScans] = await Promise.all([
-          apiFetch('scans?type=hack&limit=200'),
-          apiFetch('scans?type=lang&limit=200')
-        ]);
-        const detected = hackScans.filter(s => s.has_detected == 1 || s.has_detected === true).length;
-        const recent = [...hackScans, ...langScans].sort((a,b) => Number(b.timestamp) - Number(a.timestamp)).slice(0, 15);
-
-        let cards = '';
-        for (const s of recent) {
-          cards += buildScanCard(s);
-        }
-
+        const [st, recent] = await Promise.all([apiFetch('stats'), apiFetch('scans?limit=15')]);
+        const card = (num, label, route, colour) =>
+          '<div class="stat-card' + (route ? ' link" onclick="nav(\'' + route + '\')' : '') + '"><div class="stat-card-num"' +
+          (colour ? ' style="color:' + colour + '"' : '') + '>' + Number(num || 0).toLocaleString() + '</div><div class="stat-card-label">' + t(label) + '</div></div>';
         main.innerHTML =
           '<div class="section-title">' + t('Overview') + '</div>' +
-          '<div class="stat-row">' +
-            '<div class="stat-card"><div class="stat-card-num">' + hackScans.length + '</div><div class="stat-card-label">' + t('Hack Scans') + '</div></div>' +
-            '<div class="stat-card"><div class="stat-card-num">' + langScans.length + '</div><div class="stat-card-label">' + t('Lang Checks') + '</div></div>' +
-            '<div class="stat-card"><div class="stat-card-num" style="color:var(--red)">' + detected + '</div><div class="stat-card-label">' + t('Detections') + '</div></div>' +
+          '<div class="stat-row wide">' +
+            card(st.online, 'Online now') +
+            card(st.accounts, 'Known accounts') +
+            card(st.hack_scans, 'Hack Scans', 'history') +
+            card(st.lang_scans, 'Lang Checks', 'history') +
+            card(st.scans_today, 'Scans in 24 h', 'history') +
+            card(st.detected_players, 'Players with mods', 'mods', 'var(--red)') +
           '</div>' +
           '<div class="section-title">' + t('Recent Activity') + '</div>' +
-          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>' + t('No scans yet.') + '</p></div>') + '</div>';
+          '<div class="scan-cards">' + (recent.map(buildScanCard).join('') || '<div class="empty-state"><p>' + t('No scans yet.') + '</p></div>') + '</div>' +
+          (recent.length >= 15 ? '<button class="more-btn" onclick="nav(\'history\')">' + t('Full history') + '</button>' : '');
       } catch(e) {
         main.innerHTML = '<div class="empty-state"><p>' + t('Error: {0}', esc(e.message)) + '</p></div>';
       }
+    }
+
+    // Scan history with filters; the filters survive leaving the page and coming back
+    const historyFilter = {type: '', detected: false};
+    const HISTORY_PAGE = 30;
+    async function showHistory() {
+      const main = document.getElementById('main-content');
+      main.innerHTML =
+        '<div class="section-title">' + t('Scan history') + '</div>' +
+        '<div class="graph-bar">' +
+          '<label>' + t('Type') + ' <select id="h-type">' + [['', 'all'], ['hack', 'Hack Check'], ['lang', 'Lang Check']]
+            .map(([v, n]) => '<option value="' + v + '"' + (historyFilter.type === v ? ' selected' : '') + '>' + t(n) + '</option>').join('') + '</select></label>' +
+          '<label><input type="checkbox" id="h-det"' + (historyFilter.detected ? ' checked' : '') + '> ' + t('only with mods found') + '</label>' +
+        '</div>' +
+        '<div class="scan-cards" id="h-list"><div class="loading">' + t('Loading...') + '</div></div>' +
+        '<button class="more-btn" id="h-more" style="display:none">' + t('Load more') + '</button>';
+      const list = document.getElementById('h-list'), more = document.getElementById('h-more');
+      let offset = 0;
+      const load = async reset => {
+        if (reset) { offset = 0; list.innerHTML = '<div class="loading">' + t('Loading...') + '</div>'; }
+        more.disabled = true;
+        let page;
+        try {
+          page = await apiFetch('scans?limit=' + HISTORY_PAGE + '&offset=' + offset +
+            (historyFilter.type ? '&type=' + historyFilter.type : '') + (historyFilter.detected ? '&detected=1' : ''));
+        } catch(e) { list.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+        if (!list.isConnected) return;
+        if (reset) list.innerHTML = '';
+        offset += page.length;
+        list.insertAdjacentHTML('beforeend', page.map(buildScanCard).join(''));
+        if (!offset) list.innerHTML = '<div class="empty-state"><p>' + t('No scans yet.') + '</p></div>';
+        more.style.display = page.length === HISTORY_PAGE ? '' : 'none';
+        more.disabled = false;
+      };
+      document.getElementById('h-type').onchange = e => { historyFilter.type = e.target.value; load(true); };
+      document.getElementById('h-det').onchange = e => { historyFilter.detected = e.target.checked; load(true); };
+      more.onclick = () => load(false);
+      load(true);
     }
 
     function buildScanCard(s) {
       const results = s.results || [];
       let preview = '';
       if (s.type === 'hack') {
-        preview = results.slice(0, 6).map(r => badge(r.result)).join(' ');
+        // Found mods first: they are what the card is for
+        const shown = results.filter(r => r.result === 'DETECTED').concat(results.filter(r => r.result !== 'DETECTED'));
+        preview = shown.slice(0, 6).map(r => r.result === 'DETECTED'
+          ? '<span class="badge badge-DETECTED">' + esc(r.hack_name) + '</span>' : badge(r.result)).join(' ') +
+          (results.length > 6 ? ' <span class="muted" style="font-size:11px">+' + (results.length - 6) + '</span>' : '');
       } else {
         const r = results[0];
         preview = r ? '<span class="badge badge-lang">' + esc(r.language || t('Unknown')) + '</span>' : '';
       }
-      return '<div class="scan-card" onclick="showScan(' + s.id + ')">' +
+      return '<div class="scan-card' + (s.has_detected == 1 ? ' hit' : '') + '" onclick="nav(\'scan/' + Number(s.id) + '\')">' +
         '<div class="scan-card-header">' +
           '<span class="scan-card-type">' + t(s.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(s.target_name) + '</span>' +
           '<span class="scan-card-time">' + timeAgo(s.timestamp) + '</span>' +
@@ -653,17 +790,23 @@
           if (results.length === 0) {
             body = '<div class="empty-state"><p>' + t('No results saved for this scan.') + '</p></div>';
           } else {
+            const order = {DETECTED: 0, PROTECTED: 1, TIMEOUT: 2, NOT_DETECTED: 3, SKIPPED: 4};
+            const sorted = results.slice().sort((a, b) => (order[a.result] ?? 5) - (order[b.result] ?? 5));
+            const counts = {};
+            results.forEach(r => { counts[r.result] = (counts[r.result] || 0) + 1; });
             let rows = '';
-            for (const r of results) {
+            for (const r of sorted) {
               rows += '<tr><td>' + esc(r.hack_name) + '</td><td>' + badge(r.result) + '</td></tr>';
             }
-            body = '<table class="results-table"><thead><tr><th>' + t('Mod') + '</th><th>' + t('Result') + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
+            body = '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border)">' +
+              Object.keys(order).filter(k => counts[k]).map(k => badge(k).replace('</span>', ' × ' + counts[k] + '</span>')).join('') + '</div>' +
+              '<table class="results-table"><thead><tr><th>' + t('Mod') + '</th><th>' + t('Result') + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
           }
         } else {
           const r = results[0];
           if (r) {
             body = '<table class="results-table"><thead><tr><th>' + t('Language') + '</th><th>' + t('Raw Response') + '</th></tr></thead><tbody>' +
-              '<tr><td><span class="badge badge-lang">' + esc(r.language || t('Unknown')) + '</span></td><td>' + esc(r.response || '') + '</td></tr>' +
+              '<tr><td><span class="badge badge-lang">' + esc(r.language || t('Unknown')) + '</span></td><td style="overflow-wrap:anywhere">' + esc(r.response || '') + '</td></tr>' +
               '</tbody></table>';
           } else {
             body = '<div class="empty-state"><p>' + t('No results saved for this scan.') + '</p></div>';
@@ -672,35 +815,74 @@
 
         const backTarget = scan.target_name;
         main.innerHTML =
-          '<button class="back-btn" data-player="' + esc(backTarget) + '">← ' + esc(backTarget) + '</button>' +
+          '<div class="toolbar"><button class="back-btn" data-player="' + esc(backTarget) + '">← ' + esc(backTarget) + '</button>' +
+          '<button class="danger-btn" id="scan-delete" style="margin-bottom:14px">' + t('Delete scan') + '</button></div>' +
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">' +
             '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">' +
               '<div style="font-size:16px;font-weight:700;margin-bottom:4px">' +
-                t(scan.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(scan.target_name) +
+                t(scan.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' #' + Number(scan.id) + ' — ' + esc(scan.target_name) +
               '</div>' +
               '<div style="font-size:12px;color:var(--text2)">' + t('by {0}', esc(scan.checker_name)) + ' · ' + new Date(Number(scan.timestamp)).toLocaleString() + '</div>' +
               (scan.reason ? '<div style="font-size:12px;color:var(--text2);margin-top:2px">' + t('Reason: {0}', esc(scan.reason)) + '</div>' : '') +
             '</div>' +
             body +
           '</div>';
+        document.getElementById('scan-delete').onclick = async () => {
+          if (!confirm(t('Delete scan #{0}? This cannot be undone.', id))) return;
+          try {
+            await apiFetch('scan/' + id, {method: 'DELETE'});
+            showToast(t('Scan #{0} deleted', id));
+            loadRecentScans();
+            // Replace the history entry: going back to a deleted scan would only show an error
+            location.replace('#' + playerRoute(backTarget));
+          } catch(e) { showToast(t('Error: {0}', e.message)); }
+        };
       } catch(e) {
         main.innerHTML = '<div class="empty-state"><p>' + t('Failed to load scan #{0}', id) + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
       }
     }
 
-    async function showPlayer(name) {
-      document.querySelector('.layout').classList.remove('wide');
+    function kv(label, value) {
+      return '<div class="kv"><span>' + label + '</span><span>' + value + '</span></div>';
+    }
+    function dateTime(ts) {
+      return ts ? esc(new Date(Number(ts)).toLocaleString()) + ' <small>' + esc(timeAgo(ts)) + '</small>' : '<span class="muted">—</span>';
+    }
+    const LINK_TYPES = {ip: 'same address', rptrack: 'same fingerprint', client: 'same client'};
+
+    function clientCard(c, online) {
+      if (!c || (!c.brand && !(c.channels || []).length)) {
+        return '<div class="info-card"><h4>' + t('Client') + '</h4><div class="muted">' + t(online ? 'nothing received yet' : 'not recorded') + '</div></div>';
+      }
+      const ch = c.channels || [];
+      let version = '';
+      if (c.version_real) {
+        version = kv(t('Real version'), esc(c.version_real)) + kv(t('Connected as'), esc(c.version_claimed || '?')) +
+          (c.version_mismatch ? '<div class="warn" style="padding-top:4px">⚠ ' + t('the client hides its real version') + '</div>' : '');
+      }
+      return '<div class="info-card"><h4>' + t('Client') + (c.live ? '' : ' · ' + t('at last quit')) + '</h4>' +
+        kv(t('Brand'), c.brand ? '<code>' + esc(c.brand) + '</code>' : '<span class="muted">—</span>') +
+        (c.type ? kv(t('Loader'), esc(c.type.toLowerCase())) : '') +
+        (c.updated ? kv(t('Recorded'), dateTime(c.updated)) : '') +
+        version +
+        '<div style="padding-top:6px" class="muted">' + t('{0} channels', ch.length) + '</div>' +
+        (ch.length ? '<div class="chips">' + ch.map(x => '<span class="chip">' + esc(x) + '</span>').join('') + '</div>' : '') +
+        '</div>';
+    }
+
+    async function showPlayer(name, quiet) {
       addHistory(name);
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">' + t('Loading {0}...', esc(name)) + '</div>';
+      if (!quiet) main.innerHTML = '<div class="loading">' + t('Loading {0}...', esc(name)) + '</div>';
       try {
         const data = await apiFetch('player/' + encodeURIComponent(name));
+        if (location.hash !== '#' + playerRoute(name)) return; // the user went elsewhere meanwhile
         const scans = data.scans || [];
         const uuid = data.uuid || name;
 
         const onlineBadge = data.online
           ? '<span class="online-badge"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span> ' + t('Online') + '</span>'
-          : '<span class="offline-badge">' + t('Offline') + '</span>';
+          : '<span class="offline-badge">' + t(data.known ? 'Offline' : 'Never seen on this server') + '</span>';
 
         let runButtons = '';
         if (data.online) {
@@ -708,35 +890,86 @@
             '<button class="run-btn" id="btn-hack" data-player="' + esc(name) + '" data-scan="hack">' + t('Run Hack Check') + '</button>' +
             '<button class="run-btn" id="btn-lang" data-player="' + esc(name) + '" data-scan="lang">' + t('Run Lang Check') + '</button>';
         }
+        if (data.alts && data.alts.length)
+          runButtons += '<button class="run-btn links-btn" onclick="nav(\'links/' + encodeURIComponent(data.uuid) + '\')">⚯ ' + t('Show in graph') + '</button>';
+
+        const fp = data.fingerprint;
+        const mods = (data.mods || []).slice();
+        if (fp && fp.liquidbounce && !mods.some(m => m.name.toLowerCase() === 'liquidbounce'))
+          mods.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint')});
 
         let cards = '';
-        for (const s of scans) cards += buildScanCard(s);
+        if (data.known) {
+          cards += '<div class="info-card"><h4>' + t('Account') + '</h4>' +
+            kv(t('First seen'), dateTime(data.first_seen)) + kv(t('Last seen'), data.online ? '<span style="color:var(--green)">' + t('now') + '</span>' : dateTime(data.last_seen)) +
+            (data.joins ? kv(t('Joins'), Number(data.joins).toLocaleString()) : '') +
+            kv(t('Mods'), mods.length
+              ? mods.map(m => '<span class="badge badge-DETECTED" style="margin:1px" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('')
+              : '<span class="muted">' + t('no mods detected') + '</span>') +
+            kv(t('Fingerprint'), fp ? '<span class="bits" style="font-family:monospace">' + esc(fp.bits) + '</span> <small>' + t('{0} packs', fp.packs) + '</small>' : '<span class="muted">' + t('not tracked') + '</span>') +
+            '</div>';
+          cards += clientCard(data.client, data.online);
+          if (data.ips) {
+            cards += '<div class="info-card"><h4>' + t('Addresses') + '</h4>' +
+              (data.ips.length ? data.ips.map(r => kv(esc(r.ip) + (r.org !== undefined ? '<small>' + esc(provider(r)) + (r.weak ? ' · <span class="warn">' + t('VPN / hosting') + '</span>' : '') + '</small>' : ''),
+                r.count + '× · ' + esc(timeAgo(r.last_seen)))).join('') : '<div class="muted">' + t('none recorded') + '</div>') +
+              '</div>';
+          }
+          if (data.alts) {
+            cards += '<div class="info-card"><h4>' + t('Possible alts') + '</h4>' +
+              (data.alts.length ? data.alts.map(a => '<div class="kv alt" data-player="' + esc(a.name) + '"><span>' + esc(a.name) +
+                '<small>' + a.types.map(x => t(LINK_TYPES[x] || x)).join(', ') + '</small></span><span>' + Math.round(a.pct * 100) + '%</span></div>').join('')
+                : '<div class="muted">' + t('none') + '</div>') +
+              '</div>';
+          }
+        }
+
+        let scanCards = '';
+        for (const s of scans) scanCards += buildScanCard(s);
 
         main.innerHTML =
-          '<button class="back-btn" onclick="showHome()">← ' + t('Home') + '</button>' +
+          '<button class="back-btn" onclick="history.length > 1 ? history.back() : nav(\'home\')">← ' + t('Back') + '</button>' +
           '<div class="player-header">' +
             '<img src="' + headUrl(uuid) + '" onerror="this.src=\'' + headUrl(name) + '\'" width="64" height="64" alt="">' +
-            '<div class="player-header-info"><h2>' + esc(name) + '</h2><p>' + esc(uuid) + '</p>' + onlineBadge + '</div>' +
+            '<div class="player-header-info"><h2>' + esc(name) + '</h2><p>' + esc(data.uuid || '') + '</p>' + onlineBadge + '</div>' +
           '</div>' +
-          runButtons +
+          (runButtons ? '<div class="toolbar">' + runButtons + '</div>' : '') +
+          (cards ? '<div class="info-grid">' + cards + '</div>' : '') +
           '<div class="section-title">' + t(scans.length === 1 ? '{0} Scan' : '{0} Scans', scans.length) + '</div>' +
-          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>' + t('No scans for this player yet.') + '</p></div>') + '</div>';
+          '<div class="scan-cards">' + (scanCards || '<div class="empty-state"><p>' + t('No scans for this player yet.') + '</p></div>') + '</div>';
+        return scans.length ? Number(scans[0].id) : 0;
       } catch(e) {
-        main.innerHTML = '<div class="empty-state"><p>' + t('Failed to load player.') + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
+        if (!quiet) main.innerHTML = '<div class="empty-state"><p>' + t('Failed to load player.') + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
       }
     }
 
     async function runScan(name, type) {
       const btn = document.getElementById(type === 'hack' ? 'btn-hack' : 'btn-lang');
       if (btn) btn.disabled = true;
+      // Newest scan of the player now shown (scans come newest first)
+      const top = document.querySelector('.scan-card[onclick]');
+      const before = top ? +(top.getAttribute('onclick').match(/\d+/) || [0])[0] : 0;
       try {
         await apiPost('scan/run', { player: name, type: type });
         showToast(t(type === 'hack' ? 'Hack check started on {0}' : 'Lang check started on {0}', name));
-        setTimeout(() => showPlayer(name), 4000);
       } catch(e) {
-        document.getElementById('main-content').innerHTML = '<div class="empty-state"><p>' + t('Failed to run scan: {0}', esc(e.message)) + '</p></div>';
+        showToast(t('Failed to run scan: {0}', e.message));
         if (btn) btn.disabled = false;
+        return;
       }
+      // A scan takes a few seconds (longer with a slow client): reload the page until the new one is saved
+      const route = playerRoute(name), started = Date.now();
+      const poll = async () => {
+        if (location.hash !== '#' + route) return;
+        const newest = await showPlayer(name, true);
+        if (newest > before) { loadRecentScans(); return; }
+        if (Date.now() - started < 60000) {
+          const b = document.getElementById(type === 'hack' ? 'btn-hack' : 'btn-lang');
+          if (b) { b.disabled = true; b.textContent = t('Running...'); }
+          setTimeout(poll, 2500);
+        }
+      };
+      setTimeout(poll, 2500);
     }
 
     async function loadRecentScans() {
@@ -751,8 +984,8 @@
         container.innerHTML = '';
         for (const s of scans) {
           const el = document.createElement('div');
-          el.className = 'scan-item';
-          el.onclick = () => showScan(s.id);
+          el.className = 'scan-item' + (s.has_detected == 1 ? ' hit' : '');
+          el.onclick = () => nav('scan/' + s.id);
           el.innerHTML =
             '<div class="scan-item-top">' +
               '<span class="scan-item-name">' + esc(s.target_name) + '</span>' +
@@ -777,7 +1010,7 @@
         for (const p of players) {
           const el = document.createElement('div');
           el.className = 'player-item';
-          el.onclick = () => showPlayer(p.name);
+          el.onclick = () => nav(playerRoute(p.name));
           el.innerHTML =
             '<img src="' + headUrl(p.uuid) + '" onerror="this.src=\'' + headUrl(p.name) + '\'" alt="" width="28" height="28">' +
             '<span class="player-item-name">' + esc(p.name) + '</span>' +
@@ -804,7 +1037,7 @@
       for (const name of offlineHistory) {
         const el = document.createElement('div');
         el.className = 'player-item';
-        el.onclick = () => showPlayer(name);
+        el.onclick = () => nav(playerRoute(name));
         el.innerHTML =
           '<img src="' + headUrl(name) + '" onerror="this.style.visibility=\'hidden\'" alt="" width="28" height="28">' +
           '<span class="player-item-name">' + esc(name) + '</span>';
@@ -816,7 +1049,7 @@
       const name = document.getElementById('search-input').value.trim();
       if (!name) return;
       document.getElementById('search-input').value = '';
-      showPlayer(name);
+      nav(playerRoute(name));
     }
 
     // Names are never spliced into inline onclick code: offline-mode servers accept names with quotes in them,
@@ -825,7 +1058,7 @@
       const el = e.target.closest('[data-player]');
       if (!el) return;
       if (el.dataset.scan) runScan(el.dataset.player, el.dataset.scan);
-      else showPlayer(el.dataset.player);
+      else nav(playerRoute(el.dataset.player));
     });
 
     init();

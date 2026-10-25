@@ -7,6 +7,7 @@ import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.IpDatabase;
+import com.veneer.core.PlayerProfile;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -86,7 +87,7 @@ public class WebServerManager {
     private void handle(HttpExchange ex) {
         try {
             String path   = ex.getRequestURI().getPath();
-            String query  = ex.getRequestURI().getQuery();
+            String query  = ex.getRequestURI().getRawQuery(); // raw: parseQuery decodes each value once
             Map<String, String> params = parseQuery(query);
 
             addCorsHeaders(ex);
@@ -176,6 +177,19 @@ public class WebServerManager {
             return;
         }
 
+        if (path.equals("/api/stats")) {
+            Map<String, Object> stats = plugin.database().getStats();
+            stats.put("online", cachedPlayers.size());
+            sendJson(ex, 200, stats);
+            return;
+        }
+
+        if (path.equals("/api/players/search")) {
+            String q = params.getOrDefault("q", "").trim();
+            sendJson(ex, 200, q.isEmpty() || q.length() > 16 ? List.of() : plugin.database().searchPlayers(q, 12));
+            return;
+        }
+
         if (path.equals("/api/mods")) {
             sendJson(ex, 200, plugin.database().getDetectedMods());
             return;
@@ -199,27 +213,7 @@ public class WebServerManager {
         }
 
         if (path.equals("/api/links")) {
-            var links = links();
-            var rp = plugin.config().section("rptrack");
-            int match = rp != null ? rp.getInt("match", 5) : 5;
-            Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), match,
-                    links.getInt("max-accounts-per-client", 5), links.getInt("client-min-channels", 3));
-            boolean ips = can(playerInfo, "ips");
-            double weakFactor = Math.max(0, Math.min(1, links.getDouble("weak-provider-factor", 0.3)));
-            for (Object e : (List<?>) graph.get("edges")) {
-                @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
-                if (!"ip".equals(edge.get("type"))) continue;
-                // Strangers share the exit addresses of VPNs, WARP and hosting: such a shared address proves little
-                if (describeIp((String) edge.get("label"), edge))
-                    edge.put("p", ((Number) edge.get("p")).doubleValue() * weakFactor);
-                if (!ips) edge.put("label", "(hidden)");
-            }
-            if (!ips)
-                for (Object n : (List<?>) graph.get("nodes")) {
-                    @SuppressWarnings("unchecked") Map<String, Object> node = (Map<String, Object>) n;
-                    node.put("ips", List.of());
-                }
-            sendJson(ex, 200, graph);
+            sendJson(ex, 200, linkGraph(playerInfo));
             return;
         }
 
@@ -228,7 +222,8 @@ public class WebServerManager {
             // Clamped: limit=-1 means "no limit" to SQLite and would read the whole history under the DB lock
             int    limit = Math.max(1, Math.min(500, parseInt(params.get("limit"), 50)));
             String validType = ("hack".equals(type) || "lang".equals(type)) ? type : null;
-            sendJson(ex, 200, plugin.database().getRecentScans(validType, limit));
+            sendJson(ex, 200, plugin.database().getRecentScans(validType, limit,
+                    Math.max(0, parseInt(params.get("offset"), 0)), "1".equals(params.get("detected"))));
             return;
         }
 
@@ -308,16 +303,112 @@ public class WebServerManager {
             String uuid = "";
             for (Map<String, Object> p : cachedPlayers)
                 if (name.equalsIgnoreCase((String) p.get("name"))) { uuid = (String) p.get("uuid"); online = true; break; }
+            Map<String, Object> record = plugin.database().getPlayerRecord(name);
+            if (uuid.isEmpty()) uuid = (String) record.getOrDefault("uuid", "");
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("name",   name);
             result.put("uuid",   uuid);
             result.put("online", online);
+            result.put("known",  !uuid.isEmpty());
+            result.put("first_seen", record.get("first_seen"));
+            result.put("last_seen",  record.get("last_seen"));
+            result.put("joins",      record.get("joins"));
+            result.put("client",     online ? liveClient(uuid) : record.get("client"));
+            if (!uuid.isEmpty()) {
+                Map<String, Object> details = plugin.database().getLinkDetails(uuid);
+                result.put("mods", details.get("mods"));
+                result.put("fingerprint", details.get("fingerprint"));
+                if (can(playerInfo, "ips")) {
+                    for (Object r : (List<?>) details.get("ips")) {
+                        @SuppressWarnings("unchecked") Map<String, Object> row = (Map<String, Object>) r;
+                        describeIp((String) row.get("ip"), row);
+                    }
+                    result.put("ips", details.get("ips"));
+                }
+                if (can(playerInfo, "links")) result.put("alts", alts(linkGraph(playerInfo), uuid));
+            }
             result.put("scans",  plugin.database().getPlayerScans(name));
             sendJson(ex, 200, result);
             return;
         }
 
         sendJson(ex, 404, Map.of("error", "endpoint not found"));
+    }
+
+    /**
+     * The account graph as the token may see it: IP links weakened for VPN/hosting providers, and addresses
+     * hidden without {@code veneer.web.ips}.
+     */
+    private Map<String, Object> linkGraph(Map<String, String> playerInfo) {
+        var links = links();
+        var rp = plugin.config().section("rptrack");
+        int match = rp != null ? rp.getInt("match", 5) : 5;
+        Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), match,
+                links.getInt("max-accounts-per-client", 5), links.getInt("client-min-channels", 3));
+        boolean ips = can(playerInfo, "ips");
+        double weakFactor = Math.max(0, Math.min(1, links.getDouble("weak-provider-factor", 0.3)));
+        for (Object e : (List<?>) graph.get("edges")) {
+            @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
+            if (!"ip".equals(edge.get("type"))) continue;
+            // Strangers share the exit addresses of VPNs, WARP and hosting: such a shared address proves little
+            if (describeIp((String) edge.get("label"), edge))
+                edge.put("p", ((Number) edge.get("p")).doubleValue() * weakFactor);
+            if (!ips) edge.put("label", "(hidden)");
+        }
+        if (!ips)
+            for (Object n : (List<?>) graph.get("nodes")) {
+                @SuppressWarnings("unchecked") Map<String, Object> node = (Map<String, Object>) n;
+                node.put("ips", List.of());
+            }
+        return graph;
+    }
+
+    /**
+     * Accounts linked to {@code uuid} in the graph, strongest first: name, uuid, pct (reasons merged the way the
+     * graph merges them, 1 - product of (1 - p)) and the link types.
+     */
+    private static List<Map<String, Object>> alts(Map<String, Object> graph, String uuid) {
+        Map<String, String> names = new HashMap<>();
+        for (Object n : (List<?>) graph.get("nodes")) {
+            Map<?, ?> node = (Map<?, ?>) n;
+            names.put((String) node.get("id"), (String) node.get("name"));
+        }
+        Map<String, double[]> miss = new LinkedHashMap<>();
+        Map<String, Set<String>> types = new HashMap<>();
+        for (Object e : (List<?>) graph.get("edges")) {
+            Map<?, ?> edge = (Map<?, ?>) e;
+            String other = uuid.equals(edge.get("source")) ? (String) edge.get("target")
+                    : uuid.equals(edge.get("target")) ? (String) edge.get("source") : null;
+            if (other == null) continue;
+            miss.computeIfAbsent(other, k -> new double[]{1})[0] *= 1 - ((Number) edge.get("p")).doubleValue();
+            types.computeIfAbsent(other, k -> new TreeSet<>()).add((String) edge.get("type"));
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, double[]> m : miss.entrySet()) {
+            Map<String, Object> alt = new LinkedHashMap<>();
+            alt.put("uuid", m.getKey());
+            alt.put("name", names.getOrDefault(m.getKey(), m.getKey()));
+            alt.put("pct", 1 - m.getValue()[0]);
+            alt.put("types", types.get(m.getKey()));
+            out.add(alt);
+        }
+        out.sort((a, b) -> Double.compare((Double) b.get("pct"), (Double) a.get("pct")));
+        return out;
+    }
+
+    /** Brand, channels, loader and version probe of an online player, from the live profile. */
+    private Map<String, Object> liveClient(String uuid) {
+        Map<String, Object> client = new LinkedHashMap<>();
+        PlayerProfile profile = plugin.profileOf(UUID.fromString(uuid));
+        if (profile == null) return client;
+        client.put("brand", profile.getBrand());
+        client.put("channels", new TreeSet<>(profile.getChannels()));
+        client.put("type", profile.clientType().name());
+        client.put("version_real", profile.getVersionReal());
+        client.put("version_claimed", profile.getVersionClaimed());
+        client.put("version_mismatch", profile.isVersionMismatch());
+        client.put("live", true);
+        return client;
     }
 
     /** Whether the token was issued to a player with {@code veneer.web.<perm>} (rights are fixed at issue time). */
