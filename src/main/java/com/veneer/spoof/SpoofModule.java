@@ -1,6 +1,7 @@
 package com.veneer.spoof;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.veneer.core.PacketEventsHook;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.PlayerProfile;
 import com.veneer.core.VeneerModule;
@@ -49,11 +50,14 @@ public class SpoofModule extends VeneerModule {
         detection = new DetectionManager(plugin);
         discord = new DiscordWebhookHandler(plugin);
 
-        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(plugin));
-        PacketEvents.getAPI().getSettings()
-                .reEncodeByDefault(false)
-                .checkForUpdates(false);
-        PacketEvents.getAPI().load();
+        // The lite jar runs on the PacketEvents plugin, which has already loaded and started it
+        if (PacketEventsHook.bundled()) {
+            PacketEvents.setAPI(SpigotPacketEventsBuilder.build(plugin));
+            PacketEvents.getAPI().getSettings()
+                    .reEncodeByDefault(false)
+                    .checkForUpdates(false);
+            PacketEvents.getAPI().load();
+        }
 
         plugin.getServer().getMessenger().registerIncomingPluginChannel(plugin, BRAND_CHANNEL,
                 (channel, player, message) -> onBrand(player, new String(message).substring(1)));
@@ -62,7 +66,7 @@ public class SpoofModule extends VeneerModule {
         PacketEvents.getAPI().getEventManager().registerListener(events);
 
         command("spoof", new SpoofCommand(plugin));
-        PacketEvents.getAPI().init();
+        if (PacketEventsHook.bundled()) PacketEvents.getAPI().init();
 
         if (!config.isDiscordWebhookEnabled()) {
             plugin.debug("Spoof Discord alerts are disabled.");
@@ -75,7 +79,9 @@ public class SpoofModule extends VeneerModule {
     @Override
     protected void disable() {
         plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, BRAND_CHANNEL);
-        if (PacketEvents.getAPI() != null) PacketEvents.getAPI().terminate();
+        if (PacketEvents.getAPI() == null) return;
+        if (PacketEventsHook.bundled()) PacketEvents.getAPI().terminate();
+        else if (events != null) PacketEvents.getAPI().getEventManager().unregisterListener(events);
     }
 
     @Override

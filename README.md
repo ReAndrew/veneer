@@ -25,7 +25,7 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 |---|---|
 | **Spoof detection** (from AntiSpoof) | Compares the client brand and registered plugin channels against what the claimed client can actually send. Catches fake `vanilla`, fake Fabric/Forge/Lunar, blocked or required channels, Geyser impersonation. Uses PacketEvents and the `minecraft:brand` channel. |
 | **Mod detection** (from CheckHacks) | Finds installed mods through the sign translation vulnerability (MC-265322). Hacks are defined in config, results are stored in SQLite. Clients older than `hacks.detection.min-client-version` (default 1.17) are not scanned: they do not answer the probe sign. |
-| **Language and version check** | `/hacklang` reads the client language, and from the same sign the client's real game version (keys Mojang removed or added in 1.20.5 and 1.21.2). A version that does not match the protocol the player connects with points to ViaFabricPlus, ViaProxy and the like; an alert and an optional command follow. |
+| **Language and version check** | `/hacklang` reads the client language, and from the same sign the client's real game version: key bindings and removed keys work in any language and tell apart every release from 1.21.5 to 26.3 (except 1.21.6-1.21.8 and 1.21.9/1.21.10), keys added in each version narrow en_us clients down to nearly the release. A version that does not match the protocol the player connects with points to ViaFabricPlus, ViaProxy and the like; an alert and an optional command follow. |
 | **Web panel** | Scan history and manual scans, a list of every mod detected, and a 3D graph of linked accounts (shared addresses, RPTrack fingerprints and the same client brand and channels) with player heads, filters by link type, strength and last seen, and search by name or IP. Each address shows its provider, AS number and country; a shared address of a VPN, Cloudflare WARP or hosting provider counts as a weaker link. The panel follows `general.language` (English and Russian). |
 | **Anticheat bridge** | Flags from Grim (event bus), Vulcan, Spartan, Matrix, Intave and AAC can trigger a mod scan. A spoof flag can also queue one. |
 | **RPTrack** | Links accounts and IPs of the same Minecraft installation through its resource-pack download cache, and detects LiquidBounce's local server. **Off by default.** See [RPTrack](#rptrack). |
@@ -47,7 +47,7 @@ Veneer places a sign next to the player with a translation or keybind key from e
 
 ## Install
 
-1. Drop `veneer-<version>.jar` into `plugins/` and start the server.
+1. Drop `veneer-<version>.jar` into `plugins/` and start the server (or `veneer-<version>-lite.jar` together with the PacketEvents plugin, see [Build](#build)).
 2. Edit `plugins/Veneer/config.yml`, then apply it with `/veneer reload`. Requires Paper, Spigot or Folia 1.21+ on Java 21.
 3. Optional: install LuckPerms, PlaceholderAPI, Floodgate/Geyser, ViaVersion or an anticheat. Veneer picks them up automatically.
 
@@ -122,14 +122,17 @@ debug: false                          # log every step; also turns on the experi
 mvn -q -DskipTests package
 ```
 
-Produces `target/veneer-<version>.jar` (about 24 MB, PacketEvents shaded and relocated). Needs Java 21 or newer.
+Produces two jars (Java 21 or newer):
+
+- `target/veneer-<version>.jar` (about 24 MB): PacketEvents bundled and relocated, nothing else to install.
+- `target/veneer-<version>-lite.jar` (about 1.5 MB): runs on the [PacketEvents plugin](https://modrinth.com/plugin/packetevents), which must be installed; without it Veneer disables itself. Use it when the server already has PacketEvents or you want to update PacketEvents on its own.
 
 ## Notes
 
 - The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
 - The provider and country data (about 50 MB) is downloaded to `plugins/Veneer/geo/` through jsDelivr and refreshed weekly (`hacks.web-editor.links.ip-database`, on by default; the plugin works without it). The country is where the network is registered, not a precise location. Which providers count as weak is set by `weak-provider-asns` and `weak-provider-keywords`, the weight factor by `weak-provider-factor` (0.3). Client links need the spoof module and are recorded when a player leaves.
 - To translate the panel, add `src/main/resources/web/lang/<language>.json` (English text as keys, see `ru.json`).
-- Version `0.9.4` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- Version `0.9.5` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
 - **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. Tested on Folia 1.21.11 (mod scan, language check, web panel scans, death, world change and quitting mid-scan). A probe sign Folia does not let the plugin remove on shutdown is removed on the next start.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 

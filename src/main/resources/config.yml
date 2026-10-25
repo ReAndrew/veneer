@@ -754,10 +754,12 @@ hacks:
       enabled: false
       only-first-join: false
 
-    # Real client version: two more lines on the language sign show which game version the client really is,
-    # and that is compared with the protocol version it connects with. A client on 1.21.2+ posing as 1.21.1 or
-    # older (or the other way round), as ViaFabricPlus or ViaProxy do, raises a "version-mismatch" alert.
-    # Works in every language for the 1.21.1 / 1.21.2 boundary; English clients also show 1.20.4 / 1.20.5.
+    # Real client version: the other three lines of the language sign show which game version the client really
+    # is (key bindings, keys Mojang removed, and for en_us clients keys added in each version), and that is
+    # compared with the protocol version it connects with. A client posing as another version, as ViaFabricPlus
+    # or ViaProxy do, raises a "version-mismatch" alert. In any language it tells apart every release from 1.21.5
+    # on (not 1.21.6-1.21.8 or 1.21.9/1.21.10 from each other) and a few below; en_us clients show nearly every
+    # release. Needs PacketEvents (the answers are read from the packet, Paper cuts sign lines to 80 characters).
     version-check:
       enabled: true
       # Console command on a mismatch. Placeholders: %player%, %real% (e.g. "<=1.21.1"), %claimed% (e.g. "1.21.11")

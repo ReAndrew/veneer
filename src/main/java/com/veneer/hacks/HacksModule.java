@@ -1,5 +1,6 @@
 package com.veneer.hacks;
 
+import com.github.retrooper.packetevents.PacketEvents;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.VeneerModule;
@@ -9,6 +10,7 @@ import com.veneer.hacks.commands.HackLangCommand;
 import com.veneer.hacks.listeners.AntiCheatListener;
 import com.veneer.hacks.listeners.JoinListener;
 import com.veneer.hacks.listeners.SignListener;
+import com.veneer.hacks.listeners.SignPacketListener;
 import com.veneer.hacks.managers.CheckManager;
 import com.veneer.hacks.managers.ConfigManager;
 import com.veneer.hacks.managers.LangCheckManager;
@@ -30,6 +32,7 @@ public class HacksModule extends VeneerModule {
     private JoinListener joinChecks;
     private LangCheckManager langChecks;
     private WebServerManager web;
+    private SignPacketListener signPackets;
 
     public HacksModule(VeneerPlugin plugin) {
         super(plugin);
@@ -67,10 +70,18 @@ public class HacksModule extends VeneerModule {
         joinChecks = new JoinListener(plugin);
         AntiCheatListener anticheat = listen(new AntiCheatListener(plugin));
         anticheat.registerHooks();
+        // PacketEvents runs when the spoof module (started before this one) or the PacketEvents plugin started it
+        if (PacketEvents.getAPI() != null && PacketEvents.getAPI().isInitialized()) {
+            signPackets = new SignPacketListener(plugin);
+            PacketEvents.getAPI().getEventManager().registerListener(signPackets);
+        }
     }
 
     @Override
     protected void disable() {
+        if (signPackets != null && PacketEvents.getAPI() != null)
+            PacketEvents.getAPI().getEventManager().unregisterListener(signPackets);
+        signPackets = null;
         checks.cleanup();
         langChecks.cleanup();
         SignUtil.saveLeftovers(plugin);
@@ -88,6 +99,8 @@ public class HacksModule extends VeneerModule {
     public ConfigManager config() { return config; }
     public CheckManager checks() { return checks; }
     public LangCheckManager langChecks() { return langChecks; }
+    /** Whether sign answers can be read from the packet, uncut (see {@link SignPacketListener}). */
+    public boolean readsRawSigns() { return signPackets != null; }
 
     /**
      * Queues a mod scan for a player the spoof module just flagged. Safe to call from any thread.

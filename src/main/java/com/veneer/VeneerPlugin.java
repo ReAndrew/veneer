@@ -4,6 +4,7 @@ import com.veneer.core.Alerts;
 import com.veneer.core.Bedrock;
 import com.veneer.core.DatabaseManager;
 import com.veneer.core.Messages;
+import com.veneer.core.PacketEventsHook;
 import com.veneer.core.PlayerEvents;
 import com.veneer.core.PlayerProfile;
 import com.veneer.core.UpdateChecker;
@@ -54,6 +55,13 @@ public class VeneerPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         long begin = System.currentTimeMillis();
+        // The lite jar has no PacketEvents of its own, and the spoof module and the mod scan's version check use it
+        if (!PacketEventsHook.available(this)) {
+            getLogger().severe("This is the lite build: it needs the PacketEvents plugin "
+                    + "(https://modrinth.com/plugin/packetevents), or use the full veneer jar instead. Disabling.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         config = new VeneerConfig(this);
         messages = new Messages(this);
         alerts = new Alerts(this);
@@ -121,6 +129,7 @@ public class VeneerPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (modules == null) return;   // disabled at startup (lite build without PacketEvents)
         // Each step on its own: an exception in one module must not leave the others running or the database open
         for (int i = modules.size() - 1; i >= 0; i--) {
             try {

@@ -6,7 +6,7 @@
 
     <groupId>com.veneer</groupId>
     <artifactId>veneer</artifactId>
-    <version>0.9.4</version>
+    <version>0.9.5</version>
     <packaging>jar</packaging>
 
     <name>Veneer</name>
@@ -144,7 +144,35 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.5.3</version>
                 <executions>
+                    <!-- veneer-<version>-lite.jar: no PacketEvents, runs on the PacketEvents plugin. Runs first:
+                         the next execution replaces the main artifact with the full jar. -->
                     <execution>
+                        <id>lite</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>lite</shadedClassifierName>
+                            <artifactSet>
+                                <!-- Also what the server already provides (plugin classes load parent-first, so these copies
+                                     are never used): netty, SQLite, Gson, SLF4J. Adventure stays for plain Spigot. -->
+                                <excludes>
+                                    <exclude>com.github.retrooper:*</exclude>
+                                    <exclude>io.netty:*</exclude>
+                                    <exclude>org.xerial:sqlite-jdbc</exclude>
+                                    <exclude>com.google.code.gson:gson</exclude>
+                                    <exclude>org.slf4j:*</exclude>
+                                    <exclude>org.jetbrains:annotations</exclude>
+                                    <exclude>net.kyori:adventure-nbt</exclude>
+                                </excludes>
+                            </artifactSet>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>full</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>

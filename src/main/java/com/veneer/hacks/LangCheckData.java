@@ -1,5 +1,6 @@
 package com.veneer.hacks;
 
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.veneer.core.WrappedTask;
 import org.bukkit.Location;
 import org.bukkit.block.BlockState;
@@ -17,6 +18,8 @@ public class LangCheckData {
     private BlockState originalState;
     private WrappedTask timeoutTask;
     private int deadWaits;
+    private volatile String[] rawLines;
+    private ClientVersion probedFor;
 
     /**
      * Counts one more wait (a second while the player cannot open a sign, or one sign asked again because the
@@ -39,4 +42,12 @@ public class LangCheckData {
     public void setOriginalState(BlockState s) { this.originalState = s; }
     public WrappedTask getTimeoutTask()         { return timeoutTask; }
     public void setTimeoutTask(WrappedTask t)   { this.timeoutTask = t; }
+
+    /** The sign lines as the client sent them, before Paper cuts them to 80 characters; null without PacketEvents. */
+    public String[] getRawLines()               { return rawLines; }
+    public void setRawLines(String[] lines)     { this.rawLines = lines; }
+
+    /** The protocol version the version probe lines were built for; null when the sign carries none. */
+    public ClientVersion getProbedFor()         { return probedFor; }
+    public void setProbedFor(ClientVersion v)   { this.probedFor = v; }
 }

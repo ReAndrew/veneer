@@ -42,6 +42,13 @@ public class LangCheckManager {
         return data != null && SignUtil.sameBlock(data.getSignLocation(), loc);
     }
 
+    /** The raw lines of a sign update packet (network thread): kept when they answer this player's probe sign. */
+    public void rawAnswer(UUID uuid, int x, int y, int z, String[] lines) {
+        LangCheckData data = activeChecks.get(uuid);
+        Location at = data == null ? null : data.getSignLocation();
+        if (at != null && at.getBlockX() == x && at.getBlockY() == y && at.getBlockZ() == z) data.setRawLines(lines);
+    }
+
     /** True when {@code loc} is any running check's probe sign. */
     public boolean isProbeSign(Location loc) {
         for (LangCheckData d : activeChecks.values())
@@ -139,9 +146,12 @@ public class LangCheckManager {
 
         var front = sign.getSide(Side.FRONT);
         front.line(0, Component.translatable(LANG_KEY, LANG_FALLBACK));
-        if (plugin.hacks().config().isVersionCheckEnabled()) {
-            front.line(1, VersionProbe.removedLine());
-            front.line(2, VersionProbe.maceLine());
+        // The probe answers outgrow what Paper keeps of a sign line: only asked when the raw packet can be read
+        var protocol = ClientVersions.of(target);
+        if (plugin.hacks().config().isVersionCheckEnabled() && plugin.hacks().readsRawSigns() && protocol != null) {
+            Component[] probe = VersionProbe.lines(protocol);
+            for (int i = 0; i < probe.length; i++) front.line(i + 1, probe[i]);
+            data.setProbedFor(protocol);
         }
         sign.update(true, false);
 
@@ -215,7 +225,7 @@ public class LangCheckManager {
         String detected = matches.isEmpty() ? null : String.join(", ", matches);
 
         String display = detected != null ? detected : "Unknown";
-        String versionNote = checkVersion(target, response, lines);
+        String versionNote = checkVersion(target, data);
         String msgKey  = detected != null ? "lang-check-complete" : "lang-check-unknown";
         Component msg  = plugin.messages().get(msgKey,
                 Map.of("player", target.getName(), "lang", display, "response", response));
@@ -251,13 +261,15 @@ public class LangCheckManager {
      * Called only when line 0 came back translated, so a client that blocks translations is not misread as new.
      * Returns a note for the scan history, or null when the probe is off or told nothing.
      */
-    private String checkVersion(Player target, String forward, String[] lines) {
+    private String checkVersion(Player target, LangCheckData data) {
         ConfigManager cfg = plugin.hacks().config();
-        if (!cfg.isVersionCheckEnabled()) return null;
-        VersionProbe.Range real = VersionProbe.evaluate(forward,
-                lines.length > 1 ? lines[1].strip() : "", lines.length > 2 ? lines[2].strip() : "");
+        var protocol = data.getProbedFor();
+        String[] raw = data.getRawLines();
+        if (!cfg.isVersionCheckEnabled() || protocol == null || raw == null) return null;
+        VersionProbe.Range real = VersionProbe.evaluate(raw, protocol);
+        if (plugin.config().debug())
+            plugin.getLogger().info("[Hacks] Version probe answers from " + target.getName() + ": " + String.join(" / ", raw));
         if (!real.known()) return null;
-        var protocol = ClientVersions.of(target);
         String claimed = protocol == null ? "?" : VersionProbe.protocolName(protocol);
         boolean mismatch = !real.fits(protocol);
 
