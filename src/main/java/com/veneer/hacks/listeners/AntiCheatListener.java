@@ -99,6 +99,7 @@ public class AntiCheatListener implements Listener {
 
     public void queueCheck(Player player, String acName) {
         if (!plugin.hacks().config().isDetectFlagEnabled()) return;
+        if (plugin.bypasses(player, "hacks", false)) return;
         if (!plugin.hacks().checks().canAutoCheck(player.getUniqueId())) return;
         if (plugin.hacks().checks().isChecking(player.getUniqueId())) return;
 

@@ -98,8 +98,6 @@ public class CheckManager {
             return;
         }
 
-        if (autoCheck && target.hasPermission("veneer.bypass.hacks")) return;
-
         String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
         if (oldClient != null) {
             Component msg = plugin.messages().get("client-too-old", Map.of("player", target.getName(),

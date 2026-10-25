@@ -76,7 +76,6 @@ public class LangCheckManager {
             if (initiator != null) initiator.sendMessage(msg);
             return;
         }
-        if (initiator == null && target.hasPermission("veneer.bypass.hacks")) return;
 
         String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
         if (oldClient != null) {

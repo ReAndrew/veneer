@@ -226,6 +226,23 @@ public class VeneerPlugin extends JavaPlugin {
         profiles.remove(uuid);
     }
 
+    /**
+     * Whether the player skips the automatic {@code module} check ("spoof", "hacks" or "rptrack"); {@code join}
+     * for the check on joining, which {@code veneer.bypass.<module>.join} skips too. The most specific of
+     * {@code veneer.bypass.<module>.join}, {@code veneer.bypass.<module>} and {@code veneer.bypass} that is set
+     * decides, so a false below a true wins (veneer.bypass true and veneer.bypass.hacks false: mods are still
+     * scanned). Unset everywhere means no bypass; {@code veneer.*} and {@code *} never grant one.
+     * Resolved here rather than through plugin.yml children: a child granted by its parent hides a false set on it.
+     */
+    public boolean bypasses(Player player, String module, boolean join) {
+        String base = "veneer.bypass." + module;
+        for (String node : join ? List.of(base + ".join", base, "veneer.bypass") : List.of(base, "veneer.bypass")) {
+            Boolean set = hooks.permissionSet(player, node);
+            if (set != null) return set;
+        }
+        return false;
+    }
+
     // ----------------------------------------------------------------- logging
 
     /** Logs when {@code general.debug} is on. */

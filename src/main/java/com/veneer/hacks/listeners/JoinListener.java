@@ -22,7 +22,7 @@ public class JoinListener {
 
     public void onJoin(Player player) {
         UUID uuid = player.getUniqueId();
-        if (player.hasPermission("veneer.bypass.hacks.join")) return;
+        if (plugin.bypasses(player, "hacks", true)) return;
 
         if (plugin.hacks().config().isJoinCheckEnabled()) {
             if (!plugin.hacks().config().isOnlyFirstJoin() || alreadyHackChecked.add(uuid)) {

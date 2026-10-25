@@ -290,7 +290,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
 
     @Override
     public void playerJoin(Player player) {
-        if (plugin.bedrock().isBedrock(player) || player.hasPermission("veneer.bypass.rptrack.join")) return;
+        if (plugin.bedrock().isBedrock(player) || plugin.bypasses(player, "rptrack", true)) return;
         FoliaScheduler.runAtEntityLater(plugin, player, () -> startHide(player), delay);
     }
 

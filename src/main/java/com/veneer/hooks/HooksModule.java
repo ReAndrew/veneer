@@ -43,6 +43,15 @@ public class HooksModule extends VeneerModule {
         luckPerms = null;
     }
 
+    /**
+     * The value set for {@code node} on the player, or null when it is not set: from LuckPerms (own and group
+     * nodes, without wildcards above it) when it is installed, else what Bukkit reports as set.
+     */
+    public Boolean permissionSet(Player player, String node) {
+        if (luckPerms != null) return luckPerms.explicit(player, node);
+        return player.isPermissionSet(node) ? player.hasPermission(node) : null;
+    }
+
     /** Primary LuckPerms group of the player, or "" when LuckPerms is absent. */
     public String primaryGroup(Player player) {
         return luckPerms == null ? "" : luckPerms.getPrimaryGroup(player);
