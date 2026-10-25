@@ -15,6 +15,8 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 
 > **Status:** beta. Tested on Paper/Purpur and Folia 1.21.11 with test clients and real clients (including ViaFabricPlus and ViaProxy), not yet on a busy public server.
 
+![Veneer overview: on join a player goes through spoof detection, the mod scan and RPTrack; results go to staff alerts, Discord, the web panel, SQLite and PlaceholderAPI](docs/overview.webp)
+
 ---
 
 ## Features
@@ -28,6 +30,20 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 | **Anticheat bridge** | Flags from Grim (event bus), Vulcan, Spartan, Matrix, Intave and AAC can trigger a mod scan. A spoof flag can also queue one. |
 | **RPTrack** | Links accounts and IPs of the same Minecraft installation through its resource-pack download cache, and detects LiquidBounce's local server. **Off by default.** See [RPTrack](#rptrack). |
 | **Integrations** | LuckPerms (primary group), PlaceholderAPI (`%veneer_*%`), Floodgate/Geyser, Discord webhooks, Folia-aware scheduling. |
+
+## How it works
+
+### Spoof detection
+
+![Spoof detection: a client sends the brand "vanilla" but registers Fabric API channels, so Veneer flags it as fake vanilla](docs/spoof.webp)
+
+The `minecraft:brand` string is whatever the client chooses to send. The plugin channels it registers are harder to hide, because the mods need them to work. Veneer checks the two against each other and against the rules for each known client brand in `spoof.client-brands`: required channels, blocked channels or a channel whitelist.
+
+### Mod scan
+
+![Mod scan: the server opens a hidden sign with keybind("key.freecam.toggle"); a vanilla client sends the key back unchanged, a client with Freecam sends the bound key "F"](docs/mod-scan.webp)
+
+Veneer places a sign next to the player with a translation or keybind key from each mod on its lines, opens the sign editor and at once replaces the sign with air on the client. The editor closes and the client sends the sign text back, filled in from its own language files and key bindings. A key no mod defines comes back as is; a key a mod defines comes back as the mod's text or bound key. The player sees, at most, a flicker. Hacks are defined in `hacks.detection.hacks` (`TRANSLATE`, `KEYBIND` or `METEOR` mode); a client with ExploitPreventer, which blocks the trick, shows up as `PROTECTED`.
 
 ## Install
 
@@ -85,6 +101,8 @@ rptrack:    # resource-pack cache tracking                                (enabl
 
 The Minecraft client caches downloaded resource packs by SHA-1 in `.minecraft/downloads`, shared across accounts. On join, Veneer offers 28 probe packs with a known hash and an unreachable URL; a pack answers *loaded* only if it is already cached. A fresh client is assigned a random subset of 6 packs that it really downloads, and later logins on any account or IP reproduce that subset. The technique is described in [this write-up](https://alaggydev.github.io/posts/cytooxien/).
 
+![RPTrack: on the first join a fresh client misses all 28 probes and is sent 6 real packs; later another account on the same PC hits those 6 packs and is linked](docs/rptrack.webp)
+
 Probe packs and a small pack that hides the "failed to download" toast must be downloadable by clients. Point `public-url` at `localhost` (e.g. `http://localhost:8123`) and Veneer serves them itself on that port, sending clients to the host they joined with. With any other URL no server is started: host `plugins/Veneer/rptrack/fp/` (exported on start) at `<public-url>/fp/`. Set it up in `rptrack`:
 
 ```yaml
@@ -96,7 +114,7 @@ match: 5                              # cached packs that must overlap to link a
 debug: false                          # log every step; also turns on the experimental unique-set mode (direct and indirect links, `match` unused)
 ```
 
-> **Privacy:** this is covert tracking of players. Disclose it in your server rules or privacy policy. Some clients (Meteor, Wurst, LiquidBounce, ExploitPreventer) already block it, so absence of a match proves nothing.
+> **Privacy:** this is covert tracking of players. Disclose it in your server rules or privacy policy. The ExploitPreventer mod blocks the probes, so the absence of a match proves nothing.
 
 ## Build
 
