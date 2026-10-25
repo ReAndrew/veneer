@@ -16,7 +16,6 @@ public class PlayerProfile {
     private volatile boolean brandAlerted;
     private volatile boolean alreadyPunished;
     private final long joinTime = System.currentTimeMillis();
-    private volatile boolean initialChannelsRegistered;
     private volatile String versionReal;
     private volatile String versionClaimed;
     private volatile boolean versionMismatch;
@@ -45,11 +44,6 @@ public class PlayerProfile {
 
     /** When the profile was created, in epoch milliseconds. */
     public long getJoinTime() { return joinTime; }
-
-    /** Whether the initial channel registration phase after joining has completed. */
-    public boolean isInitialChannelsRegistered() { return initialChannelsRegistered; }
-
-    public void setInitialChannelsRegistered(boolean registered) { this.initialChannelsRegistered = registered; }
 
     /** The real version range read by the language-check sign, or null when it has not run. */
     public String getVersionReal()      { return versionReal; }

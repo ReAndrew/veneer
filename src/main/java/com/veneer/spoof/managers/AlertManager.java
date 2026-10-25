@@ -121,44 +121,6 @@ public class AlertManager {
     }
     
     /**
-     * Sends a modified channel alert for a player
-     * @param player The player who modified a channel
-     * @param channel The modified channel
-     */
-    public void sendModifiedChannelAlert(Player player, String channel) {
-        if (!config.isModifiedChannelsEnabled() || !canSendAlert(player.getUniqueId(), "MODIFIED_CHANNEL")) {
-            return;
-        }
-        
-        // Format the player alert message
-        String alertMessage = config.getModifiedChannelsAlertMessage()
-                .replace("%player%", player.getName())
-                .replace("%channel%", channel);
-        
-        // Format the console alert message
-        String consoleAlertMessage = config.getModifiedChannelsConsoleAlertMessage()
-                .replace("%player%", player.getName())
-                .replace("%channel%", channel);
-        
-        // Log to console
-        plugin.getLogger().info(consoleAlertMessage);
-        
-        // Notify players with permission using our optimized list
-        sendAlertToRecipients(alertMessage);
-        
-        // Send to Discord webhook if enabled
-        if (config.isModifiedChannelsDiscordEnabled()) {
-            plugin.spoof().discord().sendAlert(
-                player, 
-                "Modified channel: " + channel,
-                plugin.spoof().getClientBrand(player), 
-                channel, 
-                null
-            );
-        }
-    }
-    
-    /**
      * Sends a multiple violations alert for a player
      * @param player The player with violations
      * @param violations The list of violation reasons

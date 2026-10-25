@@ -81,17 +81,6 @@ public class DetectionManager {
             if (plugin.spoof().config().isDebugMode()) {
                 plugin.getLogger().info("[Debug] Channel added for " + player.getName() + ": " + channel);
             }
-            
-            // If this channel was newly added after the initial join
-            if (triggerCheck && data.isInitialChannelsRegistered() && config.isModifiedChannelsEnabled()) {
-                plugin.spoof().alertManager().sendModifiedChannelAlert(player, channel);
-            }
-        }
-        
-        // Mark initial channels as registered after a short delay from first join
-        if (!data.isInitialChannelsRegistered() && 
-            System.currentTimeMillis() - data.getJoinTime() > CHANNEL_GRACE_PERIOD) {
-            data.setInitialChannelsRegistered(true);
         }
         
         // Check if we need to clear any previous "missing required channels" flag
