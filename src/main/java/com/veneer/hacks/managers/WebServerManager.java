@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
+import com.veneer.core.IpDatabase;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -25,9 +26,18 @@ public class WebServerManager {
     private static final int MAX_BODY = 4096;
     private final Gson gson = new Gson();
     private volatile List<Map<String, Object>> cachedPlayers = new ArrayList<>();
+    private final IpDatabase ipdb;
 
     public WebServerManager(VeneerPlugin plugin) {
         this.plugin = plugin;
+        var links = links();
+        if (links.getBoolean("ip-database", true)) {
+            ipdb = new IpDatabase(plugin, links.getInt("ip-database-refresh-days", 7),
+                    links.getIntegerList("weak-provider-asns"), links.getStringList("weak-provider-keywords"));
+            ipdb.start();
+        } else {
+            ipdb = null;
+        }
         start();
         FoliaScheduler.runGlobalTimer(plugin, this::updatePlayerCache, 1L, 100L);
     }
@@ -45,6 +55,21 @@ public class WebServerManager {
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to start the web panel: " + e.getMessage());
         }
+    }
+
+    private org.bukkit.configuration.ConfigurationSection links() {
+        return plugin.config().section("hacks.web-editor.links");
+    }
+
+    /** Adds provider, ASN and country of {@code ip} to {@code row}; true when it is a VPN/WARP/hosting address. */
+    private boolean describeIp(String ip, Map<String, Object> row) {
+        IpDatabase.Info info = ipdb != null ? ipdb.lookup(ip) : null;
+        if (info == null) return false;
+        row.put("org", info.org());
+        row.put("asn", info.asn());
+        row.put("country", info.country());
+        row.put("weak", info.weak());
+        return info.weak();
     }
 
     private void updatePlayerCache() {
@@ -105,7 +130,16 @@ public class WebServerManager {
         }
         try (InputStream is = plugin.getResource("web/editor.html")) {
             if (is == null) { sendHtml(ex, 500, "<h1>editor.html missing</h1>"); return; }
-            sendHtml(ex, 200, new String(is.readAllBytes(), StandardCharsets.UTF_8));
+            sendHtml(ex, 200, new String(is.readAllBytes(), StandardCharsets.UTF_8).replace("/*I18N*/{}", translations()));
+        }
+    }
+
+    /** The panel texts for general.language from web/lang/<language>.json, or {} (English, as written in the page). */
+    private String translations() {
+        try (InputStream is = plugin.getResource("web/lang/" + plugin.config().language() + ".json")) {
+            return is != null ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "{}";
+        } catch (IOException e) {
+            return "{}";
         }
     }
 
@@ -156,20 +190,34 @@ public class WebServerManager {
             Map<String, Object> details = plugin.database().getLinkDetails(
                     URLDecoder.decode(path.substring("/api/links/".length()), StandardCharsets.UTF_8));
             if (!can(playerInfo, "ips")) details.put("ips", List.of());
+            for (Object r : (List<?>) details.get("ips")) {
+                @SuppressWarnings("unchecked") Map<String, Object> row = (Map<String, Object>) r;
+                describeIp((String) row.get("ip"), row);
+            }
             sendJson(ex, 200, details);
             return;
         }
 
         if (path.equals("/api/links")) {
-            var cfg = plugin.config().section("hacks");
-            int maxPerIp = cfg != null ? cfg.getInt("web-editor.links.max-accounts-per-ip", 8) : 8;
+            var links = links();
             var rp = plugin.config().section("rptrack");
             int match = rp != null ? rp.getInt("match", 5) : 5;
-            Map<String, Object> graph = plugin.database().getLinkGraph(maxPerIp, match);
-            if (!can(playerInfo, "ips"))
-                for (Object e : (List<?>) graph.get("edges")) {
-                    @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
-                    if ("ip".equals(edge.get("type"))) edge.put("label", "(hidden)");
+            Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), match,
+                    links.getInt("max-accounts-per-client", 5), links.getInt("client-min-channels", 3));
+            boolean ips = can(playerInfo, "ips");
+            double weakFactor = Math.max(0, Math.min(1, links.getDouble("weak-provider-factor", 0.3)));
+            for (Object e : (List<?>) graph.get("edges")) {
+                @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
+                if (!"ip".equals(edge.get("type"))) continue;
+                // Strangers share the exit addresses of VPNs, WARP and hosting: such a shared address proves little
+                if (describeIp((String) edge.get("label"), edge))
+                    edge.put("p", ((Number) edge.get("p")).doubleValue() * weakFactor);
+                if (!ips) edge.put("label", "(hidden)");
+            }
+            if (!ips)
+                for (Object n : (List<?>) graph.get("nodes")) {
+                    @SuppressWarnings("unchecked") Map<String, Object> node = (Map<String, Object>) n;
+                    node.put("ips", List.of());
                 }
             sendJson(ex, 200, graph);
             return;

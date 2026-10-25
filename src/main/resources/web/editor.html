@@ -90,6 +90,7 @@
         .error-msg{color:var(--red);font-size:12px;padding:8px 0}
         .graph-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
         .graph-bar input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 10px;font-size:13px;font-family:var(--font);outline:none}
+        .graph-bar select{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:5px 6px;font-size:12px;font-family:var(--font)}
         .graph-bar label{color:var(--text2);font-size:12px;display:flex;gap:4px;align-items:center}
         .graph-box{height:calc(100vh - 150px);min-height:360px;border:1px solid var(--border);border-radius:var(--radius);background:#05080d;position:relative;overflow:hidden}
         .graph-info{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--text2);display:flex;gap:16px;align-items:center}
@@ -114,26 +115,26 @@
     <span class="logo">Vene<span>er</span> Panel</span>
     <div class="header-spacer"></div>
     <div class="player-badge" id="player-badge"></div>
-    <button class="home-btn" onclick="showMods()">☢ Mods detected</button>
-    <button class="home-btn links-btn" onclick="showLinks()">⚯ Links</button>
-    <button class="home-btn" onclick="showHome()">⌂ Home</button>
+    <button class="home-btn" onclick="showMods()" data-t="☢ Mods detected">☢ Mods detected</button>
+    <button class="home-btn links-btn" onclick="showLinks()" data-t="⚯ Links">⚯ Links</button>
+    <button class="home-btn" onclick="showHome()" data-t="⌂ Home">⌂ Home</button>
 </header>
 <div class="layout">
     <aside class="panel">
-        <div class="panel-title">Players</div>
+        <div class="panel-title" data-t="Players">Players</div>
         <div class="search-wrap">
-            <input type="text" id="search-input" placeholder="Search player..." onkeydown="if(event.key==='Enter')searchPlayer()">
-            <button onclick="searchPlayer()">Search</button>
+            <input type="text" id="search-input" placeholder="Search player..." data-tp="Search player..." onkeydown="if(event.key==='Enter')searchPlayer()">
+            <button onclick="searchPlayer()" data-t="Search">Search</button>
         </div>
         <div class="panel-scroll" id="offline-history"></div>
     </aside>
     <main id="main-content">
-        <div class="loading">Loading...</div>
+        <div class="loading" data-t="Loading...">Loading...</div>
     </main>
     <aside class="panel panel-right">
-        <div class="panel-title">Recent Scans</div>
+        <div class="panel-title" data-t="Recent Scans">Recent Scans</div>
         <div class="panel-scroll" id="recent-scans"></div>
-        <div class="panel-title" style="border-top:1px solid var(--border)">Online Players</div>
+        <div class="panel-title" style="border-top:1px solid var(--border)" data-t="Online Players">Online Players</div>
         <div style="height:220px;overflow-y:auto;padding:6px;flex-shrink:0" id="online-players"></div>
     </aside>
 </div>
@@ -142,6 +143,12 @@
 <script src="/web/3d-force-graph.min.js"></script>
 <script>
     const token = new URLSearchParams(location.search).get('token');
+    // Translations for general.language, put in by the server (web/lang/<language>.json): English text -> text.
+    // Missing entries and English stay as written; {0}, {1}... are filled from the arguments.
+    const L = /*I18N*/{};
+    function t(text, ...args) {
+      return String(L[text] || text).replace(/\{(\d+)\}/g, (m, i) => args[i] !== undefined ? args[i] : m);
+    }
 
     function apiUrl(path) {
       const sep = path.includes('?') ? '&' : '?';
@@ -182,9 +189,9 @@
 
     function timeAgo(ts) {
       const d = Date.now() - Number(ts);
-      if (d < 60000) return 'just now';
-      if (d < 3600000) return Math.floor(d/60000) + 'm ago';
-      if (d < 86400000) return Math.floor(d/3600000) + 'h ago';
+      if (d < 60000) return t('just now');
+      if (d < 3600000) return t('{0}m ago', Math.floor(d/60000));
+      if (d < 86400000) return t('{0}h ago', Math.floor(d/3600000));
       return new Date(Number(ts)).toLocaleDateString();
     }
 
@@ -198,6 +205,9 @@
     }
 
     async function init() {
+      document.documentElement.lang = L._lang || 'en';
+      document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
+      document.querySelectorAll('[data-tp]').forEach(el => { el.placeholder = t(el.dataset.tp); });
       try {
         const info = await apiFetch('validate');
         // The server refuses what the token has no right to; hide those controls so they are not offered
@@ -207,7 +217,7 @@
         document.getElementById('player-badge').innerHTML =
           '<img src="' + headUrl(info.player_uuid) + '" onerror="this.style.visibility=\'hidden\'" alt=""> ' + esc(info.player_name);
       } catch(e) {
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">Session expired. Run /hackeditor in Minecraft.</div>';
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-size:14px">' + esc(t('Session expired. Run /hackeditor in Minecraft.')) + '</div>';
         return;
       }
       showHome();
@@ -320,46 +330,65 @@
     async function showMods() {
       document.querySelector('.layout').classList.remove('wide');
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">Loading...</div>';
+      main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let mods;
       try { mods = await apiFetch('mods'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
       if (!mods.length) {
-        main.innerHTML = '<div class="section-title">Mods detected</div><div class="empty-state">No mods have been detected yet.</div>';
+        main.innerHTML = '<div class="section-title">' + t('Mods detected') + '</div><div class="empty-state">' + t('No mods have been detected yet.') + '</div>';
         return;
       }
-      main.innerHTML = '<div class="section-title">Mods detected (' + mods.length + ')</div><div class="scan-cards">' +
+      main.innerHTML = '<div class="section-title">' + t('Mods detected ({0})', mods.length) + '</div><div class="scan-cards">' +
         mods.map(m =>
           '<div class="scan-card" style="cursor:default"><div class="scan-card-header">' +
           '<span class="scan-card-type" style="font-size:13px">' + esc(m.name) + '</span>' +
-          '<span class="scan-card-time">' + m.count + ' player' + (m.count === 1 ? '' : 's') + '</span></div>' +
+          '<span class="scan-card-time">' + t(m.count === 1 ? '{0} player' : '{0} players', m.count) + '</span></div>' +
           '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px">' +
           m.players.map(p => '<span class="player-item" style="padding:4px 8px" onclick="showPlayer(\'' + esc(p.name).replace(/'/g, '') + '\')" title="' + esc(timeAgo(p.last_seen)) + '">' +
             '<img src="' + headUrl(p.uuid) + '" onerror="this.style.visibility=\'hidden\'" alt="" style="width:20px;height:20px"><span class="player-item-name">' + esc(p.name) + '</span></span>').join('') +
           '</div></div>').join('') + '</div>';
     }
 
+    function provider(r) {
+      return [r.org, r.asn ? 'AS' + r.asn : '', r.country].filter(Boolean).join(' · ');
+    }
+
+    function describeEdge(e) {
+      if (e.type === 'rptrack') return t('fingerprint {0}', t('{0} packs', parseInt(e.label)));
+      if (e.type === 'client') return t('client {0}', e.label);
+      let s = t('address {0}', e.label === '(hidden)' ? t('(hidden)') : e.label);
+      if (e.org !== undefined) s += ' (' + provider(e) + ')';
+      if (e.weak) s += ' — ' + t('VPN / hosting, counts less');
+      return s;
+    }
+
     async function showLinks() {
       document.querySelector('.layout').classList.add('wide');
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">Loading...</div>';
+      main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let data;
       try { data = await apiFetch('links'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
       if (!data.nodes.length) {
-        main.innerHTML = '<div class="section-title">Linked accounts</div><div class="empty-state">No linked accounts yet. Links appear when accounts join from the same address or share an RPTrack fingerprint.</div>';
+        main.innerHTML = '<div class="section-title">' + t('Linked accounts') + '</div><div class="empty-state">' + t('No linked accounts yet. Links appear when accounts join from the same address, share an RPTrack fingerprint or play with the same uncommon client.') + '</div>';
         return;
       }
       main.innerHTML =
-        '<div class="section-title">Linked accounts</div>' +
-        '<div class="graph-bar"><input id="g-search" placeholder="Find account...">' +
-        '<label><input type="checkbox" id="g-ip" checked> same address</label>' +
-        '<label><input type="checkbox" id="g-rp" checked> same fingerprint</label>' +
-        '<label><input type="checkbox" id="g-2d"> flat</label>' +
+        '<div class="section-title">' + t('Linked accounts') + '</div>' +
+        '<div class="graph-bar"><input id="g-search" placeholder="' + esc(t('Find account or IP...')) + '">' +
+        '<label><input type="checkbox" id="g-ip" checked> ' + t('same address') + '</label>' +
+        '<label><input type="checkbox" id="g-rp" checked> ' + t('same fingerprint') + '</label>' +
+        '<label><input type="checkbox" id="g-cl" checked> ' + t('same client') + '</label>' +
+        '<label>' + t('at least') + ' <input type="range" id="g-min" min="0" max="90" step="5" value="0" style="width:90px;padding:0"> <span id="g-min-v">0%</span></label>' +
+        '<label>' + t('seen') + ' <select id="g-days">' + [[0, 'any time'], [1, 'last 24 h'], [7, 'last 7 days'], [30, 'last 30 days'], [90, 'last 90 days']]
+          .map(([v, n]) => '<option value="' + v + '">' + t(n) + '</option>').join('') + '</select></label>' +
+        '<label><input type="checkbox" id="g-2d"> ' + t('flat') + '</label>' +
         // The debug log is for diagnosing camera problems: shown only when the page is opened with &debug
         (new URLSearchParams(location.search).has('debug') ? '<label><input type="checkbox" id="g-dbg"> debug</label>' : '<input type="checkbox" id="g-dbg" hidden>') +
         '</div>' +
         '<div class="graph-box" id="graph-box"></div>';
       const box = document.getElementById('graph-box');
       const info = document.createElement('div'); info.className = 'graph-info';
+      // A search matches a name, or the start of an address the account joined from (when IPs may be seen)
+      const matches = n => n.name.toLowerCase().includes(hl) || (n.ips || []).some(ip => ip.startsWith(hl));
       let hl = '', searchScale = 1, hover = null, selected = null, fitted = false, ownMoveUntil = 0, lastCam = null, lastLog = 0;
       const dbgBox = document.createElement('pre'); dbgBox.className = 'dbg-log'; dbgBox.style.display = 'none';
       const dbgOn = () => document.getElementById('g-dbg').checked;
@@ -379,17 +408,21 @@
       };
       const card = document.createElement('div'); card.className = 'node-card'; card.style.display = 'none';
       const build = () => {
-        const useIp = document.getElementById('g-ip').checked, useRp = document.getElementById('g-rp').checked;
+        const use = {ip: document.getElementById('g-ip').checked, rptrack: document.getElementById('g-rp').checked,
+                     client: document.getElementById('g-cl').checked};
+        const minPct = +document.getElementById('g-min').value / 100, days = +document.getElementById('g-days').value;
+        // The period keeps accounts seen in it (an account never seen joining has no time and stays)
+        const recent = new Set(data.nodes.filter(n => !days || !n.last_seen || Date.now() - n.last_seen <= days * 86400000).map(n => n.id));
         // Reasons for one pair are merged: pct = 1 - product of (1 - p), so each extra shared sign raises it
         const pairs = new Map();
-        data.edges.filter(e => (e.type === 'ip' ? useIp : useRp)).forEach(e => {
+        data.edges.filter(e => use[e.type] && recent.has(e.source) && recent.has(e.target)).forEach(e => {
           const key = e.source < e.target ? e.source + '|' + e.target : e.target + '|' + e.source;
-          const l = pairs.get(key) || {source: e.source, target: e.target, miss: 1, rp: false, why: []};
-          l.miss *= 1 - e.p; l.rp = l.rp || e.type === 'rptrack';
-          l.why.push((e.type === 'ip' ? 'address ' : 'fingerprint ') + e.label);
+          const l = pairs.get(key) || {source: e.source, target: e.target, miss: 1, types: new Set(), why: []};
+          l.miss *= 1 - e.p; l.types.add(e.type);
+          l.why.push(describeEdge(e));
           pairs.set(key, l);
         });
-        const links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss}));
+        const links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss})).filter(l => l.pct >= minPct);
         const deg = {}; links.forEach(l => { deg[l.source] = (deg[l.source]||0) + 1; deg[l.target] = (deg[l.target]||0) + 1; });
         const nodes = data.nodes.filter(n => deg[n.id]).map(n => ({...n, links: deg[n.id]}));
         stopGraph();
@@ -403,8 +436,8 @@
           .showNavInfo(false)
           .numDimensions(document.getElementById('g-2d').checked ? 2 : 3)
           .nodeThreeObject(n => skinCube(n, 9 + Math.min(n.links, 8) * 1.5))
-          .nodeLabel(n => esc(n.name) + ' (' + n.links + ' links)')
-          .linkColor(l => l.rp ? '#3fb950' : '#8b949e')
+          .nodeLabel(n => esc(n.name) + ' (' + t(n.links === 1 ? '{0} link' : '{0} links', n.links) + ')')
+          .linkColor(l => l.types.has('rptrack') ? '#3fb950' : l.types.has('ip') ? '#8b949e' : '#a371f7')
           .linkWidth(l => .4 + l.pct * 2.2)
           .linkLabel(l => Math.round(l.pct * 100) + '% — ' + l.why.map(esc).join(', '))
           .linkThreeObjectExtend(true)
@@ -430,7 +463,7 @@
           const d = n.x === undefined ? null : n;
           if (d) moveCamera({x: n.x + 50, y: n.y + 30, z: (n.z || 0) + 75}, {x: n.x, y: n.y, z: n.z || 0}, 700, 'zoom to ' + n.name);
           card.style.display = '';
-          card.innerHTML = '<div class="loading">Loading...</div>';
+          card.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
           let det;
           try { det = await apiFetch('links/' + encodeURIComponent(n.id)); } catch(e) { card.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
           if (selected !== n) return;
@@ -441,18 +474,20 @@
           // LiquidBounce comes from the fingerprint, not a sign scan: it joins the other cheats in one list
           const cheats = det.mods.slice();
           if (fp && fp.liquidbounce && !cheats.some(m => m.name.toLowerCase() === 'liquidbounce'))
-            cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: 'resource-pack fingerprint'});
+            cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint')});
           card.innerHTML =
-            '<h3>' + esc(n.name) + '<button title="Close">✕</button></h3>' +
-            '<div style="color:var(--text2)">' + (cheats.length ? '<span style="color:var(--red)">☢ mods detected</span>' : 'no mods detected') + '</div>' +
-            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="Last detected: ' + esc(new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '') + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
-            '<h4>Addresses</h4>' +
-            (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) + '</span><span>' + r.count + '× · ' + timeAgo(r.last_seen) + '</span></div>').join('') : '<div style="color:var(--text2)">none recorded</div>') +
-            '<h4>Fingerprint</h4>' +
-            (fp ? '<div class="row"><span class="bits">' + esc(fp.bits) + '</span><span>' + fp.packs + ' packs</span></div>' + '' : '<div style="color:var(--text2)">not tracked</div>') +
-            '<h4>Possible alts</h4>' +
-            (alts.length ? alts.map((a, i) => '<div class="row alt" data-i="' + i + '" title="' + esc(a.why.join(', ')) + '"><span>' + esc(a.o.name) + '<small style="display:block;color:var(--text2);font-size:10px">' + esc(a.why.join(', ')) + '</small></span><span>' + Math.round(a.pct * 100) + '%</span></div>').join('') : '<div style="color:var(--text2)">none</div>') +
-            '<div style="margin-top:12px"><button class="run-btn" style="margin:0;background:#2f6fd6;border-color:#4493f8;color:#fff" id="card-open">Open player</button></div>';
+            '<h3>' + esc(n.name) + '<button title="' + esc(t('Close')) + '">✕</button></h3>' +
+            '<div style="color:var(--text2)">' + (cheats.length ? '<span style="color:var(--red)">☢ ' + t('mods detected') + '</span>' : t('no mods detected')) + '</div>' +
+            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
+            '<h4>' + t('Addresses') + '</h4>' +
+            (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) +
+              (r.org !== undefined ? '<small style="display:block;color:var(--text2);font-size:10px">' + esc(provider(r)) + (r.weak ? ' · <span style="color:#d29922">' + t('VPN / hosting') + '</span>' : '') + '</small>' : '') +
+              '</span><span>' + r.count + '× · ' + timeAgo(r.last_seen) + '</span></div>').join('') : '<div style="color:var(--text2)">' + t('none recorded') + '</div>') +
+            '<h4>' + t('Fingerprint') + '</h4>' +
+            (fp ? '<div class="row"><span class="bits">' + esc(fp.bits) + '</span><span>' + t('{0} packs', fp.packs) + '</span></div>' : '<div style="color:var(--text2)">' + t('not tracked') + '</div>') +
+            '<h4>' + t('Possible alts') + '</h4>' +
+            (alts.length ? alts.map((a, i) => '<div class="row alt" data-i="' + i + '" title="' + esc(a.why.join(', ')) + '"><span>' + esc(a.o.name) + '<small style="display:block;color:var(--text2);font-size:10px">' + esc(a.why.join(', ')) + '</small></span><span>' + Math.round(a.pct * 100) + '%</span></div>').join('') : '<div style="color:var(--text2)">' + t('none') + '</div>') +
+            '<div style="margin-top:12px"><button class="run-btn" style="margin:0;background:#2f6fd6;border-color:#4493f8;color:#fff" id="card-open">' + t('Open player') + '</button></div>';
           card.querySelector('h3 button').onclick = () => select(null);
           card.querySelector('#card-open').onclick = () => showPlayer(n.name);
           card.querySelectorAll('.alt').forEach(el => el.onclick = () => select(alts[+el.dataset.i].o));
@@ -489,10 +524,13 @@
         const pull = alpha => { pullNodes.forEach(n => { n.vx -= n.x * .05 * alpha; n.vy -= n.y * .05 * alpha; if (n.vz !== undefined) n.vz -= (n.z || 0) * .05 * alpha; }); };
         pull.initialize = ns => { pullNodes = ns; };
         graph3d.d3Force('pull', pull);
-        info.innerHTML = '<span>' + nodes.length + ' accounts, ' + links.length + ' links</span>' +
-          '<span class="legend" title="Thicker line = higher match. Hover a head or a line for details.">' +
-          '<span class="sq" style="border-color:#4493f8"></span>account<span class="sq" style="border-color:#f85149"></span>mods detected' +
-          '<i style="border-color:#8b949e"></i>same address<i style="border-color:#3fb950"></i>same fingerprint</span>';
+        info.innerHTML = '<span>' + t('{0} accounts, {1} links', nodes.length, links.length) + '</span>' +
+          '<span class="legend" title="' + esc(t('Thicker line = higher match. Hover a head or a line for details.')) + '">' +
+          '<span class="sq" style="border-color:#4493f8"></span>' + t('account') + '<span class="sq" style="border-color:#f85149"></span>' + t('mods detected') +
+          '<i style="border-color:#8b949e"></i>' + t('same address') + '<i style="border-color:#3fb950"></i>' + t('same fingerprint') +
+          '<i style="border-color:#a371f7"></i>' + t('same client') + '</span>' +
+          // CC BY 4.0 asks for the source of the country data wherever it is shown
+          (data.edges.some(e => e.org !== undefined) ? '<span style="font-size:10px;opacity:.7">' + t('IP data') + ': <a href="https://iptoasn.com/" target="_blank" rel="noopener" style="color:inherit">IPtoASN</a>, <a href="https://www.nro.net/" target="_blank" rel="noopener" style="color:inherit">NRO</a> (CC BY 4.0) ' + t('via') + ' <a href="https://github.com/sapics/ip-location-db" target="_blank" rel="noopener" style="color:inherit">ip-location-db</a></span>' : '');
         box.appendChild(info); box.appendChild(card); box.appendChild(dbgBox);
         const place = () => {
           if (!box.isConnected || !graph3d) { stopGraph(); return; } // another tab replaced the graph
@@ -501,7 +539,7 @@
           links.forEach(l => { if (l._label) l._label.visible = !!hover && (l.source.id === hover || l.target.id === hover); });
           nodes.forEach(n => {
             if (n.x === undefined) return;
-            const hit = hl && n.name.toLowerCase().includes(hl);
+            const hit = hl && matches(n);
             if (n._label) {
               n._label.material.color.set(hit ? 0xd29922 : 0xc9d1d9);
               n._label.material.opacity = hl && !hit ? .3 : 1;
@@ -536,16 +574,17 @@
         place();
         fit(0, 'initial');
       };
-      document.getElementById('g-ip').onchange = build;
-      document.getElementById('g-rp').onchange = build;
-      document.getElementById('g-2d').onchange = build;
+      ['g-ip', 'g-rp', 'g-cl', 'g-days', 'g-2d'].forEach(id => { document.getElementById(id).onchange = build; });
+      const minInput = document.getElementById('g-min');
+      minInput.oninput = () => { document.getElementById('g-min-v').textContent = minInput.value + '%'; };
+      minInput.onchange = build;
       document.getElementById('g-dbg').onchange = e => { dbgBox.style.display = e.target.checked ? '' : 'none'; if (e.target.checked) dbg('debug on'); };
       // Matching heads grow more the rarer the match: 1 + 0.35 * log2(all / matching), at most 2.2x.
       // One match among 36 gets the full 2.2x, half of the graph matching gets 1.35x, everyone matching stays 1x.
       document.getElementById('g-search').oninput = e => {
         hl = e.target.value.trim().toLowerCase();
         const all = graph3d ? graph3d.graphData().nodes : [];
-        const matching = hl ? all.filter(n => n.name.toLowerCase().includes(hl)).length : 0;
+        const matching = hl ? all.filter(matches).length : 0;
         searchScale = matching ? Math.min(2.2, 1 + .35 * Math.log2(all.length / matching)) : 1;
         dbg('search "' + hl + '": ' + matching + ' of ' + all.length + ' match, heads x' + searchScale.toFixed(2));
       };
@@ -555,7 +594,7 @@
     async function showHome() {
       document.querySelector('.layout').classList.remove('wide');
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">Loading...</div>';
+      main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       try {
         const [hackScans, langScans] = await Promise.all([
           apiFetch('scans?type=hack&limit=200'),
@@ -570,16 +609,16 @@
         }
 
         main.innerHTML =
-          '<div class="section-title">Overview</div>' +
+          '<div class="section-title">' + t('Overview') + '</div>' +
           '<div class="stat-row">' +
-            '<div class="stat-card"><div class="stat-card-num">' + hackScans.length + '</div><div class="stat-card-label">Hack Scans</div></div>' +
-            '<div class="stat-card"><div class="stat-card-num">' + langScans.length + '</div><div class="stat-card-label">Lang Checks</div></div>' +
-            '<div class="stat-card"><div class="stat-card-num" style="color:var(--red)">' + detected + '</div><div class="stat-card-label">Detections</div></div>' +
+            '<div class="stat-card"><div class="stat-card-num">' + hackScans.length + '</div><div class="stat-card-label">' + t('Hack Scans') + '</div></div>' +
+            '<div class="stat-card"><div class="stat-card-num">' + langScans.length + '</div><div class="stat-card-label">' + t('Lang Checks') + '</div></div>' +
+            '<div class="stat-card"><div class="stat-card-num" style="color:var(--red)">' + detected + '</div><div class="stat-card-label">' + t('Detections') + '</div></div>' +
           '</div>' +
-          '<div class="section-title">Recent Activity</div>' +
-          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>No scans yet.</p></div>') + '</div>';
+          '<div class="section-title">' + t('Recent Activity') + '</div>' +
+          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>' + t('No scans yet.') + '</p></div>') + '</div>';
       } catch(e) {
-        main.innerHTML = '<div class="empty-state"><p>Error: ' + esc(e.message) + '</p></div>';
+        main.innerHTML = '<div class="empty-state"><p>' + t('Error: {0}', esc(e.message)) + '</p></div>';
       }
     }
 
@@ -590,21 +629,21 @@
         preview = results.slice(0, 6).map(r => badge(r.result)).join(' ');
       } else {
         const r = results[0];
-        preview = r ? '<span class="badge badge-lang">' + esc(r.language || 'Unknown') + '</span>' : '';
+        preview = r ? '<span class="badge badge-lang">' + esc(r.language || t('Unknown')) + '</span>' : '';
       }
       return '<div class="scan-card" onclick="showScan(' + s.id + ')">' +
         '<div class="scan-card-header">' +
-          '<span class="scan-card-type">' + (s.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(s.target_name) + '</span>' +
+          '<span class="scan-card-type">' + t(s.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(s.target_name) + '</span>' +
           '<span class="scan-card-time">' + timeAgo(s.timestamp) + '</span>' +
         '</div>' +
-        '<div class="scan-card-meta">by ' + esc(s.checker_name) + ' &nbsp;·&nbsp; ' + new Date(Number(s.timestamp)).toLocaleString() + '</div>' +
+        '<div class="scan-card-meta">' + t('by {0}', esc(s.checker_name)) + ' &nbsp;·&nbsp; ' + new Date(Number(s.timestamp)).toLocaleString() + '</div>' +
         (preview ? '<div style="padding:8px 14px;display:flex;flex-wrap:wrap;gap:4px">' + preview + '</div>' : '') +
       '</div>';
     }
 
     async function showScan(id) {
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">Loading scan #' + id + '...</div>';
+      main.innerHTML = '<div class="loading">' + t('Loading scan #{0}...', id) + '</div>';
       try {
         const scan = await apiFetch('scan/' + id);
         const results = scan.results || [];
@@ -612,22 +651,22 @@
         let body = '';
         if (scan.type === 'hack') {
           if (results.length === 0) {
-            body = '<div class="empty-state"><p>No results saved for this scan.</p></div>';
+            body = '<div class="empty-state"><p>' + t('No results saved for this scan.') + '</p></div>';
           } else {
             let rows = '';
             for (const r of results) {
               rows += '<tr><td>' + esc(r.hack_name) + '</td><td>' + badge(r.result) + '</td></tr>';
             }
-            body = '<table class="results-table"><thead><tr><th>Mod</th><th>Result</th></tr></thead><tbody>' + rows + '</tbody></table>';
+            body = '<table class="results-table"><thead><tr><th>' + t('Mod') + '</th><th>' + t('Result') + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
           }
         } else {
           const r = results[0];
           if (r) {
-            body = '<table class="results-table"><thead><tr><th>Language</th><th>Raw Response</th></tr></thead><tbody>' +
-              '<tr><td><span class="badge badge-lang">' + esc(r.language || 'Unknown') + '</span></td><td>' + esc(r.response || '') + '</td></tr>' +
+            body = '<table class="results-table"><thead><tr><th>' + t('Language') + '</th><th>' + t('Raw Response') + '</th></tr></thead><tbody>' +
+              '<tr><td><span class="badge badge-lang">' + esc(r.language || t('Unknown')) + '</span></td><td>' + esc(r.response || '') + '</td></tr>' +
               '</tbody></table>';
           } else {
-            body = '<div class="empty-state"><p>No results saved for this scan.</p></div>';
+            body = '<div class="empty-state"><p>' + t('No results saved for this scan.') + '</p></div>';
           }
         }
 
@@ -637,15 +676,15 @@
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">' +
             '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">' +
               '<div style="font-size:16px;font-weight:700;margin-bottom:4px">' +
-                (scan.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(scan.target_name) +
+                t(scan.type === 'hack' ? 'Hack Check' : 'Lang Check') + ' — ' + esc(scan.target_name) +
               '</div>' +
-              '<div style="font-size:12px;color:var(--text2)">by ' + esc(scan.checker_name) + ' · ' + new Date(Number(scan.timestamp)).toLocaleString() + '</div>' +
-              (scan.reason ? '<div style="font-size:12px;color:var(--text2);margin-top:2px">Reason: ' + esc(scan.reason) + '</div>' : '') +
+              '<div style="font-size:12px;color:var(--text2)">' + t('by {0}', esc(scan.checker_name)) + ' · ' + new Date(Number(scan.timestamp)).toLocaleString() + '</div>' +
+              (scan.reason ? '<div style="font-size:12px;color:var(--text2);margin-top:2px">' + t('Reason: {0}', esc(scan.reason)) + '</div>' : '') +
             '</div>' +
             body +
           '</div>';
       } catch(e) {
-        main.innerHTML = '<div class="empty-state"><p>Failed to load scan #' + id + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
+        main.innerHTML = '<div class="empty-state"><p>' + t('Failed to load scan #{0}', id) + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
       }
     }
 
@@ -653,37 +692,37 @@
       document.querySelector('.layout').classList.remove('wide');
       addHistory(name);
       const main = document.getElementById('main-content');
-      main.innerHTML = '<div class="loading">Loading ' + esc(name) + '...</div>';
+      main.innerHTML = '<div class="loading">' + t('Loading {0}...', esc(name)) + '</div>';
       try {
         const data = await apiFetch('player/' + encodeURIComponent(name));
         const scans = data.scans || [];
         const uuid = data.uuid || name;
 
         const onlineBadge = data.online
-          ? '<span class="online-badge"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span> Online</span>'
-          : '<span class="offline-badge">Offline</span>';
+          ? '<span class="online-badge"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span> ' + t('Online') + '</span>'
+          : '<span class="offline-badge">' + t('Offline') + '</span>';
 
         let runButtons = '';
         if (data.online) {
           runButtons =
-            '<button class="run-btn" id="btn-hack" onclick="runScan(\'' + esc(name) + '\',\'hack\')">Run Hack Check</button>' +
-            '<button class="run-btn" id="btn-lang" onclick="runScan(\'' + esc(name) + '\',\'lang\')">Run Lang Check</button>';
+            '<button class="run-btn" id="btn-hack" onclick="runScan(\'' + esc(name) + '\',\'hack\')">' + t('Run Hack Check') + '</button>' +
+            '<button class="run-btn" id="btn-lang" onclick="runScan(\'' + esc(name) + '\',\'lang\')">' + t('Run Lang Check') + '</button>';
         }
 
         let cards = '';
         for (const s of scans) cards += buildScanCard(s);
 
         main.innerHTML =
-          '<button class="back-btn" onclick="showHome()">← Home</button>' +
+          '<button class="back-btn" onclick="showHome()">← ' + t('Home') + '</button>' +
           '<div class="player-header">' +
             '<img src="' + headUrl(uuid) + '" onerror="this.src=\'' + headUrl(name) + '\'" width="64" height="64" alt="">' +
             '<div class="player-header-info"><h2>' + esc(name) + '</h2><p>' + esc(uuid) + '</p>' + onlineBadge + '</div>' +
           '</div>' +
           runButtons +
-          '<div class="section-title">' + scans.length + ' Scan' + (scans.length !== 1 ? 's' : '') + '</div>' +
-          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>No scans for this player yet.</p></div>') + '</div>';
+          '<div class="section-title">' + t(scans.length === 1 ? '{0} Scan' : '{0} Scans', scans.length) + '</div>' +
+          '<div class="scan-cards">' + (cards || '<div class="empty-state"><p>' + t('No scans for this player yet.') + '</p></div>') + '</div>';
       } catch(e) {
-        main.innerHTML = '<div class="empty-state"><p>Failed to load player.</p><p class="error-msg">' + esc(e.message) + '</p></div>';
+        main.innerHTML = '<div class="empty-state"><p>' + t('Failed to load player.') + '</p><p class="error-msg">' + esc(e.message) + '</p></div>';
       }
     }
 
@@ -692,10 +731,10 @@
       if (btn) btn.disabled = true;
       try {
         await apiPost('scan/run', { player: name, type: type });
-        showToast((type === 'hack' ? 'Hack check' : 'Lang check') + ' started on ' + name);
+        showToast(t(type === 'hack' ? 'Hack check started on {0}' : 'Lang check started on {0}', name));
         setTimeout(() => showPlayer(name), 4000);
       } catch(e) {
-        main.innerHTML = '<div class="empty-state"><p>Failed to run scan: ' + esc(e.message) + '</p></div>';
+        document.getElementById('main-content').innerHTML = '<div class="empty-state"><p>' + t('Failed to run scan: {0}', esc(e.message)) + '</p></div>';
         if (btn) btn.disabled = false;
       }
     }
@@ -706,7 +745,7 @@
         const container = document.getElementById('recent-scans');
         if (!container) return;
         if (!scans || scans.length === 0) {
-          container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">No scans yet</div>';
+          container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">' + t('No scans yet') + '</div>';
           return;
         }
         container.innerHTML = '';
@@ -719,7 +758,7 @@
               '<span class="scan-item-name">' + esc(s.target_name) + '</span>' +
               '<span class="scan-item-time">' + timeAgo(s.timestamp) + '</span>' +
             '</div>' +
-            '<div class="scan-item-meta">' + (s.type === 'hack' ? 'Hack' : 'Lang') + ' · by ' + esc(s.checker_name) + '</div>';
+            '<div class="scan-item-meta">' + t(s.type === 'hack' ? 'Hack' : 'Lang') + ' · ' + t('by {0}', esc(s.checker_name)) + '</div>';
           container.appendChild(el);
         }
       } catch(e) {}
@@ -731,7 +770,7 @@
         const container = document.getElementById('online-players');
         if (!container) return;
         if (!players || players.length === 0) {
-          container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">No players online</div>';
+          container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">' + t('No players online') + '</div>';
           return;
         }
         container.innerHTML = '';
@@ -758,7 +797,7 @@
       const container = document.getElementById('offline-history');
       if (!container) return;
       if (offlineHistory.length === 0) {
-        container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">Search a player above</div>';
+        container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:12px;text-align:center">' + t('Search a player above') + '</div>';
         return;
       }
       container.innerHTML = '';

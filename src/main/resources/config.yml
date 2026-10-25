@@ -456,6 +456,21 @@ hacks:
       retention-days: 90
       # An address shared by more accounts than this is ignored (shared networks, mobile data)
       max-accounts-per-ip: 8
+      # Provider and country of each address, shown in the panel, from ip-location-db (IPtoASN, PDDL; NRO country
+      # data, CC BY 4.0). About 50 MB is downloaded to plugins/Veneer/geo/ via cdn.jsdelivr.net.
+      ip-database: true
+      ip-database-refresh-days: 7
+      # A shared address of a VPN, Cloudflare WARP or a hosting provider links strangers, so its link counts only
+      # this much (0 to 1). Such a provider is one of these ASNs or has one of the keywords in its name.
+      weak-provider-factor: 0.3
+      weak-provider-asns: [13335, 209242, 9009, 60068, 212238, 16276, 24940, 14061, 16509, 14618, 15169, 396982,
+                           8075, 63949, 20473, 51167, 60781, 28753, 39351, 136787, 44477, 49505, 9123, 210644]
+      weak-provider-keywords: [vpn, proxy, hosting, datacenter, "data center", cloud, vps, dedicated, colocation]
+      # Same client: accounts with the same brand and the same set of plugin channels (needs the spoof module).
+      # Only sets with at least client-min-channels channels count, shared by no more than max-accounts-per-client
+      # accounts: a common client (plain vanilla, a popular modpack) says nothing.
+      client-min-channels: 3
+      max-accounts-per-client: 5
     # Scan history (mod scans and language checks with their results)
     history:
       # Days to keep a scan (0 = forever)

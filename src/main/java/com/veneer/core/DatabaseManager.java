@@ -91,6 +91,14 @@ public class DatabaseManager {
                     updated INTEGER NOT NULL
                 )""");
             s.execute("""
+                CREATE TABLE IF NOT EXISTS clients (
+                    uuid TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    brand TEXT NOT NULL,
+                    channels TEXT NOT NULL,
+                    updated INTEGER NOT NULL
+                )""");
+            s.execute("""
                 CREATE TABLE IF NOT EXISTS editor_tokens (
                     token TEXT PRIMARY KEY,
                     player_uuid TEXT NOT NULL,
@@ -481,6 +489,24 @@ public class DatabaseManager {
         }
     }
 
+    /** Stores the client brand and plugin channels an account last played with (for client links). */
+    public synchronized void recordClient(String uuid, String name, String brand, Collection<String> channels) {
+        if (connection == null) return;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                INSERT INTO clients (uuid, name, brand, channels, updated) VALUES (?,?,?,?,?)
+                ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, brand = excluded.brand,
+                    channels = excluded.channels, updated = excluded.updated""")) {
+            ps.setString(1, uuid);
+            ps.setString(2, name);
+            ps.setString(3, brand);
+            ps.setString(4, String.join(",", new TreeSet<>(channels)));
+            ps.setLong(5, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("recordClient: " + e.getMessage());
+        }
+    }
+
     /**
      * Deletes what is older than the given number of days (0 or less keeps it): addresses and skins of accounts
      * not seen for {@code linkDays} (a skin is refreshed on join, so an old one belongs to an absent player), and
@@ -493,6 +519,7 @@ public class DatabaseManager {
             if (linkDays > 0) {
                 purgeOlder("DELETE FROM joins WHERE last_seen < ?", now - linkDays * 86_400_000L);
                 purgeOlder("DELETE FROM skins WHERE updated < ?", now - linkDays * 86_400_000L);
+                purgeOlder("DELETE FROM clients WHERE updated < ?", now - linkDays * 86_400_000L);
             }
             // results go with their scan (ON DELETE CASCADE)
             if (scanDays > 0) purgeOlder("DELETE FROM scans WHERE timestamp < ?", now - scanDays * 86_400_000L);
@@ -510,25 +537,31 @@ public class DatabaseManager {
 
     /**
      * Graph of linked accounts: {@code nodes} (id, name, detected, links, skin) and {@code edges} (source, target,
-     * type "ip" or "rptrack", label, p = how likely the two accounts are one person, 0 to 1). An address shared by
-     * more than {@code maxPerIp} accounts is skipped (shared networks); fingerprints link when they overlap by at
-     * least {@code minMatch} packs. Accounts without any link are left out.
+     * type "ip", "rptrack" or "client", label, p = how likely the two accounts are one person, 0 to 1). An address
+     * shared by more than {@code maxPerIp} accounts is skipped (shared networks); fingerprints link when they overlap
+     * by at least {@code minMatch} packs. A client link is the same brand with the same set of at least
+     * {@code minChannels} plugin channels, shared by no more than {@code maxPerClient} accounts: a common client
+     * (plain vanilla, a popular modpack) says nothing. Nodes also carry {@code last_seen} and their {@code ips}.
+     * Accounts without any link are left out.
      * <p>
      * Not synchronized as a whole: the rows are copied under the connection lock, and the pairwise comparison runs
      * outside it, so a large graph does not hold up scan saves on the main thread.
      */
-    public Map<String, Object> getLinkGraph(int maxPerIp, int minMatch) {
-        List<String[]> joinRows = new ArrayList<>();
+    public Map<String, Object> getLinkGraph(int maxPerIp, int minMatch, int maxPerClient, int minChannels) {
+        List<String[]> joinRows = new ArrayList<>(), clientRows = new ArrayList<>();
         Set<String> detected = new HashSet<>();
-        loadLinkRows(joinRows, detected);
+        loadLinkRows(joinRows, clientRows, detected);
         List<Map<String, Object>> tracks = getRPTracks();
 
         List<Map<String, Object>> edges = new ArrayList<>();
         Map<String, String> names = new LinkedHashMap<>();
-        Map<String, List<String>> byIp = new LinkedHashMap<>();
+        Map<String, List<String>> byIp = new LinkedHashMap<>(), ipsOf = new HashMap<>();
+        Map<String, Long> lastSeen = new HashMap<>();
         for (String[] r : joinRows) {
             names.putIfAbsent(r[0], r[1]);
             byIp.computeIfAbsent(r[2], k -> new ArrayList<>()).add(r[0]);
+            ipsOf.computeIfAbsent(r[0], k -> new ArrayList<>()).add(r[2]);
+            lastSeen.merge(r[0], Long.parseLong(r[3]), Math::max);
         }
         for (Map.Entry<String, List<String>> e : byIp.entrySet()) {
             List<String> ids = e.getValue();
@@ -551,6 +584,22 @@ public class DatabaseManager {
             }
         }
 
+        Map<String, List<String>> byClient = new LinkedHashMap<>();
+        for (String[] r : clientRows) {
+            if (r[3].isEmpty() || r[3].split(",").length < minChannels) continue;
+            names.putIfAbsent(r[0], r[1]);
+            byClient.computeIfAbsent(r[2] + "\n" + r[3], k -> new ArrayList<>()).add(r[0]);
+        }
+        for (Map.Entry<String, List<String>> e : byClient.entrySet()) {
+            List<String> ids = e.getValue();
+            if (ids.size() < 2 || ids.size() > maxPerClient) continue;
+            String[] key = e.getKey().split("\n", 2);
+            String label = key[0] + ", " + key[1].split(",").length + " channels";
+            for (int i = 0; i < ids.size(); i++)
+                for (int j = i + 1; j < ids.size(); j++)
+                    edges.add(edge(ids.get(i), ids.get(j), "client", label, 0.3 / Math.max(1.0, (ids.size() - 1) / 2.0)));
+        }
+
         Map<String, Integer> degree = new LinkedHashMap<>();
         for (Map<String, Object> e : edges) {
             degree.merge((String) e.get("source"), 1, Integer::sum);
@@ -565,6 +614,8 @@ public class DatabaseManager {
             n.put("detected", detected.contains(d.getKey()));
             n.put("links", d.getValue());
             n.put("skin", skins.get(d.getKey()));
+            n.put("last_seen", lastSeen.get(d.getKey()));
+            n.put("ips", ipsOf.getOrDefault(d.getKey(), List.of()));
             nodes.add(n);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -574,11 +625,14 @@ public class DatabaseManager {
     }
 
     /** Join rows (uuid, name, ip) and the players whose latest mod scan found something. */
-    private synchronized void loadLinkRows(List<String[]> joinRows, Set<String> detected) {
+    private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows, Set<String> detected) {
         if (connection == null) return;
         try (Statement st = connection.createStatement()) {
-            try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip FROM joins ORDER BY last_seen DESC")) {
-                while (rs.next()) joinRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3)});
+            try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip, last_seen FROM joins ORDER BY last_seen DESC")) {
+                while (rs.next()) joinRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
+            }
+            try (ResultSet rs = st.executeQuery("SELECT uuid, name, brand, channels FROM clients")) {
+                while (rs.next()) clientRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
             }
             try (ResultSet rs = st.executeQuery("""
                     SELECT target_uuid FROM scans

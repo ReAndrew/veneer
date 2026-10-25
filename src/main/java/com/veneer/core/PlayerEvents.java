@@ -7,6 +7,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.List;
+
 /**
  * The only join/quit listener in Veneer. It hands each event to every running module in order
  * ({@link VeneerModule#playerJoin}, {@link VeneerModule#playerQuit}), then to the update notice and the
@@ -60,6 +62,14 @@ public final class PlayerEvents implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         var uuid = event.getPlayer().getUniqueId();
+        // By quitting the client has sent its brand and every channel it registers (the spoof module collects them)
+        var brand = plugin.brandOf(event.getPlayer());
+        var profile = plugin.profileOf(uuid);
+        if (brand != null && profile != null) {
+            var name = event.getPlayer().getName();
+            var channels = List.copyOf(profile.getChannels());
+            FoliaScheduler.runAsync(plugin, () -> plugin.database().recordClient(uuid.toString(), name, brand, channels));
+        }
         for (VeneerModule module : plugin.modules()) {
             if (!module.running()) continue;
             try {
