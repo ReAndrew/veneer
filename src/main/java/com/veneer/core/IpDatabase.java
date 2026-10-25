@@ -88,16 +88,21 @@ public final class IpDatabase {
         this.weakKeywords = weakKeywords.stream().map(k -> k.toLowerCase(Locale.ROOT)).filter(k -> !k.isBlank()).toList();
     }
 
-    /** Downloads what is missing or stale and loads the tables, off the main thread. */
+    /** Ticks between checks for stale files; a server that runs for weeks still gets the weekly refresh. */
+    private static final long RECHECK_TICKS = 6 * 3600 * 20L;
+
+    /** Downloads what is missing or stale and loads the tables, off the main thread, then keeps them fresh. */
     public void start() {
-        FoliaScheduler.runAsync(plugin, () -> {
-            try {
-                download();
-                load();
-            } catch (Exception e) {
-                plugin.getLogger().warning("[Hacks] IP database not available: " + e);
-            }
-        });
+        FoliaScheduler.runAsync(plugin, this::refresh);
+    }
+
+    private void refresh() {
+        try {
+            if (download() || tables == null) load();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Hacks] IP database not available: " + e);
+        }
+        if (plugin.isEnabled()) FoliaScheduler.runAsyncLater(plugin, this::refresh, RECHECK_TICKS);
     }
 
     public boolean loaded() { return tables != null; }
@@ -123,11 +128,13 @@ public final class IpDatabase {
         return false;
     }
 
-    private void download() throws Exception {
+    /** True when at least one file was replaced. */
+    private boolean download() throws Exception {
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IllegalStateException("cannot create " + dir);
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NORMAL).build();
         long maxAge = refreshDays * 86_400_000L;
+        boolean changed = false;
         for (String[] f : FILES) {
             File out = new File(dir, f[1]);
             if (out.isFile() && System.currentTimeMillis() - out.lastModified() < maxAge) continue;
@@ -142,7 +149,9 @@ public final class IpDatabase {
                 throw new IllegalStateException(f[0] + ": HTTP " + res.statusCode());
             }
             Files.move(part.toPath(), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            changed = true;
         }
+        return changed;
     }
 
     private void load() throws Exception {

@@ -303,10 +303,11 @@ public class WebServerManager {
         if (path.startsWith("/api/player/")) {
             String name = URLDecoder.decode(
                     path.substring("/api/player/".length()), StandardCharsets.UTF_8);
-            boolean online = Bukkit.getPlayerExact(name) != null;
+            // From the cache, not Bukkit: this runs on an HTTP thread
+            boolean online = false;
             String uuid = "";
             for (Map<String, Object> p : cachedPlayers)
-                if (name.equalsIgnoreCase((String) p.get("name"))) { uuid = (String) p.get("uuid"); break; }
+                if (name.equalsIgnoreCase((String) p.get("name"))) { uuid = (String) p.get("uuid"); online = true; break; }
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("name",   name);
             result.put("uuid",   uuid);

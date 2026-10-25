@@ -184,7 +184,7 @@
 
     function esc(s) {
       return String(s == null ? '' : s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
     function timeAgo(ts) {
@@ -343,7 +343,7 @@
           '<span class="scan-card-type" style="font-size:13px">' + esc(m.name) + '</span>' +
           '<span class="scan-card-time">' + t(m.count === 1 ? '{0} player' : '{0} players', m.count) + '</span></div>' +
           '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px">' +
-          m.players.map(p => '<span class="player-item" style="padding:4px 8px" onclick="showPlayer(\'' + esc(p.name).replace(/'/g, '') + '\')" title="' + esc(timeAgo(p.last_seen)) + '">' +
+          m.players.map(p => '<span class="player-item" style="padding:4px 8px" data-player="' + esc(p.name) + '" title="' + esc(timeAgo(p.last_seen)) + '">' +
             '<img src="' + headUrl(p.uuid) + '" onerror="this.style.visibility=\'hidden\'" alt="" style="width:20px;height:20px"><span class="player-item-name">' + esc(p.name) + '</span></span>').join('') +
           '</div></div>').join('') + '</div>';
     }
@@ -672,7 +672,7 @@
 
         const backTarget = scan.target_name;
         main.innerHTML =
-          '<button class="back-btn" onclick="showPlayer(\'' + esc(backTarget) + '\')">← ' + esc(backTarget) + '</button>' +
+          '<button class="back-btn" data-player="' + esc(backTarget) + '">← ' + esc(backTarget) + '</button>' +
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">' +
             '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">' +
               '<div style="font-size:16px;font-weight:700;margin-bottom:4px">' +
@@ -705,8 +705,8 @@
         let runButtons = '';
         if (data.online) {
           runButtons =
-            '<button class="run-btn" id="btn-hack" onclick="runScan(\'' + esc(name) + '\',\'hack\')">' + t('Run Hack Check') + '</button>' +
-            '<button class="run-btn" id="btn-lang" onclick="runScan(\'' + esc(name) + '\',\'lang\')">' + t('Run Lang Check') + '</button>';
+            '<button class="run-btn" id="btn-hack" data-player="' + esc(name) + '" data-scan="hack">' + t('Run Hack Check') + '</button>' +
+            '<button class="run-btn" id="btn-lang" data-player="' + esc(name) + '" data-scan="lang">' + t('Run Lang Check') + '</button>';
         }
 
         let cards = '';
@@ -818,6 +818,15 @@
       document.getElementById('search-input').value = '';
       showPlayer(name);
     }
+
+    // Names are never spliced into inline onclick code: offline-mode servers accept names with quotes in them,
+    // and the browser decodes &#39; back to ' before running an inline handler
+    document.addEventListener('click', e => {
+      const el = e.target.closest('[data-player]');
+      if (!el) return;
+      if (el.dataset.scan) runScan(el.dataset.player, el.dataset.scan);
+      else showPlayer(el.dataset.player);
+    });
 
     init();
 </script>

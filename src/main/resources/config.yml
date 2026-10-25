@@ -937,6 +937,9 @@ rptrack:
   # How many cached packs must overlap with a stored fingerprint to link two accounts. Must be <= send.
   match: 5
   # Log every step (statuses, cached packs, stability against the stored fingerprint) to the console.
+  # Also switches on the experimental unique-set mode: every client gets a set that shares at most send-2
+  # packs with any stored one; a client with a whole stored set is linked directly, one with all but one pack
+  # of it indirectly. match is ignored there. Try it with e.g. track: 52, send: 6.
   debug: false
   delay-ticks: 40           # wait after join before probing
   timeout-ticks: 100        # max wait for client answers

@@ -54,6 +54,8 @@ public class RPTrackManager extends VeneerModule implements Listener {
         final Set<Integer> ok = ConcurrentHashMap.newKeySet();
         volatile boolean lbPending, lbHit, declined, done;
         String base = "";
+        /** Unique mode: the set picked for this client, held in {@link #reserved} until it is stored or dropped. */
+        volatile long reservedMask;
     }
 
     /**
@@ -77,6 +79,14 @@ public class RPTrackManager extends VeneerModule implements Listener {
     private final UUID[] ids;
     private byte[] hidePack, hideHash;
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
+    /**
+     * Experimental, on while {@code debug} is: every client gets a set no stored set shares more than
+     * {@code send - 2} packs with, so a client that still has a whole stored set is that account's machine (direct
+     * link) and one with all but one pack of it most likely is (indirect link). {@code match} is not used.
+     */
+    private final boolean unique;
+    /** Unique mode: sets handed out but not stored yet, so two clients joining together cannot get clashing sets. */
+    private final Set<Long> reserved = ConcurrentHashMap.newKeySet();
     private HttpServer http;
     private final Map<UUID, Result> results = new ConcurrentHashMap<>();
 
@@ -90,6 +100,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
         this.cfg = plugin.config().section("rptrack");
         this.enabled = cfg.getBoolean("enabled", false);
         this.debug = cfg.getBoolean("debug", false);
+        this.unique = debug;
         this.probes = Math.max(1, Math.min(62, cfg.getInt("track", 28)));
         this.assign = Math.max(1, Math.min(probes, cfg.getInt("send", 6)));
         this.minMatch = Math.max(1, Math.min(assign, cfg.getInt("match", 5)));
@@ -156,7 +167,8 @@ public class RPTrackManager extends VeneerModule implements Listener {
             plugin.getLogger().info("[RPTrack] public-url is localhost: serving packs on port " + localPort
                     + ", clients are pointed at the host they joined with.");
         listen(this);
-        plugin.getLogger().info("[RPTrack] enabled (" + probes + " tracked, " + assign + " sent, match " + minMatch
+        plugin.getLogger().info("[RPTrack] enabled (" + probes + " tracked, " + assign + " sent, "
+                + (unique ? "unique sets (experimental, debug mode)" : "match " + minMatch)
                 + (local ? ", serving on port " + localPort : ", packs exported to plugins/" + plugin.getName() + "/rptrack") + ")");
     }
 
@@ -284,7 +296,8 @@ public class RPTrackManager extends VeneerModule implements Listener {
 
     @Override
     public void playerQuit(java.util.UUID uuid) {
-        sessions.remove(uuid);
+        Session s = sessions.remove(uuid);
+        if (s != null) reserved.remove(s.reservedMask);
         results.remove(uuid);
     }
 
@@ -396,28 +409,24 @@ public class RPTrackManager extends VeneerModule implements Listener {
         }
         if (lb) report(player, "LiquidBounce local HTTP server (port 15000) reachable");
 
-        if (cached.isEmpty()) {
-            String base = baseUrl(player);
-            if (base.isEmpty()) { s.done = true; debug(player.getName() + ": fresh client but no pack url, nothing assigned"); return; }
-            // fresh client: hand out a random subset for real
+        if (unique) {
+            // Not PROBE any more, so the probe timeout cannot run this twice while the database is read
+            s.phase = Phase.ASSIGN;
+            s.lbHit = lb;
+            if (cached.isEmpty()) assignUnique(player, s, "fresh client");
+            else analyseUnique(player, s, maskOf(cached), lb);
+            return;
+        }
+
+        // Too few cached packs to link anything (fresh client, or an earlier assign that only partly arrived):
+        // hand out a set for real; the stored fingerprint is merged with it, not replaced
+        if (cached.size() < minMatch) {
             List<Integer> all = new ArrayList<>();
             for (int i = 0; i < probes; i++) all.add(i);
             Collections.shuffle(all);
-            s.phase = Phase.ASSIGN;
-            s.ok.clear();
-            s.pending.clear();
-            s.lbPending = false;
             s.lbHit = lb;
-            for (int k = 0; k < assign; k++) s.pending.add(all.get(k));
-            s.base = base;
-            FoliaScheduler.runAtEntityLater(plugin, player, () -> {
-                if (!player.isOnline() || s.done) return;
-                debug(player.getName() + ": fresh client, sending " + assign + " packs");
-                List<net.kyori.adventure.resource.ResourcePackInfo> infos = new ArrayList<>();
-                for (int i : s.pending) infos.add(packInfo(ids[i], s.base + "/fp/" + (i + 1) + ".zip", hashes[i]));
-                send(player, infos);
-                FoliaScheduler.runAtEntityLater(plugin, player, () -> finishAssign(player, s), timeout);
-            }, GRACE);
+            startAssign(player, s, all.subList(0, assign),
+                    cached.isEmpty() ? "fresh client" : cached.size() + " cached only");
         } else {
             s.done = true;
             sessions.remove(player.getUniqueId());
@@ -425,17 +434,148 @@ public class RPTrackManager extends VeneerModule implements Listener {
         }
     }
 
+    /** Sends {@code set} for real; {@link #finishAssign} stores what the client loaded. */
+    private void startAssign(Player player, Session s, List<Integer> set, String why) {
+        String base = baseUrl(player);
+        if (base.isEmpty()) {
+            s.done = true;
+            sessions.remove(player.getUniqueId());
+            reserved.remove(s.reservedMask);
+            debug(player.getName() + ": " + why + " but no pack url, nothing assigned");
+            return;
+        }
+        s.phase = Phase.ASSIGN;
+        s.ok.clear();
+        s.pending.clear();
+        s.lbPending = false;
+        s.pending.addAll(set);
+        s.base = base;
+        FoliaScheduler.runAtEntityLater(plugin, player, () -> {
+            if (!player.isOnline() || s.done) return;
+            debug(player.getName() + ": " + why + ", sending " + set.size() + " packs");
+            List<net.kyori.adventure.resource.ResourcePackInfo> infos = new ArrayList<>();
+            for (int i : s.pending) infos.add(packInfo(ids[i], s.base + "/fp/" + (i + 1) + ".zip", hashes[i]));
+            send(player, infos);
+            FoliaScheduler.runAtEntityLater(plugin, player, () -> finishAssign(player, s), timeout);
+        }, GRACE);
+    }
+
+    /** Unique mode: picks a set off the main thread, then hands it out on the player's thread. */
+    private void assignUnique(Player player, Session s, String why) {
+        FoliaScheduler.runAsync(plugin, () -> {
+            List<Long> stored = new ArrayList<>();
+            for (Map<String, Object> row : plugin.database().getRPTracks())
+                stored.add(((Number) row.get("mask")).longValue());
+            long mask = pickUnique(stored);
+            s.reservedMask = mask;
+            List<Integer> set = new ArrayList<>();
+            for (int i = 0; i < probes; i++) if ((mask >>> i & 1) != 0) set.add(i);
+            FoliaScheduler.runAtEntity(plugin, player, () -> {
+                if (!player.isOnline() || s.done) { reserved.remove(mask); return; }
+                startAssign(player, s, set, why);
+            });
+        });
+    }
+
+    /** Attempts at a random set before settling for the least clashing one seen. */
+    private static final int PICK_TRIES = 5000;
+
+    /** A random {@code send}-pack set sharing at most {@code send - 2} packs with every stored and reserved set. */
+    private long pickUnique(List<Long> stored) {
+        int maxCommon = Math.max(0, assign - 2);
+        Random rnd = java.util.concurrent.ThreadLocalRandom.current();
+        synchronized (reserved) {
+            List<Long> taken = new ArrayList<>(stored);
+            taken.addAll(reserved);
+            long best = 0;
+            int bestWorst = Integer.MAX_VALUE;
+            for (int attempt = 0; attempt < PICK_TRIES; attempt++) {
+                long m = 0;
+                while (Long.bitCount(m) < assign) m |= 1L << rnd.nextInt(probes);
+                int worst = 0;
+                for (long o : taken) {
+                    worst = Math.max(worst, Long.bitCount(m & o));
+                    if (worst > maxCommon) break;
+                }
+                if (worst <= maxCommon) { best = m; bestWorst = worst; break; }
+                if (worst < bestWorst) { best = m; bestWorst = worst; }
+            }
+            if (bestWorst > maxCommon)
+                plugin.getLogger().warning("[RPTrack] no set of " + assign + " packs out of " + probes + " is free any "
+                        + "more (best shares " + bestWorst + "): raise track or send.");
+            reserved.add(best);
+            return best;
+        }
+    }
+
+    /** Unique mode: stored sets fully (direct) or all but one pack (indirect) in a client's cache. */
+    private record Links(long own, List<String> direct, List<String> indirect) { }
+
+    private Links linksOf(String uuid, long cache) {
+        long own = 0;
+        List<String> direct = new ArrayList<>(), indirect = new ArrayList<>();
+        for (Map<String, Object> row : plugin.database().getRPTracks()) {
+            long other = ((Number) row.get("mask")).longValue();
+            if (uuid.equals(row.get("uuid"))) { own = other; continue; }
+            int size = Long.bitCount(other), common = Long.bitCount(cache & other);
+            // Under three packs a set proves nothing, and one missing pack would leave too little
+            if (size < 3) continue;
+            if (common == size) direct.add(String.valueOf(row.get("name")));
+            else if (common == size - 1) indirect.add(String.valueOf(row.get("name")));
+        }
+        return new Links(own, direct, indirect);
+    }
+
+    /** Unique mode: a client that has cached packs. */
+    private void analyseUnique(Player player, Session s, long cache, boolean lb) {
+        String uuid = player.getUniqueId().toString();
+        FoliaScheduler.runAsync(plugin, () -> {
+            Links l = linksOf(uuid, cache);
+            debug(player.getName() + ": direct " + l.direct() + ", indirect " + l.indirect()
+                    + (l.own() != 0 ? ", own set " + Long.bitCount(cache & l.own()) + "/" + Long.bitCount(l.own()) + " cached" : ", no own set"));
+            int ownSize = Long.bitCount(l.own());
+            boolean ownLost = l.own() == 0 || Long.bitCount(cache & l.own()) < ownSize - 1;
+            if (ownLost && l.direct().isEmpty() && l.indirect().isEmpty()) {
+                // Leftovers of an assign that did not fully arrive, or an own set mostly evicted: they match
+                // nobody, so this client gets a new set (it replaces the stored one)
+                FoliaScheduler.runAtEntity(plugin, player, () -> {
+                    if (player.isOnline() && !s.done) assignUnique(player, s, "cached packs match nobody");
+                });
+                return;
+            }
+            s.done = true;
+            sessions.remove(player.getUniqueId());
+            results.put(player.getUniqueId(), new Result(Long.bitCount(l.own() != 0 ? l.own() : cache), l.direct().size(), lb));
+            // A known account keeps its own set (anything else in the cache is another account's); a new one on
+            // a known machine is stored with that machine's packs
+            plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, false);
+            if (!l.direct().isEmpty() && alert)
+                report(player, "same client cache as: " + String.join(", ", l.direct()));
+            if (!l.indirect().isEmpty() && alert)
+                report(player, "probably the same client (one pack missing) as: " + String.join(", ", l.indirect()));
+        });
+    }
+
     private synchronized void finishAssign(Player player, Session s) {
         if (s.done || s.phase != Phase.ASSIGN) return;
         s.done = true;
         sessions.remove(player.getUniqueId());
         if (player.isOnline()) removeAll(player, s);
-        debug(player.getName() + ": assign done, stored " + s.ok.size() + "/" + assign + " (pending " + s.pending.size() + ")");
-        if (s.ok.isEmpty()) return;
+        long held = s.reservedMask;
+        // Unique mode stores whole sets only: a partial one could sit inside a set handed out later.
+        // The packs that did arrive match nobody, so the next join hands out a new set.
+        boolean store = unique ? s.ok.size() == assign : !s.ok.isEmpty();
+        debug(player.getName() + ": assign done, loaded " + s.ok.size() + "/" + assign
+                + (store ? ", stored" : ", not stored"));
+        if (!store) { reserved.remove(held); return; }
         long mask = maskOf(s.ok);
         results.put(player.getUniqueId(), new Result(s.ok.size(), 0, s.lbHit));
-        FoliaScheduler.runAsync(plugin, () -> plugin.database()
-                .saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit));
+        // Unique mode replaces: an account whose cache was wiped gets a new set, and two merged sets would break the rule.
+        // The reservation is dropped once the set is in the database, so no pick in between misses it.
+        FoliaScheduler.runAsync(plugin, () -> {
+            plugin.database().saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit, unique);
+            reserved.remove(held);
+        });
     }
 
     private void removeAll(Player player, Session s) {
@@ -460,19 +600,28 @@ public class RPTrackManager extends VeneerModule implements Listener {
                         + Long.bitCount(own) + " packs still cached, " + Long.bitCount(mask & ~own) + " extra");
             debug(player.getName() + ": linked accounts " + linked);
             results.put(player.getUniqueId(), new Result(Long.bitCount(mask | own), linked.size(), lb));
-            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb);
+            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, false);
             if (!linked.isEmpty() && alert)
                 report(player, "same client cache as: " + String.join(", ", linked));
         });
     }
 
-    /** Names of other accounts whose stored fingerprint overlaps this one by at least min-match packs. */
+    /**
+     * Names of other accounts whose stored fingerprint overlaps this one by at least min-match packs. A fingerprint
+     * with fewer packs never links: one or two shared packs are common among strangers.
+     */
     public List<String> findLinked(String uuid, long mask) {
+        if (unique) {
+            Links l = linksOf(uuid, mask);
+            List<String> out = new ArrayList<>(l.direct());
+            for (String n : l.indirect()) out.add(n + " (indirect)");
+            return out;
+        }
         List<String> out = new ArrayList<>();
         for (Map<String, Object> row : plugin.database().getRPTracks()) {
             if (uuid.equals(row.get("uuid"))) continue;
             long other = ((Number) row.get("mask")).longValue();
-            if (Long.bitCount(mask & other) >= Math.min(minMatch, Long.bitCount(other)))
+            if (Long.bitCount(mask & other) >= minMatch)
                 out.add(String.valueOf(row.get("name")));
         }
         return out;

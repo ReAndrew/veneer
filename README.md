@@ -93,7 +93,7 @@ public-url: "http://localhost:8123"   # localhost = built-in server on this port
 track: 28                             # probe packs checked on every join
 send: 6                               # packs a fresh client is sent (<= track)
 match: 5                              # cached packs that must overlap to link accounts (<= send)
-debug: false                          # log every step to check how stable the signal is
+debug: false                          # log every step; also turns on the experimental unique-set mode (direct and indirect links, `match` unused)
 ```
 
 > **Privacy:** this is covert tracking of players. Disclose it in your server rules or privacy policy. Some clients (Meteor, Wurst, LiquidBounce, ExploitPreventer) already block it, so absence of a match proves nothing.
@@ -111,7 +111,7 @@ Produces `target/veneer-<version>.jar` (about 24 MB, PacketEvents shaded and rel
 - The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
 - The provider and country data (about 50 MB) is downloaded to `plugins/Veneer/geo/` through jsDelivr and refreshed weekly (`hacks.web-editor.links.ip-database`, on by default; the plugin works without it). The country is where the network is registered, not a precise location. Which providers count as weak is set by `weak-provider-asns` and `weak-provider-keywords`, the weight factor by `weak-provider-factor` (0.3). Client links need the spoof module and are recorded when a player leaves.
 - To translate the panel, add `src/main/resources/web/lang/<language>.json` (English text as keys, see `ru.json`).
-- Version `0.9.3` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
+- Version `0.9.4` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).
 - **Folia:** every task goes through `FoliaScheduler` (global, per-entity and async schedulers; Bukkit's scheduler is no longer used anywhere), and punishments run as console commands on the global region. Tested on Folia 1.21.11 (mod scan, language check, web panel scans, death, world change and quitting mid-scan). A probe sign Folia does not let the plugin remove on shutdown is removed on the next start.
 - Compiled against Paper API 1.21.4, `api-version: 1.21`. Legacy 1.8.x servers are untested.
 

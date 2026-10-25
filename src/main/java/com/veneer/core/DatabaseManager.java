@@ -409,14 +409,17 @@ public class DatabaseManager {
         return row;
     }
 
-    /** Inserts or updates the cache fingerprint of an account. */
-    public synchronized void saveRPTrack(String uuid, String name, long mask, boolean liquidBounce) {
+    /**
+     * Inserts the cache fingerprint of an account. An existing one gets the packs added ({@code replace} false) or
+     * is replaced by {@code mask} ({@code replace} true).
+     */
+    public synchronized void saveRPTrack(String uuid, String name, long mask, boolean liquidBounce, boolean replace) {
         if (connection == null) return;
         long now = System.currentTimeMillis();
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO rptrack (uuid, name, mask, liquidbounce, first_seen, last_seen)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, mask = excluded.mask,
+                ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, mask = CASE WHEN ? THEN excluded.mask ELSE excluded.mask | rptrack.mask END,
                     liquidbounce = excluded.liquidbounce OR rptrack.liquidbounce,
                     last_seen = excluded.last_seen""")) {
             ps.setString(1, uuid);
@@ -425,6 +428,7 @@ public class DatabaseManager {
             ps.setInt(4, liquidBounce ? 1 : 0);
             ps.setLong(5, now);
             ps.setLong(6, now);
+            ps.setBoolean(7, replace);
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().warning("saveRPTrack: " + e.getMessage());
@@ -575,7 +579,7 @@ public class DatabaseManager {
             for (int j = i + 1; j < tracks.size(); j++) {
                 long b = ((Number) tracks.get(j).get("mask")).longValue();
                 int common = Long.bitCount(a & b);
-                int needed = Math.max(1, Math.min(minMatch, Math.min(Long.bitCount(a), Long.bitCount(b))));
+                int needed = Math.max(1, minMatch);
                 if (common < needed) continue;
                 String ua = (String) tracks.get(i).get("uuid"), ub = (String) tracks.get(j).get("uuid");
                 names.putIfAbsent(ua, (String) tracks.get(i).get("name"));
