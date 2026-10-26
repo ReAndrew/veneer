@@ -125,6 +125,25 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
         String group = plugin.hooks().primaryGroup(player);
         if (!group.isEmpty()) plugin.messages().send(sender, "veneer-info-group", "group", group);
+        bypassSection(sender, player);
+    }
+
+    /** One line per running module the player bypasses, with the node (and group) that grants it. */
+    private void bypassSection(CommandSender sender, Player player) {
+        for (VeneerModule module : List.of(plugin.spoof(), plugin.hacks(), plugin.rptrack())) {
+            if (!module.running()) continue;
+            VeneerPlugin.Bypass join = plugin.bypass(player, module.id(), true);
+            // RPTrack only checks on joining
+            VeneerPlugin.Bypass later = module == plugin.rptrack() ? join : plugin.bypass(player, module.id(), false);
+            if (!join.value() && !later.value()) continue;
+            String when = join.value() && later.value() ? "veneer-info-bypass-always"
+                    : join.value() ? "veneer-info-bypass-join" : "veneer-info-bypass-later";
+            VeneerPlugin.Bypass by = join.value() ? join : later;
+            Messages.Raw source = new Messages.Raw(by.group() == null
+                    ? plugin.messages().plain("veneer-info-bypass-node", "node", by.node())
+                    : plugin.messages().plain("veneer-info-bypass-node-group", "node", by.node(), "group", by.group()));
+            plugin.messages().send(sender, "veneer-info-bypass", "module", module.id(), "when", plugin.messages().raw(when), "source", source);
+        }
     }
 
     @SuppressWarnings("unchecked")

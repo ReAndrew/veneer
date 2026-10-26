@@ -3,6 +3,10 @@ package com.veneer.hooks;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.VeneerModule;
 import org.bukkit.entity.Player;
+import org.bukkit.permissions.PermissionAttachmentInfo;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Optional integrations: PlaceholderAPI ({@code %veneer_*%}) and LuckPerms (primary group). */
 public class HooksModule extends VeneerModule {
@@ -43,13 +47,19 @@ public class HooksModule extends VeneerModule {
         luckPerms = null;
     }
 
+    /** A permission node set on a player: its value and the group it comes from (null when set on the player). */
+    public record SetNode(String node, boolean value, String group) {}
+
     /**
-     * The value set for {@code node} on the player, or null when it is not set: from LuckPerms (own and group
-     * nodes, without wildcards above it) when it is installed, else what Bukkit reports as set.
+     * Nodes under {@code prefix} set on the player: from LuckPerms (own nodes first, then groups; no wildcards above
+     * the prefix) when it is installed, else what Bukkit reports as set (a group is not known there).
      */
-    public Boolean permissionSet(Player player, String node) {
-        if (luckPerms != null) return luckPerms.explicit(player, node);
-        return player.isPermissionSet(node) ? player.hasPermission(node) : null;
+    public List<SetNode> setNodes(Player player, String prefix) {
+        if (luckPerms != null) return luckPerms.nodes(player, prefix);
+        List<SetNode> nodes = new ArrayList<>();
+        for (PermissionAttachmentInfo info : player.getEffectivePermissions())
+            if (info.getPermission().startsWith(prefix)) nodes.add(new SetNode(info.getPermission(), info.getValue(), null));
+        return nodes;
     }
 
     /** Primary LuckPerms group of the player, or "" when LuckPerms is absent. */

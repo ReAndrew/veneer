@@ -231,16 +231,29 @@ public class VeneerPlugin extends JavaPlugin {
      * for the check on joining, which {@code veneer.bypass.<module>.join} skips too. The most specific of
      * {@code veneer.bypass.<module>.join}, {@code veneer.bypass.<module>} and {@code veneer.bypass} that is set
      * decides, so a false below a true wins (veneer.bypass true and veneer.bypass.hacks false: mods are still
-     * scanned). Unset everywhere means no bypass; {@code veneer.*} and {@code *} never grant one.
+     * scanned). Nodes set on the player come before group ones (group veneer.bypass.hacks false and the player's
+     * own veneer.bypass: no scan). Unset everywhere means no bypass; {@code veneer.*} and {@code *} never grant one.
      * Resolved here rather than through plugin.yml children: a child granted by its parent hides a false set on it.
      */
     public boolean bypasses(Player player, String module, boolean join) {
+        return bypass(player, module, join).value();
+    }
+
+    /** How a bypass was decided: its value and the node (and group, null for the player's own) that set it; node null = none set. */
+    public record Bypass(boolean value, String node, String group) {}
+
+    /** {@link #bypasses} with the node that decided it. */
+    public Bypass bypass(Player player, String module, boolean join) {
         String base = "veneer.bypass." + module;
-        for (String node : join ? List.of(base + ".join", base, "veneer.bypass") : List.of(base, "veneer.bypass")) {
-            Boolean set = hooks.permissionSet(player, node);
-            if (set != null) return set;
-        }
-        return false;
+        List<String> chain = join ? List.of(base + ".join", base, "veneer.bypass") : List.of(base, "veneer.bypass");
+        List<HooksModule.SetNode> set = hooks.setNodes(player, "veneer.bypass");
+        // The player's own nodes beat group ones, as in LuckPerms; within one of them the most specific node wins.
+        for (boolean own : new boolean[]{true, false})
+            for (String node : chain)
+                for (String key : List.of(node, node + ".*"))
+                    for (HooksModule.SetNode n : set)
+                        if (n.node().equals(key) && (n.group() == null) == own) return new Bypass(n.value(), key, n.group());
+        return new Bypass(false, null, null);
     }
 
     // ----------------------------------------------------------------- logging
