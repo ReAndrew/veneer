@@ -192,8 +192,14 @@ public class AlertManager {
         // Log to console
         plugin.getLogger().info(consoleMessage);
         
-        // Send to players with permission
-        sendAlertToRecipients(alertMessage);
+        // Send to players with permission. An unknown brand comes with buttons to allow or block it
+        BrandVerdicts.Entry unknown = "UNKNOWN_BRAND".equals(violationType) && brand != null
+                ? plugin.spoof().verdicts().seen(brand, player.getName()) : null;
+        if (unknown != null)
+            plugin.alerts().sendToPlayers(plugin.messages().with("spoof-unknown-brand",
+                    "player", player.getName(), "brand", brand, "id", unknown.id()));
+        else
+            sendAlertToRecipients(alertMessage);
         
         // Send to Discord if enabled
         if (config.isDiscordWebhookEnabled() && brandConfig.shouldDiscordAlert()) {

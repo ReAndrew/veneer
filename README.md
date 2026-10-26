@@ -39,6 +39,8 @@ Client spoof detection, mod detection and cache-based account linking for Paper,
 
 The `minecraft:brand` string is whatever the client chooses to send. The plugin channels it registers are harder to hide, because the mods need them to work. Veneer checks the two against each other and against the rules for each known client brand in `spoof.client-brands`: required channels, blocked channels or a channel whitelist.
 
+A brand that matches no rule is reported to staff with **[Allow]** and **[Block]** buttons, so staff decide whether that client is fine. The verdict is kept for that exact brand string: an allowed brand is treated as a known clean client from then on, and a blocked one is flagged, alerted and optionally punished (`spoof.client-brands.staff-verdicts.blocked`). `/spoof brands` lists the brands seen and lets you change or reset a verdict.
+
 ### Mod scan
 
 ![Mod scan: the server opens a hidden sign with keybind("key.freecam.toggle"); a vanilla client sends the key back unchanged, a client with Freecam sends the bound key "F"](docs/mod-scan.webp)
@@ -59,7 +61,7 @@ Veneer places a sign next to the player with a translation or keybind key from e
 | `/veneer alerts` | `veneer.alerts` | Toggle your own staff alerts (spoof, mod scan and RPTrack share one switch) |
 | `/veneer reload` | `veneer.admin` | Reload `config.yml` and the language files for every module |
 | `/veneer version` | `veneer.admin` | Running and latest release |
-| `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, re-run spoof checks (`check`, `runcheck`, `channels`, `brand`) |
+| `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, re-run spoof checks (`check`, `runcheck`, `channels`, `brand`); `brands` (needs `veneer.spoof.admin`) lists unknown brands and allows or blocks them |
 | `/hackcheck <player> [hacks]` | `veneer.hacks.check` | Scan a player for mods |
 | `/hacklang <player>` | `veneer.hacks.lang` | Check a player's client language |
 | `/hackeditor` | `veneer.hacks.editor` | Link to the web panel: scan history and manual scans |

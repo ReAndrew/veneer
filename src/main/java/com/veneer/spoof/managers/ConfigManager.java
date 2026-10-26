@@ -11,6 +11,10 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 public class ConfigManager {
+    /** Built-in brand keys for brands staff allowed or blocked (see {@link BrandVerdicts}). */
+    public static final String STAFF_ALLOWED = "staff-allowed";
+    public static final String STAFF_BLOCKED = "staff-blocked";
+
     private final VeneerPlugin plugin;
     private ConfigurationSection config;
     
@@ -19,7 +23,8 @@ public class ConfigManager {
     
     // Client brand configurations
     private boolean clientBrandsEnabled;
-    private final Map<String, ClientBrandConfig> clientBrands = new HashMap<>();
+    // Insertion order: when two patterns match, the brand listed first in the config wins
+    private final Map<String, ClientBrandConfig> clientBrands = new java.util.LinkedHashMap<>();
     private ClientBrandConfig defaultBrandConfig;
 
     // Class to hold client brand configuration
@@ -121,12 +126,32 @@ public class ConfigManager {
             defaultBrandConfig.punishments = new ArrayList<>();
         }
         
+        // Brands staff decided on: allowed ones are a known clean client, blocked ones flag like a cheat client
+        ClientBrandConfig allowed = new ClientBrandConfig();
+        allowed.enabled = true;
+        allowed.alertMessage = defaultBrandConfig.alertMessage;
+        allowed.consoleAlertMessage = defaultBrandConfig.consoleAlertMessage;
+        clientBrands.put(STAFF_ALLOWED, allowed);
+        ConfigurationSection blockedSection = config.getConfigurationSection("client-brands.staff-verdicts.blocked");
+        ClientBrandConfig blocked = new ClientBrandConfig();
+        blocked.enabled = true;
+        blocked.flag = true;
+        blocked.alert = true;
+        blocked.alertMessage = blockedSection != null ? blockedSection.getString("alert-message",
+                "&8[&cVeneer&8] &7%player% is using blocked client &c%brand%") : "&8[&cVeneer&8] &7%player% is using blocked client &c%brand%";
+        blocked.consoleAlertMessage = blockedSection != null ? blockedSection.getString("console-alert-message",
+                "%player% is using blocked client: %brand%") : "%player% is using blocked client: %brand%";
+        blocked.discordAlert = blockedSection != null && blockedSection.getBoolean("discord-alert", true);
+        blocked.punish = blockedSection != null && blockedSection.getBoolean("punish", false);
+        blocked.punishments = blockedSection != null ? blockedSection.getStringList("punishments") : new ArrayList<>();
+        clientBrands.put(STAFF_BLOCKED, blocked);
+
         // Load individual brand configurations
         ConfigurationSection brandsSection = config.getConfigurationSection("client-brands.brands");
         if (brandsSection != null) {
             for (String brandKey : brandsSection.getKeys(false)) {
                 ConfigurationSection brandSection = brandsSection.getConfigurationSection(brandKey);
-                if (brandSection != null) {
+                if (brandSection != null && !brandKey.equals(STAFF_ALLOWED) && !brandKey.equals(STAFF_BLOCKED)) {
                     ClientBrandConfig brandConfig = loadBrandConfig(brandSection);
                     clientBrands.put(brandKey, brandConfig);
                     
@@ -211,6 +236,11 @@ public class ConfigManager {
      */
     public String getMatchingClientBrand(String brand) {
         if (brand == null || !clientBrandsEnabled) return null;
+
+        // A staff verdict on this exact brand comes before the configured patterns
+        BrandVerdicts verdicts = plugin.spoof().verdicts();
+        BrandVerdicts.Verdict verdict = verdicts != null ? verdicts.verdict(brand) : null;
+        if (verdict != null) return verdict == BrandVerdicts.Verdict.ALLOW ? STAFF_ALLOWED : STAFF_BLOCKED;
         
         for (Map.Entry<String, ClientBrandConfig> entry : clientBrands.entrySet()) {
             ClientBrandConfig brandConfig = entry.getValue();

@@ -9,6 +9,7 @@ import com.veneer.core.VeneerModule;
 import com.veneer.spoof.commands.SpoofCommand;
 import com.veneer.spoof.listeners.PlayerEventListener;
 import com.veneer.spoof.managers.AlertManager;
+import com.veneer.spoof.managers.BrandVerdicts;
 import com.veneer.spoof.managers.ConfigManager;
 import com.veneer.spoof.managers.DetectionManager;
 import com.veneer.spoof.utils.DiscordWebhookHandler;
@@ -35,6 +36,7 @@ public class SpoofModule extends VeneerModule {
     private DetectionManager detection;
     private PlayerEventListener events;
     private DiscordWebhookHandler discord;
+    private BrandVerdicts verdicts;
 
     public SpoofModule(VeneerPlugin plugin) {
         super(plugin);
@@ -46,6 +48,7 @@ public class SpoofModule extends VeneerModule {
 
     @Override
     protected void enable() {
+        verdicts = new BrandVerdicts(plugin);
         config = new ConfigManager(plugin);
         alertManager = new AlertManager(plugin);
         detection = new DetectionManager(plugin);
@@ -102,6 +105,8 @@ public class SpoofModule extends VeneerModule {
 
     public ConfigManager config() { return config; }
     public AlertManager alertManager() { return alertManager; }
+    /** Staff verdicts on unknown brands; null before the module started. */
+    public BrandVerdicts verdicts() { return verdicts; }
     public DetectionManager detection() { return detection; }
     public DiscordWebhookHandler discord() { return discord; }
 

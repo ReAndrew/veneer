@@ -191,6 +191,18 @@ spoof:
       alert-message: "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%"
       console-alert-message: "%player% using unknown client: %brand%"
 
+    # Unknown brands come with [Allow] / [Block] buttons in the staff alert (also /spoof brands). The verdict
+    # is kept in data.db for that exact brand string: allowed brands count as a known clean client, blocked
+    # ones are flagged like a cheat client with the settings below.
+    staff-verdicts:
+      blocked:
+        alert-message: "&8[&cVeneer&8] &7%player% is using blocked client &c%brand%"
+        console-alert-message: "%player% is using blocked client: %brand%"
+        discord-alert: true
+        punish: false
+        punishments:
+          - "kick %player% &cThis client is not allowed on this server"
+
     # Brand-specific configurations
     brands:
       # Lunar Client Configuration

@@ -3,6 +3,7 @@ package com.veneer.spoof.commands;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.Messages;
 import com.veneer.core.PlayerProfile;
+import com.veneer.spoof.managers.BrandVerdicts;
 import com.veneer.spoof.managers.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -14,13 +15,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class SpoofCommand implements CommandExecutor, TabCompleter {
     private final VeneerPlugin plugin;
     private final List<String> subcommands = Arrays.asList(
-        "channels", "brand", "help", "check", "blockedchannels", "blockedbrands", "runcheck"
+        "channels", "brand", "brands", "help", "check", "blockedchannels", "blockedbrands", "runcheck"
     );
 
     public SpoofCommand(VeneerPlugin plugin) {
@@ -86,6 +88,16 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         
+        // Staff verdicts on unknown client brands
+        if (subCommand.equals("brands")) {
+            if (!sender.hasPermission("veneer.spoof.admin")) {
+                send(sender, "no-permission");
+                return true;
+            }
+            handleBrands(sender, args);
+            return true;
+        }
+
         // Handle runcheck command
         if (subCommand.equals("runcheck")) {
             handleRunCheckCommand(sender, args);
@@ -157,6 +169,57 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         return true;
     }
     
+    /** {@code /spoof brands} lists unknown brands; {@code allow|block|forget <id>} records a verdict (the alert's buttons). */
+    private void handleBrands(CommandSender sender, String[] args) {
+        BrandVerdicts verdicts = plugin.spoof().verdicts();
+        if (args.length >= 2) {
+            BrandVerdicts.Verdict verdict;
+            switch (args[1].toLowerCase(Locale.ROOT)) {
+                case "allow" -> verdict = BrandVerdicts.Verdict.ALLOW;
+                case "block" -> verdict = BrandVerdicts.Verdict.BLOCK;
+                case "forget" -> verdict = null;
+                default -> {
+                    send(sender, "spoof-verdict-usage");
+                    return;
+                }
+            }
+            if (args.length < 3) {
+                send(sender, "spoof-verdict-usage");
+                return;
+            }
+            int id;
+            try {
+                id = Integer.parseInt(args[2]);
+            } catch (NumberFormatException e) {
+                send(sender, "spoof-verdict-unknown-id", "id", args[2]);
+                return;
+            }
+            if (!verdicts.decide(id, verdict, sender.getName())) {
+                send(sender, "spoof-verdict-unknown-id", "id", args[2]);
+                return;
+            }
+            String brand = verdicts.get(id).brand();
+            send(sender, verdict == null ? "spoof-verdict-forgotten"
+                    : verdict == BrandVerdicts.Verdict.ALLOW ? "spoof-verdict-allowed" : "spoof-verdict-blocked", "brand", brand);
+            plugin.getLogger().info(sender.getName() + (verdict == null ? " cleared the verdict on"
+                    : verdict == BrandVerdicts.Verdict.ALLOW ? " allowed" : " blocked") + " client brand '" + brand + "'");
+            // Apply it to players online with that brand now, not on their next join
+            for (Player p : Bukkit.getOnlinePlayers())
+                if (brand.equals(plugin.brandOf(p))) plugin.spoof().detection().checkPlayerAsync(p, false, true);
+            return;
+        }
+
+        List<BrandVerdicts.Entry> all = verdicts.all();
+        send(sender, "spoof-verdict-list-title", "count", all.size());
+        if (all.isEmpty()) send(sender, "spoof-verdict-list-empty");
+        for (BrandVerdicts.Entry e : all.subList(0, Math.min(20, all.size()))) {
+            String key = e.verdict() == null ? "spoof-verdict-list-undecided"
+                    : e.verdict() == BrandVerdicts.Verdict.ALLOW ? "spoof-verdict-list-allowed" : "spoof-verdict-list-blocked";
+            send(sender, key, "id", e.id(), "brand", e.brand(),
+                    "player", e.lastPlayer() == null ? "?" : e.lastPlayer(), "by", e.decidedBy() == null ? "?" : e.decidedBy());
+        }
+    }
+
     private void handleRunCheckCommand(CommandSender sender, String[] args) {
         if (!sender.hasPermission("veneer.spoof.admin")) {
             send(sender, "no-permission");
@@ -520,7 +583,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
     }
     
     private void showHelp(CommandSender sender) {
-        for (String key : List.of("title", "channels", "brand", "check", "runcheck", "blockedchannels", "blockedbrands", "help"))
+        for (String key : List.of("title", "channels", "brand", "brands", "check", "runcheck", "blockedchannels", "blockedbrands", "help"))
             send(sender, "spoof-help-" + key);
     }
 
@@ -599,6 +662,10 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 2) {
             String partialArg = args[1].toLowerCase();
+
+            if (args[0].equalsIgnoreCase("brands"))
+                for (String s : List.of("allow", "block", "forget"))
+                    if (s.startsWith(partialArg)) completions.add(s);
             
             if (args[0].equalsIgnoreCase("check") || 
                 args[0].equalsIgnoreCase("runcheck")) {

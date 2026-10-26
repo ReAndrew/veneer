@@ -106,6 +106,17 @@ public class DatabaseManager {
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL
                 )""");
+            // Client brands staff were asked about: verdict "allow", "block" or null (not decided yet)
+            s.execute("""
+                CREATE TABLE IF NOT EXISTS brand_verdicts (
+                    id INTEGER PRIMARY KEY,
+                    brand TEXT NOT NULL UNIQUE,
+                    verdict TEXT,
+                    decided_by TEXT,
+                    decided_at INTEGER,
+                    first_seen INTEGER NOT NULL,
+                    last_player TEXT
+                )""");
             // veneer.web.* rights of the player when the token was issued, comma separated
             try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
             catch (SQLException alreadyThere) {}
@@ -573,6 +584,40 @@ public class DatabaseManager {
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().warning("recordJoin: " + e.getMessage());
+        }
+    }
+
+    /** All rows of {@code brand_verdicts}, oldest first. */
+    public synchronized List<Map<String, Object>> getBrandVerdicts() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (connection == null) return list;
+        try (Statement s = connection.createStatement();
+             ResultSet rs = s.executeQuery("SELECT * FROM brand_verdicts ORDER BY id")) {
+            while (rs.next()) list.add(rowToMap(rs));
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getBrandVerdicts: " + e.getMessage());
+        }
+        return list;
+    }
+
+    public synchronized void saveBrandVerdict(int id, String brand, String verdict, String decidedBy, long decidedAt,
+                                              long firstSeen, String lastPlayer) {
+        if (connection == null) return;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                INSERT INTO brand_verdicts (id, brand, verdict, decided_by, decided_at, first_seen, last_player)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET verdict=excluded.verdict, decided_by=excluded.decided_by,
+                    decided_at=excluded.decided_at, last_player=excluded.last_player""")) {
+            ps.setInt(1, id);
+            ps.setString(2, brand);
+            ps.setString(3, verdict);
+            ps.setString(4, decidedBy);
+            if (decidedAt > 0) ps.setLong(5, decidedAt); else ps.setNull(5, Types.INTEGER);
+            ps.setLong(6, firstSeen);
+            ps.setString(7, lastPlayer);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("saveBrandVerdict: " + e.getMessage());
         }
     }
 
