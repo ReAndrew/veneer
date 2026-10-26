@@ -3,6 +3,7 @@ package com.veneer.spoof;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.veneer.core.PacketEventsHook;
 import com.veneer.VeneerPlugin;
+import com.veneer.core.Text;
 import com.veneer.core.PlayerProfile;
 import com.veneer.core.VeneerModule;
 import com.veneer.spoof.commands.SpoofCommand;
@@ -143,10 +144,10 @@ public class SpoofModule extends VeneerModule {
 
         String alertMessage = brandConfig.getAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand);
+                .replace("%brand%", Text.inert(brand));
         String consoleMessage = brandConfig.getConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand);
+                .replace("%brand%", Text.inert(brand));
 
         plugin.getLogger().info(consoleMessage);
         alertManager.sendAlertToRecipients(alertMessage);

@@ -17,6 +17,26 @@ public final class Text {
 
     private static final MiniMessage MM = MiniMessage.miniMessage();
 
+    /**
+     * Client-supplied text (brand, channel, reason built from them) made inert before it goes into a config
+     * template: tag brackets, colour codes, backslashes, PlaceholderAPI percents and control characters are
+     * swapped for look-alikes, so the text can neither format an alert nor change a console command.
+     */
+    public static String inert(String text) {
+        if (text == null) return null;
+        StringBuilder b = new StringBuilder(text.length());
+        for (char c : text.toCharArray()) b.append(switch (c) {
+            case '<' -> '‹';
+            case '>' -> '›';
+            case '&' -> '＆';
+            case '§' -> '＄';
+            case '\\' -> '＼';
+            case '%' -> '％';
+            default -> c < 0x20 || c == 0x7f ? '?' : c;
+        });
+        return b.toString();
+    }
+
     public static Component mini(String input) {
         return MM.deserialize(input);
     }

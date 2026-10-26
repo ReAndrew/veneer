@@ -139,6 +139,16 @@
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
+            <!-- Always rebuild the plain jar: shade replaces it with the full jar, and a stale one is newer than the
+                 classes, so a second `package` without `clean` would feed the full jar into the lite execution -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <forceCreation>true</forceCreation>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

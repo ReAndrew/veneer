@@ -79,12 +79,12 @@ public class AlertManager {
         // Format the player alert message with placeholders
         String playerAlert = config.getBlockedBrandsAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown");
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
         
         // Format the console alert message with placeholders
         String consoleAlert = config.getBlockedBrandsConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown");
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
         
         // Log to console
         plugin.getLogger().info(consoleAlert);
@@ -137,13 +137,13 @@ public class AlertManager {
         // Format the player alert message for multiple violations
         String playerAlert = config.getMultipleFlagsMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
                 .replace("%reasons%", reasonsList);
         
         // Format the console alert message for multiple violations
         String consoleAlert = config.getConsoleMultipleFlagsMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
                 .replace("%reasons%", reasonsList);
         
         // Log to console
@@ -175,18 +175,18 @@ public class AlertManager {
         // Get alert message from brand config
         String alertMessage = brandConfig.getAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
-                .replace("%reason%", reason);
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%reason%", Text.inert(reason));
         
         // Get console message from brand config
         String consoleMessage = brandConfig.getConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
-                .replace("%reason%", reason);
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%reason%", Text.inert(reason));
         
         if (violatedChannel != null) {
-            alertMessage = alertMessage.replace("%channel%", violatedChannel);
-            consoleMessage = consoleMessage.replace("%channel%", violatedChannel);
+            alertMessage = alertMessage.replace("%channel%", Text.inert(violatedChannel));
+            consoleMessage = consoleMessage.replace("%channel%", Text.inert(violatedChannel));
         }
         
         // Log to console
@@ -282,18 +282,18 @@ public class AlertManager {
         // Format the player alert message with placeholders
         String playerAlert = alertTemplate
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
-                .replace("%reason%", reason);
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%reason%", Text.inert(reason));
         
         // Format the console alert message with placeholders
         String consoleAlert = consoleAlertTemplate
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
-                .replace("%reason%", reason);
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%reason%", Text.inert(reason));
         
         if (violatedChannel != null && violationType.equals("BLOCKED_CHANNEL")) {
-            playerAlert = playerAlert.replace("%channel%", violatedChannel);
-            consoleAlert = consoleAlert.replace("%channel%", violatedChannel);
+            playerAlert = playerAlert.replace("%channel%", Text.inert(violatedChannel));
+            consoleAlert = consoleAlert.replace("%channel%", Text.inert(violatedChannel));
         }
         
         // Log to console
@@ -333,11 +333,11 @@ public class AlertManager {
         // Execute the punishments
         for (String command : punishments) {
             String formatted = command.replace("%player%", player.getName())
-                                     .replace("%reason%", reason)
-                                     .replace("%brand%", brand != null ? brand : "unknown");
+                                     .replace("%reason%", Text.inert(reason))
+                                     .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
             
             if (violatedChannel != null) {
-                formatted = formatted.replace("%channel%", violatedChannel);
+                formatted = formatted.replace("%channel%", Text.inert(violatedChannel));
             }
             
             // Execute command on the main thread
@@ -437,11 +437,11 @@ public class AlertManager {
         // Execute the punishments
         for (String command : punishments) {
             String formatted = command.replace("%player%", player.getName())
-                                     .replace("%reason%", reason)
-                                     .replace("%brand%", brand != null ? brand : "unknown");
+                                     .replace("%reason%", Text.inert(reason))
+                                     .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
             
             if (violatedChannel != null && violationType.equals("BLOCKED_CHANNEL")) {
-                formatted = formatted.replace("%channel%", violatedChannel);
+                formatted = formatted.replace("%channel%", Text.inert(violatedChannel));
             }
             
             // Execute command on the main thread

@@ -112,11 +112,11 @@ public class HacksModule extends VeneerModule {
         // the join check needs veneer.bypass.hacks.join, the managers cannot tell the two apart
         if (plugin.bypasses(player, "hacks", false)) return;
         UUID uuid = player.getUniqueId();
-        if (checks.isChecking(uuid) || !checks.canAutoCheck(uuid)) return;
+        if (checks.isChecking(uuid)) return;
 
         List<HackDefinition> hacks = config.getFlagCheckHacks();
         if (hacks.isEmpty()) hacks = config.getDefaultCheckHacks();
-        if (hacks.isEmpty()) return;
+        if (hacks.isEmpty() || !checks.claimAutoCheck(uuid)) return;
 
         List<HackDefinition> toCheck = hacks;
         plugin.getLogger().info("Spoof detection flagged " + player.getName() + ", queuing a mod scan.");

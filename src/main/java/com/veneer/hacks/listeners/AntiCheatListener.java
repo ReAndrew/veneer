@@ -100,15 +100,15 @@ public class AntiCheatListener implements Listener {
     public void queueCheck(Player player, String acName) {
         if (!plugin.hacks().config().isDetectFlagEnabled()) return;
         if (plugin.bypasses(player, "hacks", false)) return;
-        if (!plugin.hacks().checks().canAutoCheck(player.getUniqueId())) return;
         if (plugin.hacks().checks().isChecking(player.getUniqueId())) return;
+        List<HackDefinition> hacks = plugin.hacks().config().getFlagCheckHacks();
+        if (hacks.isEmpty()) return;
+        // Anticheats flag many times a second: one alert and one scan per cooldown
+        if (!plugin.hacks().checks().claimAutoCheck(player.getUniqueId())) return;
 
         plugin.getLogger().info("[Hacks] " + acName + " flagged " + player.getName() + " — queuing check.");
         plugin.alerts().send(
                 plugin.messages().get("anticheat-trigger", Map.of("player", player.getName())));
-
-        List<HackDefinition> hacks = plugin.hacks().config().getFlagCheckHacks();
-        if (hacks.isEmpty()) return;
 
         FoliaScheduler.runAtEntity(plugin, player, () ->
                 plugin.hacks().checks().startCheck(player, null, hacks, true,

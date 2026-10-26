@@ -21,9 +21,15 @@ public final class Webhook {
         this.plugin = plugin;
     }
 
-    /** POSTs a JSON body on the async scheduler. A blank or invalid URL is ignored. */
-    public void post(String url, String json) {
+    /**
+     * POSTs a JSON body on the async scheduler. A blank or invalid URL is ignored. Mentions are switched off:
+     * texts carry client data (sign answers, brands) that could otherwise ping {@code @everyone}.
+     */
+    public void post(String url, String body) {
         if (!VeneerConfig.isWebhook(url)) return;
+        String trimmed = body.strip();
+        String json = trimmed.startsWith("{") && trimmed.length() > 2 && !trimmed.contains("\"allowed_mentions\"")
+                ? "{\"allowed_mentions\":{\"parse\":[]}," + trimmed.substring(1) : body;
         FoliaScheduler.runAsync(plugin, () -> {
             HttpURLConnection conn = null;
             try {

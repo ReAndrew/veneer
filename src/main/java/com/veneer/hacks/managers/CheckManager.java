@@ -35,9 +35,20 @@ public class CheckManager {
 
     public boolean isChecking(UUID uuid) { return activeChecks.containsKey(uuid); }
 
-    public boolean canAutoCheck(UUID uuid) {
+    /**
+     * Starts the flag cooldown for an automatic scan before it is queued, so flags arriving meanwhile (or a scan
+     * that never starts: Bedrock, old client) cannot alert again; false while the cooldown runs.
+     */
+    public boolean claimAutoCheck(UUID uuid) {
+        long now = System.currentTimeMillis();
         long cooldownMs = plugin.hacks().config().getFlagCooldownHours() * 3_600_000L;
-        return System.currentTimeMillis() - lastAutoCheck.getOrDefault(uuid, 0L) >= cooldownMs;
+        boolean[] claimed = {false};
+        lastAutoCheck.compute(uuid, (k, last) -> {
+            if (last != null && now - last < cooldownMs) return last;
+            claimed[0] = true;
+            return now;
+        });
+        return claimed[0];
     }
 
     /** True when the edited sign at {@code loc} is this player's current probe sign. */

@@ -30,9 +30,8 @@ public class PlayerEventListener extends PacketListenerAbstract {
         
         Player player = (Player) event.getPlayer();
         
-        // Skip if player has bypass permission
-        if (plugin.bypasses(player, "spoof", false)) return;
-        
+        // No bypass check here: it would run on every packet. Channels are recorded for everyone (/veneer info
+        // shows them); the checks they start honour the bypass in DetectionManager.checkPlayerAsync.
         // Handle plugin messages based on the packet type
         if (event.getPacketType() == PacketType.Play.Client.PLUGIN_MESSAGE) {
             WrapperPlayClientPluginMessage packet = new WrapperPlayClientPluginMessage(event);

@@ -55,7 +55,15 @@ public abstract class VeneerModule {
     public void playerQuit(UUID uuid) {}
 
     public final void startup() {
-        enable();
+        try {
+            enable();
+        } catch (Throwable t) {
+            // Undo what enable() got to: shutdown() skips a module that never ran, so its listeners would stay
+            for (Listener l : listeners) HandlerList.unregisterAll(l);
+            listeners.clear();
+            try { disable(); } catch (Throwable ignored) {}
+            throw t;
+        }
         running = true;
     }
 

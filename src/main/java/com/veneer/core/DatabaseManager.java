@@ -310,16 +310,19 @@ public class DatabaseManager {
         return list;
     }
 
-    public synchronized List<Map<String, Object>> getPlayerScans(String playerName) {
+    /** Latest 100 scans of an account: by uuid when it is known (names change hands), else by name. */
+    public synchronized List<Map<String, Object>> getPlayerScans(String uuid, String playerName) {
+        boolean byUuid = uuid != null && !uuid.isEmpty();
         List<Map<String, Object>> list = new ArrayList<>();
         if (connection == null) return list;
 
         List<Long> ids = new ArrayList<>();
         List<Map<String, Object>> rows = new ArrayList<>();
 
-        try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT * FROM scans WHERE LOWER(target_name)=LOWER(?) ORDER BY timestamp DESC LIMIT 100")) {
-            ps.setString(1, playerName);
+        try (PreparedStatement ps = connection.prepareStatement(byUuid
+                ? "SELECT * FROM scans WHERE target_uuid=? ORDER BY timestamp DESC LIMIT 100"
+                : "SELECT * FROM scans WHERE LOWER(target_name)=LOWER(?) ORDER BY timestamp DESC LIMIT 100")) {
+            ps.setString(1, byUuid ? uuid : playerName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> row = rowToMap(rs);

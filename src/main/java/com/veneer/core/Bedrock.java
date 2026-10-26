@@ -31,7 +31,9 @@ public final class Bedrock {
             plugin.debug("Player " + player.getName() + " identified as Bedrock via Geyser");
             return true;
         }
-        if (hasBedrockPrefix(player.getName())) {
+        // The prefix alone is not enough: an offline-mode server lets a Java player pick the name ".Steve".
+        // Floodgate (also on a proxy in front of this server) gives Bedrock players a uuid whose upper half is 0.
+        if (uuid.getMostSignificantBits() == 0 && hasBedrockPrefix(player.getName())) {
             plugin.debug("Player " + player.getName() + " identified as Bedrock via name prefix");
             return true;
         }

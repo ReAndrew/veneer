@@ -2,6 +2,7 @@ package com.veneer.core;
 
 import com.veneer.VeneerPlugin;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -66,21 +67,26 @@ public class Messages {
         return text != null ? text : "<red>Missing message: " + key;
     }
 
-    /** The message for {@code key} with {@code {prefix}} and {@code {name}} placeholders filled in. */
+    /** The message for {@code key} with {@code {prefix}} and {@code {name}} placeholders filled in; values are escaped. */
     public Component get(String key, Map<String, String> placeholders) {
-        return format(getRaw(key), placeholders);
+        Map<String, String> escaped = new java.util.HashMap<>();
+        placeholders.forEach((k, v) -> escaped.put(k, escape(v)));
+        return format(getRaw(key), escaped);
     }
 
     public Component get(String key) {
         return get(key, Map.of());
     }
 
-    /** Formats an arbitrary MiniMessage string the same way as a message from the file. */
+    /**
+     * Formats an arbitrary MiniMessage string the same way as a message from the file. Placeholder values are
+     * inserted as given (escape them first); PlaceholderAPI runs on the template before, so values are not expanded.
+     */
     public Component format(String raw, Map<String, String> placeholders) {
         raw = raw.replace("{prefix}", plugin.config().prefix());
+        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) raw = applyPapi(raw);
         for (Map.Entry<String, String> e : placeholders.entrySet())
             raw = raw.replace("{" + e.getKey() + "}", e.getValue());
-        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) raw = applyPapi(raw);
         return Text.mini(raw);
     }
 
@@ -94,7 +100,7 @@ public class Messages {
 
     /** Escapes text from players or the network (brands, channels, names) for use inside MiniMessage. */
     public static String escape(String text) {
-        return text.replace("<", "\\<");
+        return MiniMessage.miniMessage().escapeTags(text);
     }
 
     private Map<String, String> values(Object... pairs) {
@@ -108,7 +114,7 @@ public class Messages {
 
     /** The message {@code key} with placeholders given as name, value, name, value... */
     public Component with(String key, Object... pairs) {
-        return get(key, values(pairs));
+        return format(getRaw(key), values(pairs));
     }
 
     /** The message {@code key} as plain text with {@code {name}} placeholders filled in (no prefix, no formatting pass). */

@@ -3,7 +3,7 @@ package com.veneer.rptrack;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.FoliaScheduler;
 import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -30,9 +30,11 @@ public class RPTrackCommand implements CommandExecutor {
             plugin.messages().send(sender, "rptrack-usage", "label", label);
             return true;
         }
-        OfflinePlayer target = Bukkit.getOfflinePlayer(args[0]);
-        String uuid = target.getUniqueId().toString();
+        Player online = Bukkit.getPlayerExact(args[0]);
         FoliaScheduler.runAsync(plugin, () -> {
+            // An offline player's uuid from the database: Bukkit.getOfflinePlayer(name) may ask Mojang and block
+            String uuid = online != null ? online.getUniqueId().toString()
+                    : (String) plugin.database().getPlayerRecord(args[0]).getOrDefault("uuid", "");
             long mask = fp.getMask(uuid);
             if (mask == 0) {
                 plugin.messages().send(sender, "rptrack-none", "player", args[0]);

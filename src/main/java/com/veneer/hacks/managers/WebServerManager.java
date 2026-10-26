@@ -90,12 +90,7 @@ public class WebServerManager {
             String query  = ex.getRequestURI().getRawQuery(); // raw: parseQuery decodes each value once
             Map<String, String> params = parseQuery(query);
 
-            addCorsHeaders(ex);
-
-            if ("OPTIONS".equals(ex.getRequestMethod())) {
-                ex.sendResponseHeaders(204, -1);
-                return;
-            }
+            addSecurityHeaders(ex);
 
             if (path.equals("/") || path.equals("/editor")) {
                 serveEditor(ex, params);
@@ -113,11 +108,14 @@ public class WebServerManager {
             }
 
             sendJson(ex, 404, Map.of("error", "not found"));
+        } catch (com.google.gson.JsonParseException | ClassCastException | IllegalArgumentException e) {
+            // Malformed JSON, a field of the wrong type or a bad %-escape: the request is at fault
+            try { sendJson(ex, 400, Map.of("error", "bad request")); } catch (Exception ignored) {}
         } catch (Exception e) {
-            // Map.of rejects a null value, and many exceptions have no message: the client would never get an answer
+            // Logged with the details; the client gets no exception text
             String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             plugin.getLogger().warning("[Hacks] Web panel request " + ex.getRequestURI().getPath() + " failed: " + error);
-            try { sendJson(ex, 500, Map.of("error", error)); } catch (Exception ignored) {}
+            try { sendJson(ex, 500, Map.of("error", "internal error")); } catch (Exception ignored) {}
         } finally {
             ex.close();
         }
@@ -201,8 +199,8 @@ public class WebServerManager {
         }
 
         if (path.startsWith("/api/links/")) {
-            Map<String, Object> details = plugin.database().getLinkDetails(
-                    URLDecoder.decode(path.substring("/api/links/".length()), StandardCharsets.UTF_8));
+            // getPath() is already decoded
+            Map<String, Object> details = plugin.database().getLinkDetails(path.substring("/api/links/".length()));
             if (!can(playerInfo, "ips")) details.put("ips", List.of());
             for (Object r : (List<?>) details.get("ips")) {
                 @SuppressWarnings("unchecked") Map<String, Object> row = (Map<String, Object>) r;
@@ -241,7 +239,7 @@ public class WebServerManager {
             String body = new String(raw, StandardCharsets.UTF_8);
             Map<?, ?> req = gson.fromJson(body, Map.class);
             String targetName = req != null ? (String) req.get("player") : null;
-            String type       = req != null ? (String) req.get("type")   : "hack";
+            String type       = req != null && req.get("type") != null ? (String) req.get("type") : "hack";
 
             if (targetName == null || targetName.isBlank()) {
                 sendJson(ex, 400, Map.of("error", "player is required"));
@@ -251,6 +249,18 @@ public class WebServerManager {
             final String checkerName = playerInfo.get("player_name");
             final String finalType   = type;
             final String finalTarget = targetName;
+            // From the cache, not Bukkit: this runs on an HTTP thread
+            if (cachedPlayers.stream().noneMatch(p -> finalTarget.equalsIgnoreCase((String) p.get("name")))) {
+                sendJson(ex, 404, Map.of("error", "player is not online"));
+                return;
+            }
+            boolean nothing = "lang".equals(type) ? plugin.hacks().config().getLanguages().isEmpty()
+                    : plugin.hacks().config().getDefaultCheckHacks().isEmpty();
+            if (nothing) {
+                sendJson(ex, 409, Map.of("error", "lang".equals(type) ? "no languages configured" : "no hacks configured"));
+                return;
+            }
+            plugin.getLogger().info("[Hacks] Web panel: " + checkerName + " started a " + type + " scan of " + targetName);
 
             FoliaScheduler.runGlobal(plugin, () -> {
                 Player target = Bukkit.getPlayerExact(finalTarget);
@@ -283,6 +293,7 @@ public class WebServerManager {
                         return;
                     }
                     boolean ok = plugin.database().deleteScan(id);
+                    if (ok) plugin.getLogger().info("[Hacks] Web panel: " + playerInfo.get("player_name") + " deleted scan #" + id);
                     sendJson(ex, 200, Map.of("success", ok));
                 } else {
                     Map<String, Object> scan = plugin.database().getScan(id);
@@ -296,8 +307,7 @@ public class WebServerManager {
         }
 
         if (path.startsWith("/api/player/")) {
-            String name = URLDecoder.decode(
-                    path.substring("/api/player/".length()), StandardCharsets.UTF_8);
+            String name = path.substring("/api/player/".length()); // getPath() is already decoded
             // From the cache, not Bukkit: this runs on an HTTP thread
             boolean online = false;
             String uuid = "";
@@ -327,7 +337,7 @@ public class WebServerManager {
                 }
                 if (can(playerInfo, "links")) result.put("alts", alts(linkGraph(playerInfo), uuid));
             }
-            result.put("scans",  plugin.database().getPlayerScans(name));
+            result.put("scans",  plugin.database().getPlayerScans(uuid, name));
             sendJson(ex, 200, result);
             return;
         }
@@ -340,18 +350,32 @@ public class WebServerManager {
      * hidden without {@code veneer.web.ips}.
      */
     private Map<String, Object> linkGraph(Map<String, String> playerInfo) {
+        boolean ips = can(playerInfo, "ips");
+        // The player page asks for it on every refresh (every 2.5 s while a scan runs): build it at most every 15 s
+        CachedGraph cached = graphCache.get(ips);
+        if (cached != null && System.currentTimeMillis() - cached.built() < GRAPH_TTL_MS) return cached.graph();
+        Map<String, Object> graph = buildLinkGraph(ips);
+        graphCache.put(ips, new CachedGraph(graph, System.currentTimeMillis()));
+        return graph;
+    }
+
+    private record CachedGraph(Map<String, Object> graph, long built) {}
+    private static final long GRAPH_TTL_MS = 15_000;
+    private final Map<Boolean, CachedGraph> graphCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Map<String, Object> buildLinkGraph(boolean ips) {
         var links = links();
         var rp = plugin.config().section("rptrack");
         int match = rp != null ? rp.getInt("match", 5) : 5;
         Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), match,
                 links.getInt("max-accounts-per-client", 5), links.getInt("client-min-channels", 3));
-        boolean ips = can(playerInfo, "ips");
         double weakFactor = Math.max(0, Math.min(1, links.getDouble("weak-provider-factor", 0.3)));
         for (Object e : (List<?>) graph.get("edges")) {
             @SuppressWarnings("unchecked") Map<String, Object> edge = (Map<String, Object>) e;
             if (!"ip".equals(edge.get("type"))) continue;
-            // Strangers share the exit addresses of VPNs, WARP and hosting: such a shared address proves little
-            if (describeIp((String) edge.get("label"), edge))
+            // Strangers share the exit addresses of VPNs, WARP and hosting: such a shared address proves little.
+            // Without the ips right the provider, ASN and country stay out too: they narrow the address down.
+            if (describeIp((String) edge.get("label"), ips ? edge : new HashMap<>()))
                 edge.put("p", ((Number) edge.get("p")).doubleValue() * weakFactor);
             if (!ips) edge.put("label", "(hidden)");
         }
@@ -416,10 +440,11 @@ public class WebServerManager {
         return Arrays.asList(playerInfo.getOrDefault("perms", "").split(",")).contains(perm);
     }
 
-    private void addCorsHeaders(HttpExchange ex) {
-        ex.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-        ex.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        ex.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+    /** The panel is same-origin, so no CORS; the token is in the URL, so no referrer to the head images either. */
+    private void addSecurityHeaders(HttpExchange ex) {
+        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
+        ex.getResponseHeaders().set("X-Frame-Options", "DENY");
+        ex.getResponseHeaders().set("Referrer-Policy", "no-referrer");
     }
 
     private void sendJson(HttpExchange ex, int code, Object obj) throws IOException {

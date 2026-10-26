@@ -1,6 +1,7 @@
 package com.veneer.spoof.utils;
 
 import com.veneer.VeneerPlugin;
+import com.veneer.core.Text;
 import com.veneer.core.PlayerProfile;
 import com.veneer.core.Webhook;
 import com.veneer.spoof.managers.ConfigManager;
@@ -182,7 +183,7 @@ public class DiscordWebhookHandler {
             String reasonsList = String.join(", ", violations);
             return config.getConsoleMultipleFlagsMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", brand != null ? brand : "unknown")
+                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
                     .replace("%reasons%", reasonsList);
         }
         
@@ -190,23 +191,23 @@ public class DiscordWebhookHandler {
         if (reason.contains("Vanilla client with plugin channels")) {
             return config.getVanillaCheckConsoleAlertMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", brand != null ? brand : "unknown")
-                    .replace("%reason%", reason);
+                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                    .replace("%reason%", Text.inert(reason));
         } 
         else if (reason.contains("Non-vanilla client with channels")) {
             return config.getNonVanillaCheckConsoleAlertMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", brand != null ? brand : "unknown")
-                    .replace("%reason%", reason);
+                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                    .replace("%reason%", Text.inert(reason));
         }
         else if (reason.contains("Blocked channel:") || reason.contains("Client channels don't match whitelist")) {
             String alert = config.getBlockedChannelsConsoleAlertMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", brand != null ? brand : "unknown")
-                    .replace("%reason%", reason);
+                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                    .replace("%reason%", Text.inert(reason));
             
             if (channel != null) {
-                alert = alert.replace("%channel%", channel);
+                alert = alert.replace("%channel%", Text.inert(channel));
             }
             return alert;
         }
@@ -227,13 +228,13 @@ public class DiscordWebhookHandler {
                 message = config.getBlockedBrandsConsoleAlertMessage();
             }
             return message.replace("%player%", player.getName())
-                          .replace("%brand%", brand != null ? brand : "unknown");
+                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
         }
         else if (reason.contains("Spoofing Geyser client")) {
             return config.getGeyserSpoofConsoleAlertMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", brand != null ? brand : "unknown")
-                    .replace("%reason%", reason);
+                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                    .replace("%reason%", Text.inert(reason));
         }
         else if (reason.contains("joined using client brand:")) {
             // For client brand join alerts, use client-brands if available
@@ -252,22 +253,22 @@ public class DiscordWebhookHandler {
                 message = config.getBlockedBrandsConsoleAlertMessage();
             }
             return message.replace("%player%", player.getName())
-                          .replace("%brand%", brand != null ? brand : "unknown");
+                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
         }
         else if (reason.contains("No client brand detected")) {
             return config.getNoBrandConsoleAlertMessage()
                     .replace("%player%", player.getName())
-                    .replace("%reason%", reason);
+                    .replace("%reason%", Text.inert(reason));
         }
         
         // Default to the general console alert if no specific type is found
         String alert = config.getConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", brand != null ? brand : "unknown")
-                .replace("%reason%", reason);
+                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%reason%", Text.inert(reason));
         
         if (channel != null) {
-            alert = alert.replace("%channel%", channel);
+            alert = alert.replace("%channel%", Text.inert(channel));
         }
         return alert;
     }
@@ -299,7 +300,7 @@ public class DiscordWebhookHandler {
         // Title
         String title = config.getDiscordEmbedTitle()
                 .replace("%player%", player.getName())
-                .replace("%reason%", reason);
+                .replace("%reason%", Text.inert(reason));
         sb.append("\"title\":\"").append(escapeJson(title)).append("\",");
         
         // Color (convert hex to decimal)
@@ -393,7 +394,7 @@ public class DiscordWebhookHandler {
         sb.append("**Client Version**: ").append(getClientVersionFromPlaceholders(player)).append("\\n");
         
         // Wrap brand in backticks for Discord
-        sb.append("**Brand**: `").append(escapeJson(brand != null ? brand : "unknown")).append("`\\n");
+        sb.append("**Brand**: `").append(escapeJson(Text.inert(brand != null ? brand : "unknown"))).append("`\\n");
         
         // Add channels
         sb.append("**Channels**:\\n");

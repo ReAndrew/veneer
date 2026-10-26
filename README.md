@@ -129,7 +129,7 @@ Produces two jars (Java 21 or newer):
 
 ## Notes
 
-- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the one-time token from the command. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
+- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the short-lived token from the command (10 minutes by default; anyone with the link can use it until then, so don't share it). Scan starts and deletions from the panel are logged in the server console. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
 - The provider and country data (about 50 MB) is downloaded to `plugins/Veneer/geo/` through jsDelivr and refreshed weekly (`hacks.web-editor.links.ip-database`, on by default; the plugin works without it). The country is where the network is registered, not a precise location. Which providers count as weak is set by `weak-provider-asns` and `weak-provider-keywords`, the weight factor by `weak-provider-factor` (0.3). Client links need the spoof module and are recorded when a player leaves.
 - To translate the panel, add `src/main/resources/web/lang/<language>.json` (English text as keys, see `ru.json`).
 - Version `0.9.5` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).

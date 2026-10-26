@@ -29,7 +29,8 @@ general:
     default-enabled: true
 
   # How Bedrock players are recognised, for every module. Floodgate and Geyser are used automatically
-  # when installed; the name prefix is the fallback.
+  # when installed; the name prefix is the fallback (for Floodgate on a proxy), and it only counts with a
+  # Floodgate-style uuid (00000000-0000-0000-...), so an offline-mode Java player cannot pass as Bedrock.
   bedrock:
     prefix-check: true
     prefixes:

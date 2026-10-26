@@ -95,15 +95,16 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         }
         String name = args[1];
         Player online = Bukkit.getPlayerExact(name);
-        var offline = Bukkit.getOfflinePlayer(name);
-        String uuid = (online != null ? online : offline).getUniqueId().toString();
 
         plugin.messages().send(sender, "veneer-info-title", "player", name,
                 "offline", online == null ? plugin.messages().raw("veneer-info-offline") : new Messages.Raw(""));
         if (online != null) clientSection(sender, online);
 
         FoliaScheduler.runAsync(plugin, () -> {
-            scanSection(sender, name);
+            // An offline player's uuid from the database: Bukkit.getOfflinePlayer(name) may ask Mojang and block
+            String uuid = online != null ? online.getUniqueId().toString()
+                    : (String) plugin.database().getPlayerRecord(name).getOrDefault("uuid", "");
+            scanSection(sender, uuid, name);
             rptrackSection(sender, online, uuid);
         });
     }
@@ -147,9 +148,9 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     }
 
     @SuppressWarnings("unchecked")
-    private void scanSection(CommandSender sender, String name) {
+    private void scanSection(CommandSender sender, String uuid, String name) {
         if (!plugin.hacks().running()) return;
-        List<Map<String, Object>> scans = plugin.database().getPlayerScans(name).stream()
+        List<Map<String, Object>> scans = plugin.database().getPlayerScans(uuid, name).stream()
                 .filter(row -> "hack".equals(row.get("type"))).toList();
         if (scans.isEmpty()) {
             plugin.messages().send(sender, "veneer-scan-never");
