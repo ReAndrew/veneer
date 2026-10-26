@@ -1,0 +1,23 @@
+# Maven
+target/
+dependency-reduced-pom.xml
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# docs/gen.py
+__pycache__/
+
+# local test servers
+run/
+*.log
