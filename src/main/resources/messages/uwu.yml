@@ -191,10 +191,6 @@ spoof-help-help: "<gray>/spoof help <white>- Show dis hewp message"
 # Placeholders: {label}, {version}, {latest}, {current}, {url}.
 # ======================================================================
 veneer-help-title: "{prefix}<gold>Veneer {version}</gold>"
-veneer-help-info: "{prefix}<gray>/{label} info \\<player></gray> <white>- cwient, mod scan and RPTrack data of a pwayew</white>"
-veneer-help-alerts: "{prefix}<gray>/{label} alerts</gray> <white>- toggwe youw staff awerts</white>"
-veneer-help-reload: "{prefix}<gray>/{label} reload</gray> <white>- wewoad config.yml and da messages</white>"
-veneer-help-version: "{prefix}<gray>/{label} version</gray> <white>- wunnying and watest wewease</white>"
 veneer-alerts-players-only: "{prefix}<red>Onwy pwayews can toggwe awerts, sowwy.</red>"
 veneer-running: "{prefix}<gray>Wunning Veneer</gray> <white>{version}</white>"
 veneer-latest-checking: "{prefix}<gray>Watest wewease: checking, wun dis again in a moment~</gray>"

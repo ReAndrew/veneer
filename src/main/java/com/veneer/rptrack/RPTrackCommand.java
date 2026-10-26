@@ -44,7 +44,7 @@ public class RPTrackCommand implements CommandExecutor {
             plugin.messages().send(sender, "rptrack-cache", "player", args[0],
                     "mask", Long.toBinaryString(mask), "packs", Long.bitCount(mask));
             plugin.messages().send(sender, "rptrack-linked",
-                    "linked", linked.isEmpty() ? plugin.messages().plain("veneer-rp-linked-none") : String.join(", ", linked));
+                    "linked", linked.isEmpty() ? plugin.messages().in(sender).plain("veneer-rp-linked-none") : String.join(", ", linked));
         });
         return true;
     }

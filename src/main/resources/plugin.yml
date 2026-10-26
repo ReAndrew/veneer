@@ -11,7 +11,7 @@ softdepend: [packetevents, ProtocolLib, ProtocolSupport, ViaVersion, ViaBackward
 
 commands:
   veneer:
-    description: Veneer overview, per-player report, reload and alert toggle
+    description: Veneer help, per-player report, your message language, reload, alert toggle; module commands as /veneer <command>
     usage: /veneer help
   spoof:
     description: Inspect client brand/channels and re-run spoof checks
@@ -38,6 +38,9 @@ permissions:
   veneer.admin:
     description: /veneer reload, info and version; update notices
     default: op
+  veneer.lang:
+    description: Choose your own message language with /veneer lang
+    default: true
   veneer.alerts:
     description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts)
     default: op
@@ -121,6 +124,7 @@ permissions:
     children:
       veneer.admin: true
       veneer.alerts: true
+      veneer.lang: true
       veneer.rptrack: true
       veneer.spoof.*: true
       veneer.hacks.*: true

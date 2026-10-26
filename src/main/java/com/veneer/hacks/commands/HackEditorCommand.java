@@ -28,11 +28,11 @@ public class HackEditorCommand implements CommandExecutor {
             return true;
         }
         if (!player.hasPermission("veneer.hacks.editor")) {
-            player.sendMessage(plugin.messages().get("no-permission"));
+            player.sendMessage(plugin.messages().in(player).get("no-permission"));
             return true;
         }
         if (!plugin.hacks().config().isWebEditorEnabled()) {
-            player.sendMessage(plugin.messages().get("editor-disabled"));
+            player.sendMessage(plugin.messages().in(player).get("editor-disabled"));
             return true;
         }
 
@@ -47,7 +47,7 @@ public class HackEditorCommand implements CommandExecutor {
             String token = plugin.database().saveToken(uuid, name, expire, perms);
             String url  = "http://" + host + ":" + port + "/editor?token=" + token;
             FoliaScheduler.runAtEntity(plugin, player,
-                    () -> player.sendMessage(plugin.messages().get("editor-url", Map.of("url", url))));
+                    () -> player.sendMessage(plugin.messages().in(player).get("editor-url", Map.of("url", url))));
         });
         return true;
     }

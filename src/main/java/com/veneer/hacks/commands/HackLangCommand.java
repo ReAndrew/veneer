@@ -22,7 +22,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("veneer.hacks.lang")) {
-            sender.sendMessage(plugin.messages().get("no-permission", Map.of()));
+            sender.sendMessage(plugin.messages().in(sender).get("no-permission", Map.of()));
             return true;
         }
         if (args.length < 1) {
@@ -32,12 +32,12 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
 
         Player target = Bukkit.getPlayerExact(args[0]);
         if (target == null) {
-            sender.sendMessage(plugin.messages().get("player-not-found",
+            sender.sendMessage(plugin.messages().in(sender).get("player-not-found",
                     Map.of("player", args[0])));
             return true;
         }
         if (plugin.hacks().langChecks().isChecking(target.getUniqueId())) {
-            sender.sendMessage(plugin.messages().get("already-checking",
+            sender.sendMessage(plugin.messages().in(sender).get("already-checking",
                     Map.of("player", target.getName())));
             return true;
         }

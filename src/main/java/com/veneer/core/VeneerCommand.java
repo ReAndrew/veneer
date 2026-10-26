@@ -7,11 +7,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -20,11 +22,43 @@ import java.util.stream.Collectors;
 
 /**
  * {@code /veneer}: the one command that spans modules. {@code info} puts the client data, the latest
- * mod scan and the RPTrack link of a player on one screen; {@code reload} reloads everything.
+ * mod scan and the RPTrack link of a player on one screen; {@code reload} reloads everything; {@code lang}
+ * picks the language a player reads Veneer's messages in. The module commands also run as
+ * {@code /veneer <command> ...} ({@link #PASSTHROUGH}), and {@code help} lists what the sender may use.
  */
 public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("info", "alerts", "reload", "version", "help");
+    private static final List<String> SUBCOMMANDS = List.of("help", "info", "alerts", "lang", "reload", "version");
+    /** {@code /veneer <name> ...} runs the plugin.yml command it maps to, with its own permission check. */
+    private static final Map<String, String> PASSTHROUGH = Map.of(
+            "spoof", "spoof", "hackcheck", "hackcheck", "scan", "hackcheck", "hacklang", "hacklang",
+            "hackeditor", "hackeditor", "editor", "hackeditor", "rptrack", "rptrack");
+
+    /**
+     * One line of {@code /veneer help}: shown when the module runs (null: always) and the sender has the
+     * permission (null: everyone). {@code {arg}} in the usage is replaced by {@code veneer-help-arg-<arg>}, the description is {@code veneer-cmd-<key>}.
+     */
+    private record HelpEntry(String module, String usage, String key, String permission) {}
+
+    private static final List<HelpEntry> HELP = List.of(
+            new HelpEntry(null, "/veneer help", "help", null),
+            new HelpEntry(null, "/veneer lang [{language}|auto|reset]", "lang", "veneer.lang"),
+            new HelpEntry(null, "/veneer alerts", "alerts", Alerts.PERMISSION),
+            new HelpEntry(null, "/veneer info <{player}>", "info", "veneer.admin"),
+            new HelpEntry(null, "/veneer reload", "reload", "veneer.admin"),
+            new HelpEntry(null, "/veneer version", "version", "veneer.admin"),
+            new HelpEntry("spoof", "/spoof brand <{player}>", "spoof-brand", "veneer.spoof.use"),
+            new HelpEntry("spoof", "/spoof channels <{player}>", "spoof-channels", "veneer.spoof.use"),
+            new HelpEntry("spoof", "/spoof runcheck [{player}|*]", "spoof-runcheck", "veneer.spoof.use"),
+            new HelpEntry("spoof", "/spoof check [{player}|*]", "spoof-check", "veneer.spoof.admin"),
+            new HelpEntry("spoof", "/spoof brands [allow|block|forget <id>]", "spoof-brands", "veneer.spoof.admin"),
+            new HelpEntry("spoof", "/spoof blockedbrands", "spoof-blockedbrands", "veneer.spoof.admin"),
+            new HelpEntry("spoof", "/spoof blockedchannels", "spoof-blockedchannels", "veneer.spoof.admin"),
+            new HelpEntry("hacks", "/hackcheck <{player}> [{mods}]", "hackcheck", "veneer.hacks.check"),
+            new HelpEntry("hacks", "/hacklang <{player}> [{languages}]", "hacklang", "veneer.hacks.lang"),
+            new HelpEntry("hacks", "/hackeditor", "hackeditor", "veneer.hacks.editor"),
+            new HelpEntry("rptrack", "/rptrack <{player}>", "rptrack", "veneer.rptrack"));
+
 
     private final VeneerPlugin plugin;
 
@@ -35,31 +69,97 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String sub = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
+        String target = PASSTHROUGH.get(sub);
+        if (target != null) {
+            PluginCommand routed = plugin.getCommand(target);
+            if (routed != null) routed.execute(sender, target, Arrays.copyOfRange(args, 1, args.length));
+            return true;
+        }
         switch (sub) {
             case "reload" -> reload(sender);
             case "alerts" -> alerts(sender);
+            case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
-            default -> help(sender, label);
+            default -> help(sender);
         }
         return true;
     }
 
     private boolean denied(CommandSender sender, String permission) {
         if (sender.hasPermission(permission)) return false;
-        sender.sendMessage(plugin.messages().get("no-permission"));
+        sender.sendMessage(plugin.messages().in(sender).get("no-permission"));
         return true;
     }
 
-    private void help(CommandSender sender, String label) {
-        for (String key : List.of("title", "info", "alerts", "reload", "version"))
-            plugin.messages().send(sender, "veneer-help-" + key, "label", label, "version", plugin.version());
+    /** The commands the sender can use, grouped by module, each clickable to put it into the chat box. */
+    private void help(CommandSender sender) {
+        Messages m = plugin.messages().in(sender);
+        m.send(sender, "veneer-help-title", "version", plugin.version());
+        String section = "";
+        for (HelpEntry e : HELP) {
+            if (e.module() != null && !module(e.module()).running()) continue;
+            if (e.permission() != null && !sender.hasPermission(e.permission())) continue;
+            String id = e.module() == null ? "general" : e.module();
+            if (!id.equals(section)) {
+                section = id;
+                sender.sendMessage(m.with("veneer-help-section", "section", m.raw("veneer-help-section-" + id)));
+            }
+            String usage = e.usage();
+            for (String arg : List.of("player", "mods", "languages", "language"))
+                usage = usage.replace("{" + arg + "}", m.plain("veneer-help-arg-" + arg));
+            // What the click types: the command up to its first argument
+            String typed = e.usage().replaceAll(" [<\\[].*$", "") + " ";
+            sender.sendMessage(m.with("veneer-help-line", "usage", usage, "typed", typed,
+                    "description", m.raw("veneer-cmd-" + e.key())));
+        }
+        m.send(sender, "veneer-help-shortcut");
+    }
+
+    private VeneerModule module(String id) {
+        return switch (id) {
+            case "spoof" -> plugin.spoof();
+            case "hacks" -> plugin.hacks();
+            default -> plugin.rptrack();
+        };
+    }
+
+    /** {@code /veneer lang}: shows the choice; {@code <code>}, {@code auto} (the client's language) or {@code reset} changes it. */
+    private void lang(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            plugin.messages().send(sender, "veneer-lang-players-only");
+            return;
+        }
+        if (denied(sender, "veneer.lang")) return;
+        Messages messages = plugin.messages();
+        String available = String.join(", ", messages.languages());
+        if (args.length < 2) {
+            String choice = messages.choice(player.getUniqueId());
+            String current = messages.in(player).language();
+            if (choice == null) messages.send(sender, "veneer-lang-current-server", "lang", current, "available", available);
+            else if (choice.equals(Messages.AUTO)) messages.send(sender, "veneer-lang-current-auto", "lang", current, "available", available);
+            else messages.send(sender, "veneer-lang-current", "lang", current, "available", available);
+            return;
+        }
+        String code = args[1].toLowerCase(Locale.ROOT);
+        if (code.equals("reset") || code.equals("server")) {
+            messages.choose(player.getUniqueId(), null);
+            messages.send(sender, "veneer-lang-reset", "lang", messages.language());
+        } else if (code.equals(Messages.AUTO)) {
+            messages.choose(player.getUniqueId(), Messages.AUTO);
+            messages.send(sender, "veneer-lang-auto", "lang", messages.in(player).language(), "client", player.getLocale());
+        } else if (messages.exists(code)) {
+            messages.choose(player.getUniqueId(), code);
+            messages.send(sender, "veneer-lang-set", "lang", code);
+        } else {
+            messages.send(sender, "veneer-lang-unknown", "lang", args[1], "available", available);
+        }
     }
 
     private void reload(CommandSender sender) {
         if (denied(sender, "veneer.admin")) return;
         plugin.reloadAll();
-        sender.sendMessage(plugin.messages().get("reload-done"));
+        sender.sendMessage(plugin.messages().in(sender).get("reload-done"));
     }
 
     private void alerts(CommandSender sender) {
@@ -68,11 +168,11 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (!player.hasPermission(Alerts.PERMISSION)) {
-            sender.sendMessage(plugin.messages().get("no-permission"));
+            sender.sendMessage(plugin.messages().in(sender).get("no-permission"));
             return;
         }
         boolean on = plugin.alerts().toggle(player.getUniqueId());
-        sender.sendMessage(plugin.messages().get(on ? "alerts-enabled" : "alerts-disabled"));
+        sender.sendMessage(plugin.messages().in(sender).get(on ? "alerts-enabled" : "alerts-disabled"));
     }
 
     private void version(CommandSender sender) {
@@ -97,7 +197,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         Player online = Bukkit.getPlayerExact(name);
 
         plugin.messages().send(sender, "veneer-info-title", "player", name,
-                "offline", online == null ? plugin.messages().raw("veneer-info-offline") : new Messages.Raw(""));
+                "offline", online == null ? plugin.messages().in(sender).raw("veneer-info-offline") : new Messages.Raw(""));
         if (online != null) clientSection(sender, online);
 
         FoliaScheduler.runAsync(plugin, () -> {
@@ -111,17 +211,17 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private void clientSection(CommandSender sender, Player player) {
         PlayerProfile profile = plugin.profileOf(player.getUniqueId());
-        String brand = plugin.brandOf(player) == null ? plugin.messages().plain("veneer-unknown") : plugin.brandOf(player);
+        String brand = plugin.brandOf(player) == null ? plugin.messages().in(sender).plain("veneer-unknown") : plugin.brandOf(player);
         int channels = profile == null ? 0 : profile.getChannels().size();
-        String type = profile == null ? plugin.messages().plain("veneer-unknown") : profile.clientType().name().toLowerCase(Locale.ROOT);
+        String type = profile == null ? plugin.messages().in(sender).plain("veneer-unknown") : profile.clientType().name().toLowerCase(Locale.ROOT);
         plugin.messages().send(sender, "veneer-info-client", "brand", brand, "type", type, "channels", channels);
         if (profile != null && profile.getVersionReal() != null)
             plugin.messages().send(sender, profile.isVersionMismatch() ? "veneer-info-version-mismatch" : "veneer-info-version",
                     "real", profile.getVersionReal(), "claimed", profile.getVersionClaimed());
 
         List<String> flags = new ArrayList<>();
-        if (plugin.bedrock().isBedrock(player)) flags.add(plugin.messages().getRaw("veneer-flag-bedrock"));
-        if (plugin.spoof().running() && plugin.spoof().isPlayerSpoofing(player)) flags.add(plugin.messages().getRaw("veneer-flag-spoof"));
+        if (plugin.bedrock().isBedrock(player)) flags.add(plugin.messages().in(sender).getRaw("veneer-flag-bedrock"));
+        if (plugin.spoof().running() && plugin.spoof().isPlayerSpoofing(player)) flags.add(plugin.messages().in(sender).getRaw("veneer-flag-spoof"));
         if (!flags.isEmpty()) plugin.messages().send(sender, "veneer-info-status", "flags", new Messages.Raw(String.join(", ", flags)));
 
         String group = plugin.hooks().primaryGroup(player);
@@ -141,9 +241,9 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
                     : join.value() ? "veneer-info-bypass-join" : "veneer-info-bypass-later";
             VeneerPlugin.Bypass by = join.value() ? join : later;
             Messages.Raw source = new Messages.Raw(by.group() == null
-                    ? plugin.messages().plain("veneer-info-bypass-node", "node", by.node())
-                    : plugin.messages().plain("veneer-info-bypass-node-group", "node", by.node(), "group", by.group()));
-            plugin.messages().send(sender, "veneer-info-bypass", "module", module.id(), "when", plugin.messages().raw(when), "source", source);
+                    ? plugin.messages().in(sender).plain("veneer-info-bypass-node", "node", by.node())
+                    : plugin.messages().in(sender).plain("veneer-info-bypass-node-group", "node", by.node(), "group", by.group()));
+            plugin.messages().send(sender, "veneer-info-bypass", "module", module.id(), "when", plugin.messages().in(sender).raw(when), "source", source);
         }
     }
 
@@ -165,8 +265,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
                 .collect(Collectors.joining(", "));
         String when = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date(((Number) latest.get("timestamp")).longValue()));
         plugin.messages().send(sender, "veneer-scan-line", "when", when, "count", scans.size(),
-                "result", found.isEmpty() ? plugin.messages().raw("veneer-scan-clean")
-                        : new Messages.Raw(plugin.messages().plain("veneer-scan-found", "found", found)));
+                "result", found.isEmpty() ? plugin.messages().in(sender).raw("veneer-scan-clean")
+                        : new Messages.Raw(plugin.messages().in(sender).plain("veneer-scan-found", "found", found)));
     }
 
     private void rptrackSection(CommandSender sender, Player online, String uuid) {
@@ -179,14 +279,32 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         }
         List<String> linked = rp.findLinked(uuid, mask);
         plugin.messages().send(sender, "veneer-rp-line", "packs", Long.bitCount(mask),
-                "linked", linked.isEmpty() ? plugin.messages().plain("veneer-rp-linked-none") : String.join(", ", linked));
+                "linked", linked.isEmpty() ? plugin.messages().in(sender).plain("veneer-rp-linked-none") : String.join(", ", linked));
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1)
-            return SUBCOMMANDS.stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
-        if (args.length == 2 && args[0].equalsIgnoreCase("info"))
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        if (args.length == 1) {
+            List<String> options = new ArrayList<>(SUBCOMMANDS);
+            PASSTHROUGH.forEach((name, target) -> {
+                PluginCommand c = plugin.getCommand(target);
+                if (c != null && c.testPermissionSilent(sender)) options.add(name);
+            });
+            return options.stream().filter(s -> s.startsWith(sub)).sorted().toList();
+        }
+        String target = PASSTHROUGH.get(sub);
+        if (target != null) {
+            PluginCommand c = plugin.getCommand(target);
+            return c == null ? List.of() : c.tabComplete(sender, target, Arrays.copyOfRange(args, 1, args.length));
+        }
+        if (args.length == 2 && (sub.equals("lang") || sub.equals("language"))) {
+            List<String> options = new ArrayList<>(plugin.messages().languages());
+            options.add(Messages.AUTO);
+            options.add("reset");
+            return options.stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2 && sub.equals("info"))
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         return List.of();

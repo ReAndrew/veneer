@@ -1,5 +1,7 @@
 package com.veneer.rptrack;
 
+import net.kyori.adventure.text.Component;
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.VeneerModule;
@@ -11,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 
+import java.util.function.Function;
 import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -636,6 +639,6 @@ public class RPTrackManager extends VeneerModule implements Listener {
     private void report(Player player, String text) {
         String msg = "[RPTrack] " + player.getName() + ": " + text;
         plugin.getLogger().info(msg);
-        if (alert) plugin.alerts().sendToPlayers(plugin.messages().with("rptrack-report", "player", player.getName(), "text", text));
+        if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(), "text", text));
     }
 }

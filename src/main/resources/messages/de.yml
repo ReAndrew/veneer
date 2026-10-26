@@ -191,10 +191,6 @@ spoof-help-help: "<gray>/spoof help <white>- Diese Hilfe anzeigen"
 # Placeholders: {label}, {version}, {latest}, {current}, {url}.
 # ======================================================================
 veneer-help-title: "{prefix}<gold>Veneer {version}</gold>"
-veneer-help-info: "{prefix}<gray>/{label} info \\<player></gray> <white>- Client-, Mod-Scan- und RPTrack-Daten eines Spielers</white>"
-veneer-help-alerts: "{prefix}<gray>/{label} alerts</gray> <white>- Team-Warnungen umschalten</white>"
-veneer-help-reload: "{prefix}<gray>/{label} reload</gray> <white>- config.yml und Nachrichten neu laden</white>"
-veneer-help-version: "{prefix}<gray>/{label} version</gray> <white>- laufende und neueste Version</white>"
 veneer-alerts-players-only: "{prefix}<red>Nur Spieler können Warnungen umschalten.</red>"
 veneer-running: "{prefix}<gray>Veneer läuft in Version</gray> <white>{version}</white>"
 veneer-latest-checking: "{prefix}<gray>Neueste Version: wird geprüft, führe das gleich noch einmal aus.</gray>"

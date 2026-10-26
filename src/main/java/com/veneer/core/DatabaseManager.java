@@ -117,6 +117,11 @@ public class DatabaseManager {
                     first_seen INTEGER NOT NULL,
                     last_player TEXT
                 )""");
+            s.execute("""
+                CREATE TABLE IF NOT EXISTS player_language (
+                    uuid TEXT PRIMARY KEY,
+                    language TEXT NOT NULL
+                )""");
             // veneer.web.* rights of the player when the token was issued, comma separated
             try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
             catch (SQLException alreadyThere) {}
@@ -618,6 +623,33 @@ public class DatabaseManager {
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().warning("saveBrandVerdict: " + e.getMessage());
+        }
+    }
+
+    /** {@code /veneer lang} choices: uuid to language code or {@code auto}. */
+    public synchronized Map<String, String> getLanguageChoices() {
+        Map<String, String> map = new HashMap<>();
+        if (connection == null) return map;
+        try (Statement s = connection.createStatement();
+             ResultSet rs = s.executeQuery("SELECT uuid, language FROM player_language")) {
+            while (rs.next()) map.put(rs.getString(1), rs.getString(2));
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getLanguageChoices: " + e.getMessage());
+        }
+        return map;
+    }
+
+    /** Stores a player's language choice; null deletes it. */
+    public synchronized void saveLanguageChoice(String uuid, String language) {
+        if (connection == null) return;
+        try (PreparedStatement ps = connection.prepareStatement(language == null
+                ? "DELETE FROM player_language WHERE uuid = ?"
+                : "INSERT INTO player_language (uuid, language) VALUES (?, ?) ON CONFLICT(uuid) DO UPDATE SET language = excluded.language")) {
+            ps.setString(1, uuid);
+            if (language != null) ps.setString(2, language);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("saveLanguageChoice: " + e.getMessage());
         }
     }
 

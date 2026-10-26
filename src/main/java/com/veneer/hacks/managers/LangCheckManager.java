@@ -1,5 +1,6 @@
 package com.veneer.hacks.managers;
 
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.LangCheckData;
 import com.veneer.hacks.VersionProbe;
@@ -17,6 +18,7 @@ import org.bukkit.block.Sign;
 import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 
+import java.util.function.Function;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -72,16 +74,16 @@ public class LangCheckManager {
         UUID uuid = target.getUniqueId();
 
         if (plugin.bedrock().isBedrock(target)) {
-            Component msg = plugin.messages().get("bedrock-skip", Map.of("player", target.getName()));
-            if (initiator != null) initiator.sendMessage(msg);
+            Function<Messages, Component> msg = m -> m.get("bedrock-skip", Map.of("player", target.getName()));
+            if (initiator != null) initiator.sendMessage(msg.apply(plugin.messages().in(initiator)));
             return;
         }
 
         String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
         if (oldClient != null) {
-            Component msg = plugin.messages().get("client-too-old", Map.of("player", target.getName(),
+            Function<Messages, Component> msg = m -> m.get("client-too-old", Map.of("player", target.getName(),
                     "version", oldClient, "min", plugin.hacks().config().getMinClientVersion()));
-            if (initiator != null) initiator.sendMessage(msg);
+            if (initiator != null) initiator.sendMessage(msg.apply(plugin.messages().in(initiator)));
             else plugin.alerts().send(msg);
             return;
         }
@@ -90,7 +92,7 @@ public class LangCheckManager {
         // One sign spot and one sign editor per player: wait for a running mod scan (manual checks are refused)
         if (plugin.hacks().checks().isChecking(uuid)) {
             if (initiator != null) {
-                initiator.sendMessage(plugin.messages().get("already-checking", Map.of("player", target.getName())));
+                initiator.sendMessage(plugin.messages().in(initiator).get("already-checking", Map.of("player", target.getName())));
             } else if (waits < 30) {
                 FoliaScheduler.runAtEntityLater(plugin, target,
                         () -> { if (target.isOnline()) startCheck(target, null, languages, waits + 1); }, 40L);
@@ -100,7 +102,7 @@ public class LangCheckManager {
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
-                initiator.sendMessage(plugin.messages().get("already-checking",
+                initiator.sendMessage(plugin.messages().in(initiator).get("already-checking",
                         Map.of("player", target.getName())));
             return;
         }
@@ -110,7 +112,7 @@ public class LangCheckManager {
         activeChecks.put(uuid, data);
 
         if (initiator != null)
-            initiator.sendMessage(plugin.messages().get("lang-check-started",
+            initiator.sendMessage(plugin.messages().in(initiator).get("lang-check-started",
                     Map.of("player", target.getName())));
 
         FoliaScheduler.runAtEntity(plugin, target, () -> setupLangSign(target, data));
@@ -179,7 +181,7 @@ public class LangCheckManager {
                 return;
             }
             activeChecks.remove(uuid);
-            Component msg = plugin.messages().get("lang-check-timeout",
+            Function<Messages, Component> msg = m -> m.get("lang-check-timeout",
                     Map.of("player", target.getName()));
             plugin.alerts().send(msg);
             plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
@@ -200,7 +202,7 @@ public class LangCheckManager {
         plugin.getLogger().info("[Hacks] LangCheck response from " + target.getName() + ": '" + response + "'");
 
         if (response.isEmpty() || response.equals(LANG_FALLBACK)) {
-            Component msg = plugin.messages().get("lang-check-protected",
+            Function<Messages, Component> msg = m -> m.get("lang-check-protected",
                     Map.of("player", target.getName()));
             plugin.alerts().send(msg);
             plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
@@ -226,7 +228,7 @@ public class LangCheckManager {
         String display = detected != null ? detected : "Unknown";
         String versionNote = checkVersion(target, data);
         String msgKey  = detected != null ? "lang-check-complete" : "lang-check-unknown";
-        Component msg  = plugin.messages().get(msgKey,
+        Function<Messages, Component> msg = m -> m.get(msgKey,
                 Map.of("player", target.getName(), "lang", display, "response", response));
         plugin.alerts().send(msg);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
@@ -277,7 +279,7 @@ public class LangCheckManager {
         plugin.getLogger().info("[Hacks] Version probe for " + target.getName() + ": client " + real.text()
                 + ", connects as " + claimed + (mismatch ? " - MISMATCH" : ""));
         if (mismatch) {
-            plugin.alerts().send(plugin.messages().get("version-mismatch",
+            plugin.alerts().send(m -> m.get("version-mismatch",
                     Map.of("player", target.getName(), "real", real.text(), "claimed", claimed)));
             String cmd = cfg.getVersionMismatchCommand();
             if (!cmd.isBlank()) {

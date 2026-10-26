@@ -1,5 +1,7 @@
 package com.veneer.hacks.listeners;
 
+import net.kyori.adventure.text.Component;
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
@@ -9,6 +11,7 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
+import java.util.function.Function;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -107,8 +110,7 @@ public class AntiCheatListener implements Listener {
         if (!plugin.hacks().checks().claimAutoCheck(player.getUniqueId())) return;
 
         plugin.getLogger().info("[Hacks] " + acName + " flagged " + player.getName() + " — queuing check.");
-        plugin.alerts().send(
-                plugin.messages().get("anticheat-trigger", Map.of("player", player.getName())));
+        plugin.alerts().send(m -> m.get("anticheat-trigger", Map.of("player", player.getName())));
 
         FoliaScheduler.runAtEntity(plugin, player, () ->
                 plugin.hacks().checks().startCheck(player, null, hacks, true,

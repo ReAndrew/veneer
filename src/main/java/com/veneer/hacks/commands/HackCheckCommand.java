@@ -26,7 +26,7 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("veneer.hacks.check")) {
-            sender.sendMessage(plugin.messages().get("no-permission", Map.of()));
+            sender.sendMessage(plugin.messages().in(sender).get("no-permission", Map.of()));
             return true;
         }
         if (args.length < 1) {
@@ -36,12 +36,12 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
 
         Player target = Bukkit.getPlayerExact(args[0]);
         if (target == null) {
-            sender.sendMessage(plugin.messages().get("player-not-found",
+            sender.sendMessage(plugin.messages().in(sender).get("player-not-found",
                     Map.of("player", args[0])));
             return true;
         }
         if (plugin.hacks().checks().isChecking(target.getUniqueId())) {
-            sender.sendMessage(plugin.messages().get("already-checking",
+            sender.sendMessage(plugin.messages().in(sender).get("already-checking",
                     Map.of("player", target.getName())));
             return true;
         }
@@ -52,7 +52,7 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
             for (String id : args[1].split(",")) {
                 HackDefinition h = plugin.hacks().config().getHack(id.trim().toLowerCase());
                 if (h == null) {
-                    sender.sendMessage(plugin.messages().get("invalid-hack",
+                    sender.sendMessage(plugin.messages().in(sender).get("invalid-hack",
                             Map.of("hack", id.trim())));
                     return true;
                 }

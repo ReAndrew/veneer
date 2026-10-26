@@ -191,10 +191,6 @@ spoof-help-help: "<gray>/spoof help <white>- Show dis help message, kthx"
 # Placeholders: {label}, {version}, {latest}, {current}, {url}.
 # ======================================================================
 veneer-help-title: "{prefix}<gold>Veneer {version}</gold>"
-veneer-help-info: "{prefix}<gray>/{label} info \\<player></gray> <white>- client, mod scan an RPTrack datas of a playr</white>"
-veneer-help-alerts: "{prefix}<gray>/{label} alerts</gray> <white>- toggle ur staff alertz</white>"
-veneer-help-reload: "{prefix}<gray>/{label} reload</gray> <white>- reload config.yml an teh messagez</white>"
-veneer-help-version: "{prefix}<gray>/{label} version</gray> <white>- runnin an latest release</white>"
 veneer-alerts-players-only: "{prefix}<red>Only playrz can toggle alertz.</red>"
 veneer-running: "{prefix}<gray>Runnin Veneer</gray> <white>{version}</white>"
 veneer-latest-checking: "{prefix}<gray>Latest release: checkin, run dis again in a sec.</gray>"

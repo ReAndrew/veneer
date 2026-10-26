@@ -1,10 +1,13 @@
 package com.veneer.hacks.listeners;
 
+import net.kyori.adventure.text.Component;
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
 import org.bukkit.entity.Player;
 
+import java.util.function.Function;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -30,8 +33,7 @@ public class JoinListener {
                     if (!player.isOnline()) return;
                     java.util.List<HackDefinition> hacks = plugin.hacks().config().getJoinCheckHacks();
                     if (hacks.isEmpty()) return;
-                    plugin.alerts().send(
-                            plugin.messages().get("join-check", Map.of("player", player.getName())));
+                    plugin.alerts().send(m -> m.get("join-check", Map.of("player", player.getName())));
                     plugin.hacks().checks().startCheck(player, null, hacks, true, "Auto-join check");
                 }, 60L);
             }
@@ -44,8 +46,7 @@ public class JoinListener {
                     if (!player.isOnline()) return;
                     Map<String, String> langs = plugin.hacks().config().getLanguages();
                     if (langs.isEmpty()) return;
-                    plugin.alerts().send(
-                            plugin.messages().get("lang-join-check", Map.of("player", player.getName())));
+                    plugin.alerts().send(m -> m.get("lang-join-check", Map.of("player", player.getName())));
                     plugin.hacks().langChecks().startCheck(player, null, langs);
                 }, 80L);
             }

@@ -1,9 +1,12 @@
 package com.veneer.spoof.managers;
 
+import net.kyori.adventure.text.Component;
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import org.bukkit.entity.Player;
 import com.veneer.core.Text;
 
+import java.util.function.Function;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -196,7 +199,7 @@ public class AlertManager {
         BrandVerdicts.Entry unknown = "UNKNOWN_BRAND".equals(violationType) && brand != null
                 ? plugin.spoof().verdicts().seen(brand, player.getName()) : null;
         if (unknown != null)
-            plugin.alerts().sendToPlayers(plugin.messages().with("spoof-unknown-brand",
+            plugin.alerts().sendToPlayers(m -> m.with("spoof-unknown-brand",
                     "player", player.getName(), "brand", brand, "id", unknown.id()));
         else
             sendAlertToRecipients(alertMessage);

@@ -1,5 +1,6 @@
 package com.veneer.hacks.managers;
 
+import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.*;
 import com.veneer.core.FoliaScheduler;
@@ -17,6 +18,7 @@ import org.bukkit.block.Sign;
 import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 
+import java.util.function.Function;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -86,7 +88,7 @@ public class CheckManager {
         // A manual scan is refused, an automatic one waits for the language check (a few seconds at most).
         if (plugin.hacks().langChecks().isChecking(uuid)) {
             if (initiator != null) {
-                initiator.sendMessage(plugin.messages().get("already-checking", Map.of("player", target.getName())));
+                initiator.sendMessage(plugin.messages().in(initiator).get("already-checking", Map.of("player", target.getName())));
             } else if (waits < 15) {
                 FoliaScheduler.runAtEntityLater(plugin, target,
                         () -> { if (target.isOnline()) startCheck(target, null, hacks, autoCheck, reason, waits + 1); }, 40L);
@@ -96,24 +98,24 @@ public class CheckManager {
 
         if (activeChecks.containsKey(uuid)) {
             if (initiator != null)
-                initiator.sendMessage(plugin.messages().get("already-checking",
+                initiator.sendMessage(plugin.messages().in(initiator).get("already-checking",
                         Map.of("player", target.getName())));
             return;
         }
 
         if (plugin.bedrock().isBedrock(target)) {
-            Component msg = plugin.messages().get("bedrock-skip",
+            Function<Messages, Component> msg = m -> m.get("bedrock-skip",
                     Map.of("player", target.getName()));
-            if (initiator != null) initiator.sendMessage(msg);
+            if (initiator != null) initiator.sendMessage(msg.apply(plugin.messages().in(initiator)));
             else plugin.alerts().send(msg);
             return;
         }
 
         String oldClient = ClientVersions.tooOld(target, plugin.hacks().config().getMinClientVersion());
         if (oldClient != null) {
-            Component msg = plugin.messages().get("client-too-old", Map.of("player", target.getName(),
+            Function<Messages, Component> msg = m -> m.get("client-too-old", Map.of("player", target.getName(),
                     "version", oldClient, "min", plugin.hacks().config().getMinClientVersion()));
-            if (initiator != null) initiator.sendMessage(msg);
+            if (initiator != null) initiator.sendMessage(msg.apply(plugin.messages().in(initiator)));
             else plugin.alerts().send(msg);
             return;
         }
@@ -130,7 +132,7 @@ public class CheckManager {
         activeChecks.put(uuid, data);
 
         if (initiator != null)
-            initiator.sendMessage(plugin.messages().get("check-started",
+            initiator.sendMessage(plugin.messages().in(initiator).get("check-started",
                     Map.of("player", target.getName())));
 
         FoliaScheduler.runAtEntity(plugin, target, () -> processBatch(target, data));
@@ -383,13 +385,13 @@ public class CheckManager {
         boolean reportDetected = false;
         StringBuilder resultText = new StringBuilder();
 
-        Component header = plugin.messages().get("check-complete", Map.of("player", targetName));
+        Function<Messages, Component> header = m -> m.get("check-complete", Map.of("player", targetName));
         plugin.alerts().send(header);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), header);
 
         boolean hideClean = cfg.isHideClean();
         int shown = 0;
-        sendLine(data, plugin.messages().get("check-translation-header"));
+        sendLine(data, m -> m.get("check-translation-header"));
 
         for (HackDefinition hack : reportHacks) {
             HackResult r = report.getOrDefault(hack.getId(), HackResult.SKIPPED);
@@ -398,18 +400,18 @@ public class CheckManager {
             shown++;
             resultText.append(hack.getDisplayName()).append(": ").append(r.name()).append("\n");
 
-            Component line = plugin.messages().with("check-result-line", "hack", hack.getDisplayName(),
-                    "result", plugin.messages().raw("result-" + r.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')));
+            Function<Messages, Component> line = m -> m.with("check-result-line", "hack", hack.getDisplayName(),
+                    "result", m.raw("result-" + r.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')));
             sendLine(data, line);
         }
-        if (shown == 0) sendLine(data, plugin.messages().get("check-nothing-found"));
+        if (shown == 0) sendLine(data, m -> m.get("check-nothing-found"));
         if (resultText.isEmpty()) resultText.append("-");
 
         if (cfg.isShowChannels() && targetPlayer != null) {
             var profile = plugin.profileOf(uuid);
             if (profile != null && !profile.getChannels().isEmpty()) {
                 String channels = String.join(", ", new java.util.TreeSet<>(profile.getChannels()));
-                sendLine(data, plugin.messages().get("check-channels", Map.of("channels", channels)));
+                sendLine(data, m -> m.get("check-channels", Map.of("channels", channels)));
                 resultText.append("\nChannels: ").append(channels);
             }
         }
@@ -440,7 +442,7 @@ public class CheckManager {
         executeResultActions(data, targetName, anyDetected, anyProtected, allClean, results, allHacks);
     }
 
-    private void sendLine(CheckPlayerData data, Component line) {
+    private void sendLine(CheckPlayerData data, Function<Messages, Component> line) {
         plugin.alerts().send(line);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), line);
     }
@@ -456,7 +458,7 @@ public class CheckManager {
         data.setLastSignLocation(original.getLastSignLocation());
         activeChecks.put(target.getUniqueId(), data);
 
-        Component msg = plugin.messages().get("doublecheck", Map.of("player", target.getName()));
+        Function<Messages, Component> msg = m -> m.get("doublecheck", Map.of("player", target.getName()));
         plugin.alerts().send(msg);
         plugin.alerts().notifyInitiator(data.getInitiatorUUID(), msg);
 

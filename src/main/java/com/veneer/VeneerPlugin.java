@@ -68,6 +68,7 @@ public class VeneerPlugin extends JavaPlugin {
         bedrock = new Bedrock(this);
         webhook = new Webhook(this);
         database = new DatabaseManager(this);
+        messages.loadChoices();
         updates = new UpdateChecker(this);
 
         spoof = new SpoofModule(this);
