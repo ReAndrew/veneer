@@ -37,7 +37,7 @@ import java.util.zip.ZipOutputStream;
 public class RPTrackManager extends VeneerModule implements Listener {
 
     private static final String DEAD_URL = "http://127.0.0.1:0"; // Tracker RP Tester
-    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png"; //For old LiquidBounce NextGen clients without ExploitPreventer 
+    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png"; //For old LiquidBounce NextGen clients without ExploitPreventer
     private static final UUID HIDE_ID = UUID.nameUUIDFromBytes("veneer-hide".getBytes(StandardCharsets.UTF_8));
     private static final String[] LANGS = ("af_za ar_sa ast_es az_az bar ba_ru be_by be_latn bg_bg brb br_fr bs_ba ca_es cs_cz cv_cu "
             + "cy_gb da_dk de_at de_ch de_de el_gr en_au en_ca en_gb en_nz enp en_pt en_ud en_us enws eo_uy esan es_ar es_cl es_ec "

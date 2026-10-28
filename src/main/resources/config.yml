@@ -175,7 +175,7 @@ spoof:
   #                 Client Brands Configuration
   # ──────────────────────────────────────────────────────────
   # This section allows for granular control over different client types.
-  # Each brand can have its own detection patterns, alert messages, 
+  # Each brand can have its own detection patterns, alert messages,
   # punishments, and special exemptions.
   client-brands:
     # Master switch for the client brands system
