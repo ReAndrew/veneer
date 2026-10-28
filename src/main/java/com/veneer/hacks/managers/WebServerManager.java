@@ -221,7 +221,7 @@ public class WebServerManager {
             int    limit = Math.max(1, Math.min(500, parseInt(params.get("limit"), 50)));
             String validType = ("hack".equals(type) || "lang".equals(type)) ? type : null;
             sendJson(ex, 200, plugin.database().getRecentScans(validType, limit,
-                    Math.max(0, parseInt(params.get("offset"), 0)), "1".equals(params.get("detected"))));
+                    Math.max(0, parseInt(params.get("offset"), 0)), "1".equals(params.get("detected")) ? true : null, null));
             return;
         }
 

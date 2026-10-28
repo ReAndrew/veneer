@@ -19,12 +19,12 @@ update-available: "{prefix}<green>Доступен Veneer {latest}</green> <gray
 # MOD SCAN  (/hackcheck, join and anticheat checks)
 # Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
 # ======================================================================
-check-started: "{prefix}<white>Запуск проверки игрока <yellow>{player}<white>..."
+check-started: "{prefix}<white>Запуск проверки игрока <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white>..."
 check-complete: "{prefix}<white>Проверка игрока <yellow>{player}<white> завершена:"
 check-timeout: "{prefix}<yellow>{player} <white>не ответил — помечен как <red>ТАЙМАУТ<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>помечен — запуск повторной проверки..."
 anticheat-trigger: "{prefix}<gray>Античит обнаружил <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray>. Запуск автоматической проверки..."
-join-check: "{prefix}<gray>Автоматическая проверка <yellow>{player} <gray>при входе..."
+join-check: "{prefix}<gray>Автоматическая проверка <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>при входе..."
 already-checking: "{prefix}<yellow>{player} <white>уже проходит проверку."
 invalid-hack: "{prefix}<red>Неизвестный чит: <white>{hack}"
 hackcheck-usage: "{prefix}<red>Использование: /hackcheck \\<player> [hack1,hack2,...]</red>"
@@ -44,6 +44,7 @@ result-timeout: "<yellow>TIMEOUT"
 result-skipped: "<gray>SKIPPED"
 check-nothing-found: "{prefix}<green>    Ничего не найдено"
 check-channels: "{prefix}<white>  Каналы<gray>: <aqua>{channels}"
+check-brand: "{prefix}<white>  Software<gray>: <yellow>{brand}"
 
 # ======================================================================
 # LANGUAGE CHECK  (/hacklang)

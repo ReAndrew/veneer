@@ -18,12 +18,12 @@ update-available: "{prefix}<green>Veneer {latest} ist verfügbar</green> <gray>(
 # MOD SCAN  (/hackcheck, join and anticheat checks)
 # Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
 # ======================================================================
-check-started: "{prefix}<white>Überprüfung von <yellow>{player}<white> wird gestartet..."
+check-started: "{prefix}<white>Überprüfung von <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white> wird gestartet..."
 check-complete: "{prefix}<white>Überprüfung für <yellow>{player}<white> abgeschlossen:"
 check-timeout: "{prefix}<yellow>{player} <white>hat nicht geantwortet - als <red>ZEITÜBERSCHREITUNG <white>markiert."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>markiert - starte Bestätigungsscan..."
 anticheat-trigger: "{prefix}<gray>Das Anticheat hat <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray> erkannt. Starte automatische Überprüfung..."
-join-check: "{prefix}<gray>Automatische Überprüfung von <yellow>{player} <gray>beim Beitritt..."
+join-check: "{prefix}<gray>Automatische Überprüfung von <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>beim Beitritt..."
 already-checking: "{prefix}<yellow>{player} <white>wird bereits überprüft."
 invalid-hack: "{prefix}<red>Unbekannter Hack: <white>{hack}"
 hackcheck-usage: "{prefix}<red>Verwendung: /hackcheck \\<player> [hack1,hack2,...]</red>"
@@ -43,6 +43,7 @@ result-timeout: "<yellow>TIMEOUT"
 result-skipped: "<gray>SKIPPED"
 check-nothing-found: "{prefix}<green>    Nichts erkannt"
 check-channels: "{prefix}<white>  Kanäle<gray>: <aqua>{channels}"
+check-brand: "{prefix}<white>  Software<gray>: <yellow>{brand}"
 
 # ======================================================================
 # LANGUAGE CHECK  (/hacklang)

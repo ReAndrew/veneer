@@ -407,12 +407,17 @@ public class CheckManager {
         if (shown == 0) sendLine(data, m -> m.get("check-nothing-found"));
         if (resultText.isEmpty()) resultText.append("-");
 
-        if (cfg.isShowChannels() && targetPlayer != null) {
+        if (targetPlayer != null) {
             var profile = plugin.profileOf(uuid);
-            if (profile != null && !profile.getChannels().isEmpty()) {
+            if (cfg.isShowChannels() && profile != null && !profile.getChannels().isEmpty()) {
                 String channels = String.join(", ", new java.util.TreeSet<>(profile.getChannels()));
                 sendLine(data, m -> m.get("check-channels", Map.of("channels", channels)));
                 resultText.append("\nChannels: ").append(channels);
+            }
+            if (reportDetected && profile != null && profile.getBrand() != null) {
+                String brand = profile.getBrand();
+                sendLine(data, m -> m.get("check-brand", Map.of("brand", brand)));
+                resultText.append("\nSoftware: ").append(brand);
             }
         }
 

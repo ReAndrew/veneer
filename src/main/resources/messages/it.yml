@@ -18,12 +18,12 @@ update-available: "{prefix}<green>Veneer {latest} è disponibile</green> <gray>(
 # MOD SCAN  (/hackcheck, join and anticheat checks)
 # Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
 # ======================================================================
-check-started: "{prefix}<white>Avvio controllo su <yellow>{player}<white>..."
+check-started: "{prefix}<white>Avvio controllo su <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white>..."
 check-complete: "{prefix}<white>Controllo completato per <yellow>{player}<white>:"
 check-timeout: "{prefix}<yellow>{player} <white>non ha risposto - segnato come <red>TIMEOUT<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>segnato come sospetto - avvio scansione di conferma..."
 anticheat-trigger: "{prefix}<gray>L'anticheat ha segnalato <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray>. Avvio controllo automatico..."
-join-check: "{prefix}<gray>Controllo automatico di <yellow>{player} <gray>all'entrata..."
+join-check: "{prefix}<gray>Controllo automatico di <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>all'entrata..."
 already-checking: "{prefix}<yellow>{player} <white>è già in fase di controllo."
 invalid-hack: "{prefix}<red>Hack sconosciuto: <white>{hack}"
 hackcheck-usage: "{prefix}<red>Uso: /hackcheck \\<player> [hack1,hack2,...]</red>"
@@ -43,6 +43,7 @@ result-timeout: "<yellow>TIMEOUT"
 result-skipped: "<gray>SKIPPED"
 check-nothing-found: "{prefix}<green>    Niente rilevato"
 check-channels: "{prefix}<white>  Canali<gray>: <aqua>{channels}"
+check-brand: "{prefix}<white>  Software<gray>: <yellow>{brand}"
 
 # ======================================================================
 # LANGUAGE CHECK  (/hacklang)

@@ -12,6 +12,7 @@ import com.veneer.core.VeneerCommand;
 import com.veneer.core.VeneerConfig;
 import com.veneer.core.VeneerModule;
 import com.veneer.core.Webhook;
+import com.veneer.core.gui.VeneerGui;
 import com.veneer.hacks.HacksModule;
 import com.veneer.hooks.HooksModule;
 import com.veneer.rptrack.RPTrackManager;
@@ -50,6 +51,7 @@ public class VeneerPlugin extends JavaPlugin {
     private HacksModule hacks;
     private RPTrackManager rptrack;
     private HooksModule hooks;
+    private VeneerGui gui;
     private List<VeneerModule> modules = List.of();
 
     @Override
@@ -77,6 +79,8 @@ public class VeneerPlugin extends JavaPlugin {
         hooks = new HooksModule(this);
         modules = List.of(spoof, hacks, rptrack, hooks);
         getServer().getPluginManager().registerEvents(new PlayerEvents(this), this);
+        gui = new VeneerGui(this);
+        getServer().getPluginManager().registerEvents(gui, this);
 
         PluginCommand veneer = getCommand("veneer");
         if (veneer != null) {
@@ -193,6 +197,7 @@ public class VeneerPlugin extends JavaPlugin {
     public HacksModule hacks() { return hacks; }
     public RPTrackManager rptrack() { return rptrack; }
     public HooksModule hooks() { return hooks; }
+    public VeneerGui gui() { return gui; }
     public List<VeneerModule> modules() { return modules; }
 
     // ---------------------------------------------------------------- profiles

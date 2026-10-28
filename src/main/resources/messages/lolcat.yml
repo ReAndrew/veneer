@@ -18,12 +18,12 @@ update-available: "{prefix}<green>Veneer {latest} iz availabl</green> <gray>(run
 # MOD SCAN  (/hackcheck, join and anticheat checks)
 # Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
 # ======================================================================
-check-started: "{prefix}<white>Startin check on <yellow>{player}<white>..."
+check-started: "{prefix}<white>Startin check on <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white>..."
 check-complete: "{prefix}<white>Check complete for <yellow>{player}<white>:"
 check-timeout: "{prefix}<yellow>{player} <white>did not reply - marked as <red>TIMEOUT<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>iz flagged - runnin comfirm check..."
 anticheat-trigger: "{prefix}<gray>Anticheat sez <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray> iz sus. Startin auto-check..."
-join-check: "{prefix}<gray>Auto-checkin <yellow>{player} <gray>on join..."
+join-check: "{prefix}<gray>Auto-checkin <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>on join..."
 already-checking: "{prefix}<yellow>{player} <white>iz already gettin checked."
 invalid-hack: "{prefix}<red>Unknown hackz: <white>{hack}"
 hackcheck-usage: "{prefix}<red>Usage: /hackcheck \\<player> [hack1,hack2,...]</red>"
@@ -43,6 +43,7 @@ result-timeout: "<yellow>TIMEOUT"
 result-skipped: "<gray>SKIPPED"
 check-nothing-found: "{prefix}<green>    Nothing detected"
 check-channels: "{prefix}<white>  Channels<gray>: <aqua>{channels}"
+check-brand: "{prefix}<white>  Software<gray>: <yellow>{brand}"
 
 # ======================================================================
 # LANGUAGE CHECK  (/hacklang)
