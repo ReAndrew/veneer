@@ -55,7 +55,6 @@ public class AntiCheatListener implements Listener {
         registerAny(plugin.hacks().config().isAnticheatEnabled("intave"), "Intave", INTAVE_CLASSES);
         registerAny(plugin.hacks().config().isAnticheatEnabled("aac"), "AAC", AAC_CLASSES);
         registerAny(plugin.hacks().config().isAnticheatEnabled("themis"), "Themis", THEMIS_CLASSES);
-        if (plugin.hacks().config().isAnticheatEnabled("ncp")) tryRegisterNcp();
     }
 
     private void registerAny(boolean enabled, String acName, String[] classes) {
@@ -75,37 +74,6 @@ public class AntiCheatListener implements Listener {
             plugin.getLogger().info("[Hacks] Grim event bus unavailable (" + t.getClass().getSimpleName()
                     + "), trying legacy event classes.");
             return false;
-        }
-    }
-
-    /** NCP doesn't expose a simple flag event; we hook via its built-in hook API. */
-    private void tryRegisterNcp() {
-        if (Bukkit.getPluginManager().getPlugin("NoCheatPlus") == null) {
-            plugin.getLogger().info("[Hacks] NCP not found, skipping.");
-            return;
-        }
-        try {
-            Class<?> hookMgrClass = Class.forName("fr.neatmonster.nocheatplus.hooks.NCPHookManager");
-            Class<?> hookIface    = Class.forName("fr.neatmonster.nocheatplus.hooks.NCPHook");
-            // Build a dynamic proxy that implements NCPHook and calls queueCheck on violation
-            java.lang.reflect.InvocationHandler h = (proxy, method, args) -> {
-                String name = method.getName();
-                if ("getHookName".equals(name))    return "VeneerHack";
-                if ("getHookVersion".equals(name)) return "1.0";
-                if ("onCheckFailure".equals(name) && args != null && args.length > 0) {
-                    Object playerArg = args[args.length - 1]; // last arg is usually Player
-                    if (playerArg instanceof Player p) queueCheck(p, "NCP");
-                }
-                return null;
-            };
-            Object proxy = java.lang.reflect.Proxy.newProxyInstance(
-                    hookIface.getClassLoader(), new Class[]{hookIface}, h);
-            hookMgrClass.getMethod("addHook", hookIface).invoke(null, proxy);
-            plugin.getLogger().info("[Hacks] NCP hook registered.");
-        } catch (ClassNotFoundException ignored) {
-            plugin.getLogger().info("[Hacks] NCP not found, skipping.");
-        } catch (Exception e) {
-            plugin.getLogger().warning("[Hacks] NCP hook failed: " + e.getMessage());
         }
     }
 
