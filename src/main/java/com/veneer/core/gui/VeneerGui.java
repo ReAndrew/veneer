@@ -47,7 +47,7 @@ public final class VeneerGui implements Listener {
     // Main chest menu slot layout (4 rows = 36 slots)
     private static final int SLOT_SPOOF = 1, SLOT_HACKS = 3, SLOT_RPTRACK = 5;
     private static final int SLOT_PLAYERS = 10, SLOT_DETECTIONS = 11, SLOT_BRANDS = 12,
-            SLOT_GRIM = 13, SLOT_ALERTS = 14, SLOT_EDITOR = 15;
+            SLOT_GRIM = 13, SLOT_ALERTS = 14, SLOT_EDITOR = 15, SLOT_CHANNELS = 16;
     private static final int SLOT_RELOAD = 19, SLOT_VERSION = 21;
     private static final int SLOT_CLOSE = 35;
 
@@ -265,6 +265,7 @@ public final class VeneerGui implements Listener {
             inv.setItem(SLOT_ALERTS, navItem(Material.BELL,         m.get("gui-btn-alerts-log"), m.get("gui-btn-alerts-log-lore")));
         if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
             inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-version-lore")));
+        inv.setItem(SLOT_CHANNELS, navItem(Material.COMPARATOR, m.get("gui-btn-channels"), m.get("gui-btn-channels-lore")));
 
         inv.setItem(SLOT_RELOAD,  navItem(Material.COMPARATOR,    m.get("gui-btn-reload"),   m.get("gui-btn-reload-lore")));
         inv.setItem(SLOT_VERSION, navItem(Material.KNOWLEDGE_BOOK, m.get("gui-btn-version"), m.get("gui-btn-version-lore")));
@@ -648,6 +649,7 @@ public final class VeneerGui implements Listener {
             case SLOT_BRANDS     -> { player.closeInventory(); openBrands(player, 0); }
             case SLOT_GRIM       -> { if (grimTracker != null) { player.closeInventory(); openGrim(player, 0); } }
             case SLOT_ALERTS     -> { player.closeInventory(); openAlerts(player, 0, null); }
+            case SLOT_CHANNELS   -> { player.closeInventory(); openChannels(player, 0); }
             case SLOT_EDITOR     -> { player.closeInventory(); player.performCommand("hackeditor"); }
             case SLOT_RELOAD     -> { player.closeInventory(); player.performCommand("veneer reload"); }
             case SLOT_VERSION    -> { player.closeInventory(); player.performCommand("veneer version"); }
