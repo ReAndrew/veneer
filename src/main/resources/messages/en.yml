@@ -257,6 +257,7 @@ veneer-latest-checking: "{prefix}<gray>Latest release: checking, run this again 
 veneer-latest-none: "{prefix}<gray>No release is published on GitHub yet.</gray>"
 veneer-update-available: "{prefix}<green>Version {latest} is available:</green> <aqua>{url}</aqua>"
 veneer-latest-ok: "{prefix}<green>You are on the latest release ({latest}).</green>"
+veneer-latest-ahead: "{prefix}<aqua>This build ({current}) is newer than the latest release ({latest}).</aqua>"
 
 # ======================================================================
 # GUI  chest panel (/veneer with no arguments, requires veneer.admin)

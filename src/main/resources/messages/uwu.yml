@@ -257,6 +257,7 @@ veneer-latest-checking: "{prefix}<gray>Watest wewease: checking, wun dis again i
 veneer-latest-none: "{prefix}<gray>No wewease is pubwished on GitHub yet.</gray>"
 veneer-update-available: "{prefix}<green>Vewsion {latest} is avaiwabwe:</green> <aqua>{url}</aqua>"
 veneer-latest-ok: "{prefix}<green>U awe on da watest wewease ({latest}), yay~</green>"
+veneer-latest-ahead: "{prefix}<aqua>Dis buiwd ({current}) is nyewew than da watest wewease ({latest}), wow~</aqua>"
 
 # ======================================================================
 # GUI  chest panel (/veneer with no arguments, requires veneer.admin)

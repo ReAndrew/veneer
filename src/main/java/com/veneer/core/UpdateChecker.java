@@ -28,6 +28,11 @@ public final class UpdateChecker {
         public boolean updateAvailable() {
             return latest != null && isNewer(latest, current);
         }
+
+        /** A build newer than the latest release, e.g. one from dev or beta. */
+        public boolean ahead() {
+            return latest != null && isNewer(current, latest);
+        }
     }
 
     private final VeneerPlugin plugin;

@@ -249,6 +249,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         if (s == null) plugin.messages().send(sender, "veneer-latest-checking");
         else if (s.latest() == null) plugin.messages().send(sender, "veneer-latest-none");
         else if (s.updateAvailable()) plugin.messages().send(sender, "veneer-update-available", "latest", s.latest(), "url", s.url());
+        else if (s.ahead()) plugin.messages().send(sender, "veneer-latest-ahead", "latest", s.latest(), "current", current);
         else plugin.messages().send(sender, "veneer-latest-ok", "latest", s.latest());
     }
 
