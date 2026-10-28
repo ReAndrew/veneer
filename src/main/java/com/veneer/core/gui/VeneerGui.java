@@ -74,7 +74,8 @@ public final class VeneerGui implements Listener {
 
     // Player info page slots (4 rows = 36 slots)
     private static final int PI_HEAD = 4;
-    private static final int PI_BRAND = 10, PI_STATUS = 11, PI_CHANNELS = 12, PI_SCANS = 13, PI_GRIM = 14;
+    private static final int PI_BRAND = 10, PI_STATUS = 11, PI_CHANNELS = 12, PI_SCANS = 13,
+            PI_GRIM = 14, PI_SENSITIVITY = 15;
     private static final int PI_CHECK = 19, PI_DETECTIONS = 22, PI_ALERTS = 25;
     private static final int PI_BACK = 27, PI_CLOSE = 35;
 
@@ -207,13 +208,29 @@ public final class VeneerGui implements Listener {
                             .color(NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)));
         }
 
-        // GrimAC flags
+        // GrimAC flags + mouse sensitivity
         if (GRIM_API && grimTracker != null && uuid != null) {
             UUID uid = safeUuid(uuid);
             List<GrimViolationTracker.Violation> grimFlags = grimTracker.getByPlayer(uid, 99);
             if (!grimFlags.isEmpty()) {
                 inv.setItem(PI_GRIM, infoItem(Material.SHIELD,
                         m.get("gui-grim-flags-count", Map.of("count", String.valueOf(grimFlags.size()))), null));
+            }
+            GrimViolationTracker.SensitivitySnapshot sens = grimTracker.getSensitivity(uid);
+            if (sens != null) {
+                boolean nonDefault = !sens.isDefault();
+                boolean nonVanilla = !sens.vanillaMath();
+                Component sensTitle = m.get("gui-player-sensitivity",
+                        Map.of("h", String.valueOf(sens.hPct()), "v", String.valueOf(sens.vPct())));
+                Component sensLore = nonVanilla
+                        ? m.get("gui-player-sensitivity-nonvanilla").decoration(TextDecoration.ITALIC, false)
+                        : nonDefault
+                        ? m.get("gui-player-sensitivity-nondefault").decoration(TextDecoration.ITALIC, false)
+                        : m.get("gui-player-sensitivity-default").decoration(TextDecoration.ITALIC, false);
+                Material sensMat = nonVanilla ? Material.MAGENTA_STAINED_GLASS_PANE
+                        : nonDefault ? Material.YELLOW_STAINED_GLASS_PANE
+                        : Material.GREEN_STAINED_GLASS_PANE;
+                inv.setItem(PI_SENSITIVITY, infoItem(sensMat, sensTitle, sensLore));
             }
         }
 
