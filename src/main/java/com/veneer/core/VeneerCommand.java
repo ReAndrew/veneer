@@ -28,7 +28,8 @@ import java.util.stream.Collectors;
  */
 public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("help", "info", "alerts", "lang", "reload", "version");
+    private static final List<String> SUBCOMMANDS = List.of(
+            "help", "info", "player", "find", "check", "brands", "channels", "alerts", "lang", "reload", "version");
     /** {@code /veneer <name> ...} runs the plugin.yml command it maps to, with its own permission check. */
     private static final Map<String, String> PASSTHROUGH = Map.of(
             "spoof", "spoof", "hackcheck", "hackcheck", "scan", "hackcheck", "hacklang", "hacklang",
@@ -41,12 +42,17 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     private record HelpEntry(String module, String usage, String key, String permission) {}
 
     private static final List<HelpEntry> HELP = List.of(
-            new HelpEntry(null, "/veneer help", "help", null),
-            new HelpEntry(null, "/veneer lang [{language}|auto|reset]", "lang", "veneer.lang"),
-            new HelpEntry(null, "/veneer alerts", "alerts", Alerts.PERMISSION),
-            new HelpEntry(null, "/veneer info <{player}>", "info", "veneer.admin"),
-            new HelpEntry(null, "/veneer reload", "reload", "veneer.admin"),
-            new HelpEntry(null, "/veneer version", "version", "veneer.admin"),
+            new HelpEntry(null,    "/veneer help",                       "help",     null),
+            new HelpEntry(null,    "/veneer lang [{language}|auto|reset]","lang",    "veneer.lang"),
+            new HelpEntry(null,    "/veneer player ({player})",          "player",   "veneer.admin"),
+            new HelpEntry(null,    "/veneer find <{player}>",            "find",     "veneer.admin"),
+            new HelpEntry(null,    "/veneer check <{player}>",           "check",    "veneer.admin"),
+            new HelpEntry("spoof", "/veneer brands",                     "brands",   "veneer.spoof.use"),
+            new HelpEntry(null,    "/veneer channels",                   "channels", "veneer.admin"),
+            new HelpEntry(null,    "/veneer alerts ({player})",          "alerts",   Alerts.PERMISSION),
+            new HelpEntry(null,    "/veneer info <{player}>",            "info",     "veneer.admin"),
+            new HelpEntry(null,    "/veneer reload",                     "reload",   "veneer.admin"),
+            new HelpEntry(null,    "/veneer version",                    "version",  "veneer.admin"),
             new HelpEntry("spoof", "/spoof brand <{player}>", "spoof-brand", "veneer.spoof.use"),
             new HelpEntry("spoof", "/spoof channels <{player}>", "spoof-channels", "veneer.spoof.use"),
             new HelpEntry("spoof", "/spoof runcheck [{player}|*]", "spoof-runcheck", "veneer.spoof.use"),
@@ -77,11 +83,28 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         }
         switch (sub) {
             case "reload" -> reload(sender);
-            case "alerts" -> alerts(sender);
+            case "alerts" -> alertsPage(sender, args);
             case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
-            default -> help(sender);
+            case "gui" -> { if (sender instanceof Player p) plugin.gui().openPage(p, args); }
+            case "player", "p" -> playerPage(sender, args, false);
+            case "find" -> playerPage(sender, args, true);
+            case "check" -> checkPage(sender, args);
+            case "brands" -> {
+                if (!(sender instanceof Player p)) { plugin.messages().send(sender, "veneer-cmd-players-only"); return true; }
+                if (denied(sender, "veneer.spoof.use")) return true;
+                plugin.gui().openPage(p, new String[]{"gui", "brands"});
+            }
+            case "channels" -> {
+                if (!(sender instanceof Player p)) { plugin.messages().send(sender, "veneer-cmd-players-only"); return true; }
+                if (denied(sender, "veneer.admin")) return true;
+                plugin.gui().openPage(p, new String[]{"gui", "channels"});
+            }
+            default -> {
+                if (args.length == 0 && sender instanceof Player p && plugin.gui().open(p)) break;
+                help(sender);
+            }
         }
         return true;
     }
@@ -162,7 +185,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(plugin.messages().in(sender).get("reload-done"));
     }
 
-    private void alerts(CommandSender sender) {
+    /** {@code /veneer alerts [nick]} — alert history GUI. {@code /veneer alerts toggle} keeps the old toggle. */
+    private void alertsPage(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             plugin.messages().send(sender, "veneer-alerts-players-only");
             return;
@@ -171,8 +195,47 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().in(sender).get("no-permission"));
             return;
         }
-        boolean on = plugin.alerts().toggle(player.getUniqueId());
-        sender.sendMessage(plugin.messages().in(sender).get(on ? "alerts-enabled" : "alerts-disabled"));
+        if (args.length >= 2 && "toggle".equalsIgnoreCase(args[1])) {
+            boolean on = plugin.alerts().toggle(player.getUniqueId());
+            sender.sendMessage(plugin.messages().in(sender).get(on ? "alerts-enabled" : "alerts-disabled"));
+            return;
+        }
+        String target = args.length >= 2 ? args[1] : null;
+        plugin.gui().openPage(player, target == null
+                ? new String[]{"gui", "alerts"}
+                : new String[]{"gui", "alerts", "0", target});
+    }
+
+    /** {@code /veneer player [nick]} — player info GUI; no nick opens player list. */
+    private void playerPage(CommandSender sender, String[] args, boolean requireNick) {
+        if (!(sender instanceof Player player)) {
+            plugin.messages().send(sender, "veneer-cmd-players-only");
+            return;
+        }
+        if (denied(sender, "veneer.admin")) return;
+        if (args.length < 2) {
+            if (requireNick) {
+                plugin.messages().send(sender, "veneer-info-usage", "label", "veneer find");
+                return;
+            }
+            plugin.gui().openPage(player, new String[]{"gui", "players"});
+            return;
+        }
+        plugin.gui().openPlayerInfo(player, args[1]);
+    }
+
+    /** {@code /veneer check <player>} — Dialog with check-type checkboxes. */
+    private void checkPage(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            plugin.messages().send(sender, "veneer-cmd-players-only");
+            return;
+        }
+        if (denied(sender, "veneer.admin")) return;
+        if (args.length < 2) {
+            plugin.messages().send(sender, "veneer-info-usage", "label", "veneer check");
+            return;
+        }
+        plugin.gui().openCheckDialog(player, args[1]);
     }
 
     private void version(CommandSender sender) {
@@ -304,9 +367,12 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             options.add("reset");
             return options.stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }
-        if (args.length == 2 && sub.equals("info"))
+        if (args.length == 2 && (sub.equals("info") || sub.equals("player") || sub.equals("p")
+                || sub.equals("find") || sub.equals("check")))
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        if (args.length == 2 && sub.equals("alerts"))
+            return List.of("toggle");
         return List.of();
     }
 }

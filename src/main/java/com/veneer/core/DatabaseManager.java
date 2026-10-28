@@ -122,6 +122,17 @@ public class DatabaseManager {
                     uuid TEXT PRIMARY KEY,
                     language TEXT NOT NULL
                 )""");
+            // Browsers bound to an account: sha256 of the cookie secret, and sha256 of nick, address and client
+            s.execute("""
+                CREATE TABLE IF NOT EXISTS web_devices (
+                    secret_hash TEXT PRIMARY KEY,
+                    player_uuid TEXT NOT NULL,
+                    player_name TEXT NOT NULL,
+                    perms TEXT NOT NULL,
+                    bind_hash TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                )""");
             // veneer.web.* rights of the player when the token was issued, comma separated
             try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
             catch (SQLException alreadyThere) {}
@@ -230,24 +241,27 @@ public class DatabaseManager {
     }
 
     public synchronized List<Map<String, Object>> getRecentScans(String type, int limit) {
-        return getRecentScans(type, limit, 0, false);
+        return getRecentScans(type, limit, 0, null, null);
     }
 
-    /** A page of the scan history, newest first: {@code type} "hack", "lang" or null for both, {@code detectedOnly} keeps scans that found a mod. */
-    public synchronized List<Map<String, Object>> getRecentScans(String type, int limit, int offset, boolean detectedOnly) {
+    /** A page of the scan history, newest first: {@code type} "hack", "lang" or null for both, {@code detected} true keeps scans that found a mod, false the clean ones, null all, {@code player} (uuid or name) keeps one account's scans. */
+    public synchronized List<Map<String, Object>> getRecentScans(String type, int limit, int offset, Boolean detected, String player) {
         List<Map<String, Object>> list = new ArrayList<>();
         if (connection == null) return list;
 
         List<Long> ids = new ArrayList<>();
         List<Map<String, Object>> rows = new ArrayList<>();
 
-        String sql = "SELECT * FROM scans WHERE (? IS NULL OR type=?)" + (detectedOnly ? " AND has_detected=1" : "")
+        String sql = "SELECT * FROM scans WHERE (? IS NULL OR type=?)" + (detected == null ? "" : detected ? " AND has_detected=1" : " AND has_detected=0")
+                + (player == null ? "" : " AND (target_uuid=? OR LOWER(target_name)=LOWER(?))")
                 + " ORDER BY timestamp DESC LIMIT ? OFFSET ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, type);
             ps.setString(2, type);
-            ps.setInt(3, limit);
-            ps.setInt(4, Math.max(0, offset));
+            int next = 3;
+            if (player != null) { ps.setString(next++, player); ps.setString(next++, player); }
+            ps.setInt(next++, limit);
+            ps.setInt(next, Math.max(0, offset));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> row = rowToMap(rs);
@@ -472,6 +486,70 @@ public class DatabaseManager {
         }
     }
 
+    /** Known accounts, most recently active first: uuid, name (the latest one) and last activity. */
+    public synchronized List<Map<String, Object>> listPlayers(int limit, int offset) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (connection == null) return list;
+        // SQLite returns the other columns of the row that holds MAX(ts), so name is the latest one
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT uuid, name, MAX(ts) FROM (
+                    SELECT uuid, name, last_seen AS ts FROM joins
+                    UNION ALL SELECT target_uuid, target_name, timestamp FROM scans
+                    UNION ALL SELECT uuid, name, updated FROM clients
+                    UNION ALL SELECT uuid, name, last_seen FROM rptrack
+                ) WHERE uuid <> '' GROUP BY uuid ORDER BY MAX(ts) DESC LIMIT ? OFFSET ?""")) {
+            ps.setInt(1, limit);
+            ps.setInt(2, Math.max(0, offset));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("uuid", rs.getString(1));
+                    row.put("name", rs.getString(2));
+                    row.put("last_seen", rs.getLong(3));
+                    list.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("listPlayers: " + e.getMessage());
+        }
+        return list;
+    }
+
+    /** Removes everything stored about the given accounts (addresses, skin, client, fingerprint, scans with their results, language). */
+    public synchronized int deletePlayers(Collection<String> uuids) {
+        if (connection == null || uuids.isEmpty()) return 0;
+        String marks = String.join(",", Collections.nCopies(uuids.size(), "?"));
+        String[] statements = {
+                "DELETE FROM hack_results WHERE scan_id IN (SELECT id FROM scans WHERE target_uuid IN (" + marks + "))",
+                "DELETE FROM lang_results WHERE scan_id IN (SELECT id FROM scans WHERE target_uuid IN (" + marks + "))",
+                "DELETE FROM scans WHERE target_uuid IN (" + marks + ")",
+                "DELETE FROM joins WHERE uuid IN (" + marks + ")",
+                "DELETE FROM skins WHERE uuid IN (" + marks + ")",
+                "DELETE FROM clients WHERE uuid IN (" + marks + ")",
+                "DELETE FROM rptrack WHERE uuid IN (" + marks + ")",
+                "DELETE FROM player_language WHERE uuid IN (" + marks + ")"};
+        int removed = 0;
+        try {
+            connection.setAutoCommit(false);
+            for (String sql : statements) {
+                try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                    int i = 1;
+                    for (String uuid : uuids) ps.setString(i++, uuid);
+                    int n = ps.executeUpdate();
+                    if (sql.contains("FROM joins")) removed = n;
+                }
+            }
+            connection.commit();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("deletePlayers: " + e.getMessage());
+            try { connection.rollback(); } catch (SQLException ignored) {}
+            removed = 0;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+        return removed;
+    }
+
     public synchronized String saveToken(String playerUUID, String playerName, int expireMinutes, String perms) {
         if (connection == null) return null;
         String token = UUID.randomUUID().toString().replace("-", "");
@@ -502,6 +580,87 @@ public class DatabaseManager {
             plugin.getLogger().warning("saveToken: " + e.getMessage());
         }
         return token;
+    }
+
+    /** sha256 of what ties a browser to an account: the nick, the address (when {@code ip} is given) and the client's User-Agent. */
+    private static String bindHash(String name, String ip, String userAgent) {
+        return sha256(name + "\n" + (ip == null ? "" : ip) + "\n" + (userAgent == null ? "" : userAgent));
+    }
+
+    private static String sha256(String text) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Registers a browser for the account that owns a link token. The link is spent; the browser gets a random secret
+     * (returned, to be set as a cookie) and the database keeps only its sha256 together with the sha256 of nick,
+     * address and client, so the account is bound to this browser and its previous one stops working. Null when the
+     * link is unknown or expired, else the secret and its expiry.
+     */
+    public synchronized Map<String, String> registerDevice(String linkToken, String ip, String userAgent, boolean bindIp, int days) {
+        Map<String, String> info = validateToken(linkToken);
+        if (info == null) return null;
+        byte[] raw = new byte[32];
+        new java.security.SecureRandom().nextBytes(raw);
+        String secret = java.util.HexFormat.of().formatHex(raw);
+        long now = System.currentTimeMillis();
+        long expires = now + days * 86_400_000L;
+        try (PreparedStatement link = connection.prepareStatement("DELETE FROM editor_tokens WHERE token=?");
+             PreparedStatement old = connection.prepareStatement("DELETE FROM web_devices WHERE player_uuid=? OR expires_at<?");
+             PreparedStatement ins = connection.prepareStatement(
+                     "INSERT INTO web_devices (secret_hash,player_uuid,player_name,perms,bind_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)")) {
+            link.setString(1, linkToken);
+            link.executeUpdate();
+            old.setString(1, info.get("player_uuid"));
+            old.setLong(2, now);
+            old.executeUpdate();
+            ins.setString(1, sha256(secret));
+            ins.setString(2, info.get("player_uuid"));
+            ins.setString(3, info.get("player_name"));
+            ins.setString(4, info.get("perms"));
+            ins.setString(5, bindHash(info.get("player_name"), bindIp ? ip : null, userAgent));
+            ins.setLong(6, now);
+            ins.setLong(7, expires);
+            ins.executeUpdate();
+            return Map.of("secret", secret, "expires_at", String.valueOf(expires));
+        } catch (SQLException e) {
+            plugin.getLogger().warning("registerDevice: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** The account a browser secret belongs to, if the secret is known, unexpired and comes from the client it was bound to. */
+    public synchronized Map<String, String> validateDevice(String secret, String ip, String userAgent, boolean bindIp) {
+        if (connection == null || secret == null) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT player_uuid, player_name, perms, bind_hash, expires_at FROM web_devices WHERE secret_hash=? AND expires_at>?")) {
+            ps.setString(1, sha256(secret));
+            ps.setLong(2, System.currentTimeMillis());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                String expected = bindHash(rs.getString("player_name"), bindIp ? ip : null, userAgent);
+                if (!java.security.MessageDigest.isEqual(expected.getBytes(), rs.getString("bind_hash").getBytes())) return null;
+                Map<String, String> info = new LinkedHashMap<>();
+                info.put("player_uuid", rs.getString("player_uuid"));
+                info.put("player_name", rs.getString("player_name"));
+                info.put("perms", rs.getString("perms"));
+                info.put("expires_at", String.valueOf(rs.getLong("expires_at")));
+                return info;
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("validateDevice: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** The stored 64x64 skin of an account as a base64 PNG, or null. */
+    public synchronized String getSkin(String uuid) {
+        return getSkins(List.of(uuid)).get(uuid);
     }
 
     public synchronized Map<String, String> validateToken(String token) {
@@ -677,6 +836,32 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().warning("saveSkin: " + e.getMessage());
         }
+    }
+
+    /** Distinct channel groups seen across all clients, ordered by player count. */
+    public synchronized List<Map<String, Object>> getChannelGroups(int limit, int offset) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (connection == null) return list;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT channels, COUNT(DISTINCT uuid) AS player_count, MAX(updated) AS last_seen
+                FROM clients WHERE channels != ''
+                GROUP BY channels ORDER BY player_count DESC, last_seen DESC
+                LIMIT ? OFFSET ?""")) {
+            ps.setInt(1, limit);
+            ps.setInt(2, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("channels", rs.getString(1));
+                    row.put("player_count", rs.getInt(2));
+                    row.put("last_seen", rs.getLong(3));
+                    list.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getChannelGroups: " + e.getMessage());
+        }
+        return list;
     }
 
     /** Stores the client brand and plugin channels an account last played with (for client links). */
