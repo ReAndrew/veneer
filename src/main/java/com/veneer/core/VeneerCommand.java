@@ -47,7 +47,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             new HelpEntry(null,      "/veneer player ({player})",                "player",                "veneer.admin"),
             new HelpEntry(null,      "/veneer find <{player}>",                  "find",                  "veneer.admin"),
             new HelpEntry(null,      "/veneer check <{player}>",                 "check",                 "veneer.admin"),
-            new HelpEntry("spoof",   "/veneer brands",                           "brands",                "veneer.spoof.use"),
+            new HelpEntry("spoof",   "/veneer brands",                           "brands",                "veneer.admin"),
             new HelpEntry(null,      "/veneer channels",                         "channels",              "veneer.admin"),
             new HelpEntry(null,      "/veneer alerts [{player}|toggle]",         "alerts",                Alerts.PERMISSION),
             new HelpEntry(null,      "/veneer info <{player}>",                  "info",                  "veneer.admin"),
@@ -87,13 +87,13 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
-            case "gui" -> { if (sender instanceof Player p) plugin.gui().openPage(p, args); }
+            case "gui" -> { if (sender instanceof Player p && !denied(sender, "veneer.admin")) plugin.gui().openPage(p, args); }
             case "player", "p" -> playerPage(sender, args, false);
             case "find" -> playerPage(sender, args, true);
             case "check" -> checkPage(sender, args);
             case "brands" -> {
                 if (!(sender instanceof Player p)) { plugin.messages().send(sender, "veneer-cmd-players-only"); return true; }
-                if (denied(sender, "veneer.spoof.use")) return true;
+                if (denied(sender, "veneer.admin")) return true;
                 plugin.gui().openPage(p, new String[]{"gui", "brands"});
             }
             case "channels" -> {
@@ -200,6 +200,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().in(sender).get(on ? "alerts-enabled" : "alerts-disabled"));
             return;
         }
+        // The history is part of the admin panel; veneer.alerts alone only toggles
+        if (denied(sender, "veneer.admin")) return;
         String target = args.length >= 2 ? args[1] : null;
         plugin.gui().openPage(player, target == null
                 ? new String[]{"gui", "alerts"}

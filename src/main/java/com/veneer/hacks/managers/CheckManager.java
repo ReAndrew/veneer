@@ -384,6 +384,7 @@ public class CheckManager {
         report.putAll(results);
         boolean reportDetected = false;
         StringBuilder resultText = new StringBuilder();
+        List<String> detectedNames = new ArrayList<>();
 
         Function<Messages, Component> header = m -> m.get("check-complete", Map.of("player", targetName));
         plugin.alerts().send(header);
@@ -395,7 +396,7 @@ public class CheckManager {
 
         for (HackDefinition hack : reportHacks) {
             HackResult r = report.getOrDefault(hack.getId(), HackResult.SKIPPED);
-            if (r == HackResult.DETECTED) reportDetected = true;
+            if (r == HackResult.DETECTED) { reportDetected = true; detectedNames.add(hack.getDisplayName()); }
             if (hideClean && r == HackResult.NOT_DETECTED) continue;
             shown++;
             resultText.append(hack.getDisplayName()).append(": ").append(r.name()).append("\n");
@@ -434,14 +435,22 @@ public class CheckManager {
             String hacksChecked = reportHacks.stream()
                     .map(HackDefinition::getDisplayName)
                     .reduce((a, b) -> a + ", " + b).orElse("none");
-            String description = cfg.getDiscordMessage()
-                    .replace("&name&", targetName)
-                    .replace("&checker&", checkerName)
-                    .replace("&reason&", data.getReason())
-                    .replace("&hacks&", hacksChecked)
-                    .replace("&results&", resultText.toString().trim());
-            plugin.webhook().report(cfg.getWebhookUrl(), cfg.getEmbedColor(), "Veneer mod scan",
-                    description, cfg.isDiscordUseComponentsV2());
+            var profile = plugin.profileOf(uuid);
+            Map<String, String> values = new java.util.HashMap<>();
+            values.put("player", targetName);
+            values.put("name", targetName); // &name& of older configs
+            values.put("uuid", targetUUID);
+            values.put("checker", checkerName);
+            values.put("reason", String.valueOf(data.getReason()));
+            values.put("hacks", hacksChecked);
+            values.put("results", resultText.toString().trim());
+            values.put("detected", detectedNames.isEmpty() ? "none" : String.join(", ", detectedNames));
+            values.put("brand", profile != null && profile.getBrand() != null ? profile.getBrand() : "unknown");
+            values.put("channels", profile == null || profile.getChannels().isEmpty() ? "none"
+                    : String.join(", ", new java.util.TreeSet<>(profile.getChannels())));
+            values.put("version", com.veneer.hacks.utils.ClientVersions.name(targetPlayer));
+            plugin.webhook().report(cfg.getWebhookUrl(), cfg.getEmbedColor(), cfg.getDiscordTitle(),
+                    cfg.getDiscordMessage(), cfg.isDiscordUseComponentsV2(), Bukkit.getOfflinePlayer(uuid), values);
         }
 
         executeResultActions(data, targetName, anyDetected, anyProtected, allClean, results, allHacks);

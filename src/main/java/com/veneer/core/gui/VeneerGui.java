@@ -269,7 +269,7 @@ public final class VeneerGui implements Listener {
         if (player.hasPermission(Alerts.PERMISSION))
             inv.setItem(SLOT_ALERTS, navItem(Material.BELL,         m.get("gui-btn-alerts-log"), m.get("gui-btn-alerts-log-lore")));
         if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
-            inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-version-lore")));
+            inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-editor-lore")));
         inv.setItem(SLOT_CHANNELS, navItem(Material.COMPARATOR, m.get("gui-btn-channels"), m.get("gui-btn-channels-lore")));
 
         inv.setItem(SLOT_RELOAD,  navItem(Material.COMPARATOR,    m.get("gui-btn-reload"),   m.get("gui-btn-reload-lore")));
@@ -698,9 +698,17 @@ public final class VeneerGui implements Listener {
             int idx = holder.pageNum() * PAGE_SIZE + slot;
             if (idx >= all.size()) return;
             BrandVerdicts.Entry e = all.get(idx);
+            // Same right as /spoof brands allow|block|forget
+            if (!player.hasPermission("veneer.spoof.admin")) {
+                player.sendMessage(plugin.messages().in(player).get("no-permission"));
+                return;
+            }
             ClickType ct = event.getClick();
-            BrandVerdicts.Verdict next = ct.isLeftClick() ? BrandVerdicts.Verdict.ALLOW
-                    : ct.isRightClick() ? BrandVerdicts.Verdict.BLOCK : null;
+            BrandVerdicts.Verdict next;
+            if (ct.isLeftClick()) next = BrandVerdicts.Verdict.ALLOW;
+            else if (ct.isRightClick()) next = BrandVerdicts.Verdict.BLOCK;
+            else if (ct == ClickType.MIDDLE) next = null;
+            else return; // drop, number keys and the like must not reset a verdict
             plugin.spoof().verdicts().decide(e.id(), next, player.getName());
             Messages m = plugin.messages().in(player);
             event.getInventory().setItem(slot, buildBrandItem(plugin.spoof().verdicts().get(e.id()), m));

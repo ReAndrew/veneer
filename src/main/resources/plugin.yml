@@ -36,19 +36,19 @@ commands:
 
 permissions:
   veneer.admin:
-    description: /veneer reload, info and version; update notices
+    description: The /veneer panel (players, detections, brands, channels, alert history), info, check, reload and version; update notices
     default: op
   veneer.lang:
     description: Choose your own message language with /veneer lang
     default: true
   veneer.alerts:
-    description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts)
+    description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts toggle)
     default: op
   veneer.spoof.use:
     description: Use /spoof
     default: op
   veneer.spoof.admin:
-    description: Admin /spoof subcommands (check, blockedchannels, blockedbrands)
+    description: Admin /spoof subcommands (check, brands allow/block/forget, blockedchannels, blockedbrands) and brand verdicts in the panel
     default: op
   # Bypasses have no children: the plugin resolves them itself, the most specific one set wins (a false on
   # veneer.bypass.hacks beats a true on veneer.bypass). veneer.* and * never grant them.

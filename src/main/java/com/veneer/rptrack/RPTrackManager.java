@@ -645,5 +645,15 @@ public class RPTrackManager extends VeneerModule implements Listener {
                         .serialize(plugin.messages().with(key, "players", names)));
         if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(),
                 "text", new Messages.Raw(m.plain(key, "players", names))));
+        if (cfg.getBoolean("discord.enabled", false)) {
+            String text = PlainTextComponentSerializer.plainText().serialize(plugin.messages().with(key, "players", names));
+            plugin.webhook().report(plugin.config().webhook(cfg.getString("discord.webhook-url", "")),
+                    com.veneer.core.Webhook.color(cfg.getString("discord.embed-color"), 0x9B59B6),
+                    cfg.getString("discord.title", "Veneer RPTrack"),
+                    cfg.getString("discord.message", "**Player:** %player%\n**Finding:** %text%"),
+                    cfg.getBoolean("discord.use-components-v2", true), player,
+                    Map.of("player", player.getName(), "uuid", player.getUniqueId().toString(), "text", text,
+                            "players", names, "version", com.veneer.hacks.utils.ClientVersions.name(player)));
+        }
     }
 }

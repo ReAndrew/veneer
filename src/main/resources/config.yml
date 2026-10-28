@@ -404,12 +404,17 @@ spoof:
   # ──────────────────────────────────────────────────────────
   #                 Discord Webhook Settings
   # ──────────────────────────────────────────────────────────
+  # embed-title and message placeholders: %player%, %uuid%, %reason%, %brand%, %version%, %violations% and
+  # %channels% (one bullet per line), %alert% (the console line), plus any PlaceholderAPI placeholder
   discord:
     enabled: false
     # Leave empty to use general.discord.webhook
     webhook: ""
-    embed-title: "**Veneer spoof alert**"
+    embed-title: "Veneer spoof alert"
     embed-color: "#2AB7CA"
+    # true = Discord Components V2 (Container + accent_color), false = classic embeds
+    use-components-v2: false
+    message: "**Player**: %player%\n**Violations**:\n%violations%\n**Client Version**: %version%\n**Brand**: `%brand%`\n**Channels**:\n%channels%"
 
   # Whether to send Discord alerts when a player joins with a client brand,
   # even without a violation
@@ -480,15 +485,19 @@ hacks:
       retention-days: 180
 
   # Discord webhook for mod scan results
-  # Placeholders: &name& = player, &checker& = checker, &reason& = reason, &hacks& = hacks list, &results& = results
+  # title and message placeholders: %player%, %uuid%, %checker%, %reason%, %hacks% (mods checked),
+  # %results% (one "mod: RESULT" per line), %detected% (mods found, or none), %brand%, %channels%, %version%,
+  # plus any PlaceholderAPI placeholder (%luckperms_prefix%, %player_ping%...). The older &name& form still works.
   discord:
     enabled: false
     # Leave empty to use general.discord.webhook
     webhook-url: ""
-    embed-color: 16776960
+    title: "Veneer mod scan"
+    # "#RRGGBB" or a decimal number
+    embed-color: "#FFFF00"
     # true = Discord Components V2 (Container + accent_color), false = classic embeds
     use-components-v2: true
-    message: "**Player:** &name&\n**Checked by:** &checker&\n**Reason:** &reason&\n**Hacks checked:** &hacks&\n**Results:**\n&results&"
+    message: "**Player:** %player%\n**Checked by:** %checker%\n**Reason:** %reason%\n**Hacks checked:** %hacks%\n**Results:**\n%results%"
 
   detection:
 
@@ -768,12 +777,15 @@ hacks:
       # Console command on a mismatch. Placeholders: %player%, %real% (e.g. "<=1.21.1"), %claimed% (e.g. "1.21.11")
       command-if-mismatch: ""
 
+    # title and message placeholders: %player%, %uuid%, %checker%, %lang% (detected language), %response% (the raw
+    # answer), %brand%, %version%, plus any PlaceholderAPI placeholder
     discord:
       enabled: false
       webhook-url: ""   # empty = general.discord.webhook
-      embed-color: 5763719
+      title: "Veneer language check"
+      embed-color: "#57F287"
       use-components-v2: true
-      message: "**Player:** &name&\n**Checked by:** &checker&\n**Language:** &lang&"
+      message: "**Player:** %player%\n**Checked by:** %checker%\n**Language:** %lang%"
 
     timeout-ticks: 100
 
@@ -950,3 +962,12 @@ rptrack:
   timeout-ticks: 100        # max wait for client answers
   liquidbounce-probe: true  # detect LiquidBounce via its 127.0.0.1:15000 server
   alert: true               # notify staff (veneer.alerts) on a match
+  # Discord report on a match (linked accounts, LiquidBounce). Placeholders: %player%, %uuid%, %text% (the finding,
+  # in general.language), %players% (linked accounts), %version%, plus any PlaceholderAPI placeholder.
+  discord:
+    enabled: false
+    webhook-url: ""   # empty = general.discord.webhook
+    title: "Veneer RPTrack"
+    embed-color: "#9B59B6"
+    use-components-v2: true
+    message: "**Player:** %player%\n**Finding:** %text%"

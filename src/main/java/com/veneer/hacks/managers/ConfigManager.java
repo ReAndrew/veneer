@@ -142,7 +142,8 @@ public class ConfigManager {
 
     public boolean isDiscordEnabled()   { return masterConfig.getBoolean("discord.enabled", false); }
     public String  getWebhookUrl()      { return plugin.config().webhook(masterConfig.getString("discord.webhook-url", "")); }
-    public int     getEmbedColor()      { return masterConfig.getInt("discord.embed-color", 16776960); }
+    public int     getEmbedColor()      { return com.veneer.core.Webhook.color(masterConfig.getString("discord.embed-color"), 16776960); }
+    public String  getDiscordTitle()    { return masterConfig.getString("discord.title", "Veneer mod scan"); }
     public String  getDiscordMessage()  { return masterConfig.getString("discord.message", ""); }
     public boolean isDiscordUseComponentsV2() { return masterConfig.getBoolean("discord.use-components-v2", true); }
 
@@ -200,7 +201,8 @@ public class ConfigManager {
     public boolean isLangOnlyFirstJoin()    { return langConfig.getBoolean("auto-check-on-join.only-first-join", false); }
     public boolean isLangDiscordEnabled()   { return langConfig.getBoolean("discord.enabled", false); }
     public String  getLangWebhookUrl()      { return plugin.config().webhook(langConfig.getString("discord.webhook-url", "")); }
-    public int     getLangEmbedColor()      { return langConfig.getInt("discord.embed-color", 5763719); }
+    public int     getLangEmbedColor()      { return com.veneer.core.Webhook.color(langConfig.getString("discord.embed-color"), 5763719); }
+    public String  getLangDiscordTitle()    { return langConfig.getString("discord.title", "Veneer language check"); }
     public String  getLangDiscordMessage()  { return langConfig.getString("discord.message", ""); }
     public boolean isVersionCheckEnabled()  { return langConfig.getBoolean("version-check.enabled", true); }
     public String  getVersionMismatchCommand() { return langConfig.getString("version-check.command-if-mismatch", ""); }

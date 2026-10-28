@@ -594,5 +594,15 @@ public class ConfigManager {
         return config.getString("discord.embed-color", "#2AB7CA");
     }
 
+    /** The alert text; see DiscordWebhookHandler for the placeholders. */
+    public String getDiscordMessage() {
+        return config.getString("discord.message", "**Player**: %player%\n**Violations**:\n%violations%\n"
+                + "**Client Version**: %version%\n**Brand**: `%brand%`\n**Channels**:\n%channels%");
+    }
+
+    public boolean isDiscordUseComponentsV2() {
+        return config.getBoolean("discord.use-components-v2", false);
+    }
+
 
 }
