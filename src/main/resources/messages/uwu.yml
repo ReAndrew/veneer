@@ -22,7 +22,7 @@ check-started: "{prefix}<white>Stawting a widdle checky on <yellow>{player}<whit
 check-complete: "{prefix}<white>Checky-check compwete fow <yellow>{player}<white>:"
 check-timeout: "{prefix}<yellow>{player} <white>didn't wespond - marked as <red>TIMEOUT<white>."
 doublecheck: "{prefix}<yellow>DoubweCheck<gray>: <white>{player} <gray>flagged - wunning confiwmation scan, nya~"
-anticheat-trigger: "{prefix}<gray>Da anticheat noticed <yellow>{player}<gray> being a wittle sus... stawting auto-checky now~"
+anticheat-trigger: "{prefix}<gray>Da anticheat noticed <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray> being a wittle sus... stawting auto-checky now~"
 join-check: "{prefix}<gray>Doing an automatic checky on <yellow>{player} <gray>when dey join~"
 already-checking: "{prefix}<yellow>{player} <white>is awweady being checkied, hehe~."
 invalid-hack: "{prefix}<red>Unknown hacky-wacky: <white>{hack}"

@@ -23,7 +23,7 @@ check-started: "{prefix}<white>Запуск проверки игрока <yello
 check-complete: "{prefix}<white>Проверка игрока <yellow>{player}<white> завершена:"
 check-timeout: "{prefix}<yellow>{player} <white>не ответил — помечен как <red>ТАЙМАУТ<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>помечен — запуск повторной проверки..."
-anticheat-trigger: "{prefix}<gray>Античит обнаружил <yellow>{player}<gray>. Запуск автоматической проверки..."
+anticheat-trigger: "{prefix}<gray>Античит обнаружил <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray>. Запуск автоматической проверки..."
 join-check: "{prefix}<gray>Автоматическая проверка <yellow>{player} <gray>при входе..."
 already-checking: "{prefix}<yellow>{player} <white>уже проходит проверку."
 invalid-hack: "{prefix}<red>Неизвестный чит: <white>{hack}"

@@ -22,7 +22,7 @@ check-started: "{prefix}<white>Überprüfung von <yellow>{player}<white> wird ge
 check-complete: "{prefix}<white>Überprüfung für <yellow>{player}<white> abgeschlossen:"
 check-timeout: "{prefix}<yellow>{player} <white>hat nicht geantwortet - als <red>ZEITÜBERSCHREITUNG <white>markiert."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>markiert - starte Bestätigungsscan..."
-anticheat-trigger: "{prefix}<gray>Das Anticheat hat <yellow>{player}<gray> erkannt. Starte automatische Überprüfung..."
+anticheat-trigger: "{prefix}<gray>Das Anticheat hat <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray> erkannt. Starte automatische Überprüfung..."
 join-check: "{prefix}<gray>Automatische Überprüfung von <yellow>{player} <gray>beim Beitritt..."
 already-checking: "{prefix}<yellow>{player} <white>wird bereits überprüft."
 invalid-hack: "{prefix}<red>Unbekannter Hack: <white>{hack}"
