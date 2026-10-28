@@ -48,7 +48,7 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
         if (args.length >= 2) {
             langs = new LinkedHashMap<>();
             for (String code : args[1].split(",")) {
-                String trimmed = code.trim().toLowerCase();
+                String trimmed = code.trim().toLowerCase(Locale.ROOT);
                 if (!allLangs.containsKey(trimmed)) {
                     plugin.messages().send(sender, "hacklang-unknown", "lang", trimmed);
                     return true;
@@ -70,14 +70,14 @@ public class HackLangCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1)
             return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
-                    .filter(n -> n.toLowerCase().startsWith(args[0].toLowerCase()))
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[0].toLowerCase(Locale.ROOT)))
                     .collect(Collectors.toList());
         if (args.length == 2) {
             String typed   = args[1];
             String prefix  = typed.contains(",") ? typed.substring(0, typed.lastIndexOf(',') + 1) : "";
             String current = typed.contains(",") ? typed.substring(typed.lastIndexOf(',') + 1) : typed;
             return plugin.hacks().config().getLanguages().keySet().stream()
-                    .filter(id -> id.startsWith(current.toLowerCase()))
+                    .filter(id -> id.startsWith(current.toLowerCase(Locale.ROOT)))
                     .map(id -> prefix + id)
                     .collect(Collectors.toList());
         }

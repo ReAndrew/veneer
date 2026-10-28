@@ -122,17 +122,6 @@ public class DatabaseManager {
                     uuid TEXT PRIMARY KEY,
                     language TEXT NOT NULL
                 )""");
-            // Browsers bound to an account: sha256 of the cookie secret, and sha256 of nick, address and client
-            s.execute("""
-                CREATE TABLE IF NOT EXISTS web_devices (
-                    secret_hash TEXT PRIMARY KEY,
-                    player_uuid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    perms TEXT NOT NULL,
-                    bind_hash TEXT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    expires_at INTEGER NOT NULL
-                )""");
             // veneer.web.* rights of the player when the token was issued, comma separated
             try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
             catch (SQLException alreadyThere) {}
@@ -580,87 +569,6 @@ public class DatabaseManager {
             plugin.getLogger().warning("saveToken: " + e.getMessage());
         }
         return token;
-    }
-
-    /** sha256 of what ties a browser to an account: the nick, the address (when {@code ip} is given) and the client's User-Agent. */
-    private static String bindHash(String name, String ip, String userAgent) {
-        return sha256(name + "\n" + (ip == null ? "" : ip) + "\n" + (userAgent == null ? "" : userAgent));
-    }
-
-    private static String sha256(String text) {
-        try {
-            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    /**
-     * Registers a browser for the account that owns a link token. The link is spent; the browser gets a random secret
-     * (returned, to be set as a cookie) and the database keeps only its sha256 together with the sha256 of nick,
-     * address and client, so the account is bound to this browser and its previous one stops working. Null when the
-     * link is unknown or expired, else the secret and its expiry.
-     */
-    public synchronized Map<String, String> registerDevice(String linkToken, String ip, String userAgent, boolean bindIp, int days) {
-        Map<String, String> info = validateToken(linkToken);
-        if (info == null) return null;
-        byte[] raw = new byte[32];
-        new java.security.SecureRandom().nextBytes(raw);
-        String secret = java.util.HexFormat.of().formatHex(raw);
-        long now = System.currentTimeMillis();
-        long expires = now + days * 86_400_000L;
-        try (PreparedStatement link = connection.prepareStatement("DELETE FROM editor_tokens WHERE token=?");
-             PreparedStatement old = connection.prepareStatement("DELETE FROM web_devices WHERE player_uuid=? OR expires_at<?");
-             PreparedStatement ins = connection.prepareStatement(
-                     "INSERT INTO web_devices (secret_hash,player_uuid,player_name,perms,bind_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)")) {
-            link.setString(1, linkToken);
-            link.executeUpdate();
-            old.setString(1, info.get("player_uuid"));
-            old.setLong(2, now);
-            old.executeUpdate();
-            ins.setString(1, sha256(secret));
-            ins.setString(2, info.get("player_uuid"));
-            ins.setString(3, info.get("player_name"));
-            ins.setString(4, info.get("perms"));
-            ins.setString(5, bindHash(info.get("player_name"), bindIp ? ip : null, userAgent));
-            ins.setLong(6, now);
-            ins.setLong(7, expires);
-            ins.executeUpdate();
-            return Map.of("secret", secret, "expires_at", String.valueOf(expires));
-        } catch (SQLException e) {
-            plugin.getLogger().warning("registerDevice: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** The account a browser secret belongs to, if the secret is known, unexpired and comes from the client it was bound to. */
-    public synchronized Map<String, String> validateDevice(String secret, String ip, String userAgent, boolean bindIp) {
-        if (connection == null || secret == null) return null;
-        try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT player_uuid, player_name, perms, bind_hash, expires_at FROM web_devices WHERE secret_hash=? AND expires_at>?")) {
-            ps.setString(1, sha256(secret));
-            ps.setLong(2, System.currentTimeMillis());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                String expected = bindHash(rs.getString("player_name"), bindIp ? ip : null, userAgent);
-                if (!java.security.MessageDigest.isEqual(expected.getBytes(), rs.getString("bind_hash").getBytes())) return null;
-                Map<String, String> info = new LinkedHashMap<>();
-                info.put("player_uuid", rs.getString("player_uuid"));
-                info.put("player_name", rs.getString("player_name"));
-                info.put("perms", rs.getString("perms"));
-                info.put("expires_at", String.valueOf(rs.getLong("expires_at")));
-                return info;
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().warning("validateDevice: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** The stored 64x64 skin of an account as a base64 PNG, or null. */
-    public synchronized String getSkin(String uuid) {
-        return getSkins(List.of(uuid)).get(uuid);
     }
 
     public synchronized Map<String, String> validateToken(String token) {

@@ -12,6 +12,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -23,6 +24,7 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -68,6 +70,8 @@ public final class VeneerGui implements Listener {
     }
 
     private final VeneerPlugin plugin;
+    /** The channel group an item of the channels page stands for, so a click can find its players. */
+    private final NamespacedKey channelsKey;
     private final GrimViolationTracker grimTracker;
     private final Map<UUID, Page> awaitingSearch = new ConcurrentHashMap<>();
 
@@ -78,6 +82,7 @@ public final class VeneerGui implements Listener {
             try { tracker = new GrimViolationTracker(plugin); } catch (Throwable ignored) {}
         }
         grimTracker = tracker;
+        channelsKey = new NamespacedKey(plugin, "channels");
     }
 
     // ── Public entry points ──────────────────────────────────────────────────
@@ -322,7 +327,7 @@ public final class VeneerGui implements Listener {
                 lore.add(m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen))))
                         .decoration(TextDecoration.ITALIC, false));
             if (GRIM_API && grimTracker != null && grimTracker.hasViolations(safeUuid(uuid)))
-                lore.add(Component.text("⚑ GrimAC flags").color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                lore.add(m.get("gui-player-grim-flagged").decoration(TextDecoration.ITALIC, false));
             skullMeta.lore(lore);
             skull.setItemMeta(skullMeta);
             inv.setItem(slot++, skull);
@@ -366,9 +371,9 @@ public final class VeneerGui implements Listener {
 
             ItemStack item = new ItemStack(detected.isEmpty() ? Material.PAPER : Material.WRITTEN_BOOK);
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName).color(NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("[" + type.toUpperCase(Locale.ROOT) + "]").color(NamedTextColor.GRAY)
+            lore.add(m.get("gui-detection-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?"))
                     .decoration(TextDecoration.ITALIC, false));
             if (!detected.isEmpty())
                 lore.add(m.get("gui-detection-mods", Map.of("mods", String.join(", ", detected)))
@@ -420,10 +425,10 @@ public final class VeneerGui implements Listener {
 
             ItemStack item = new ItemStack(Material.BELL);
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName).color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("[" + type.toUpperCase(Locale.ROOT) + "] by " + checker)
-                    .color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            lore.add(m.get("gui-alert-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?",
+                    "checker", checker != null ? checker : "?")).decoration(TextDecoration.ITALIC, false));
             if (!detected.isEmpty())
                 lore.add(m.get("gui-detection-mods", Map.of("mods", String.join(", ", detected)))
                         .decoration(TextDecoration.ITALIC, false));
@@ -438,8 +443,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No alerts found").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-alerts-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -519,8 +523,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No violations recorded yet").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-grim-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -574,16 +577,14 @@ public final class VeneerGui implements Listener {
                 String onlineNames = online.stream().map(Player::getName)
                         .limit(5).reduce((a, b) -> a + ", " + b).orElse("");
                 if (online.size() > 5) onlineNames += " +" + (online.size() - 5);
-                lore.add(Component.text("Online: " + onlineNames).color(NamedTextColor.GREEN)
-                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(m.get("gui-channel-online", Map.of("players", onlineNames)).decoration(TextDecoration.ITALIC, false));
                 lore.add(m.get("gui-channel-kick-hint").decoration(TextDecoration.ITALIC, false));
             }
             if (lastSeen > 0)
                 lore.add(m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen))))
                         .decoration(TextDecoration.ITALIC, false));
-            // Store full channel list in lore for retrieval on click
-            for (String ch : channelList)
-                lore.add(Component.text("§0" + ch).color(NamedTextColor.BLACK).decoration(TextDecoration.ITALIC, false));
+            meta.getPersistentDataContainer().set(channelsKey, PersistentDataType.STRING,
+                    String.join(",", new TreeSet<>(Arrays.asList(channelList))));
             meta.lore(lore);
             item.setItemMeta(meta);
             inv.setItem(slot++, item);
@@ -592,8 +593,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No channel groups recorded").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-channels-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -761,18 +761,10 @@ public final class VeneerGui implements Listener {
 
     private void handleChannels(Player player, VeneerMenuHolder holder, int slot, ItemStack item, ClickType clickType) {
         if (slot < PAGE_SIZE) {
-            if (item == null || !item.hasItemMeta() || !item.getItemMeta().hasLore()) return;
-            if (!clickType.isRightClick()) return;
-            // Extract channel set from hidden lore lines (prefixed with §0)
-            List<Component> lore = item.getItemMeta().lore();
-            if (lore == null) return;
-            List<String> channels = new ArrayList<>();
-            for (Component line : lore) {
-                String text = plain(line);
-                if (text.startsWith("§0")) channels.add(text.substring(2)); // strip §0
-            }
-            if (channels.isEmpty()) return;
-            String channelKey = String.join(",", new java.util.TreeSet<>(channels));
+            // Shift is the confirmation: a plain right-click must not kick a whole group by accident
+            if (clickType != ClickType.SHIFT_RIGHT || item == null || !item.hasItemMeta()) return;
+            String channelKey = item.getItemMeta().getPersistentDataContainer().get(channelsKey, PersistentDataType.STRING);
+            if (channelKey == null || channelKey.isEmpty()) return;
             // Kick online players with this channel group
             int kicked = 0;
             for (Player p : List.copyOf(plugin.getServer().getOnlinePlayers())) {
@@ -780,7 +772,9 @@ public final class VeneerGui implements Listener {
                 if (profile == null) continue;
                 String key = String.join(",", new java.util.TreeSet<>(profile.getChannels()));
                 if (channelKey.equals(key)) {
-                    p.kick(Component.text("Kicked by admin").color(NamedTextColor.RED));
+                    // Folia: each player is kicked on their own region thread
+                    Component reason = plugin.messages().in(p).get("gui-channel-kick-reason");
+                    FoliaScheduler.runAtEntity(plugin, p, () -> p.kick(reason));
                     kicked++;
                 }
             }

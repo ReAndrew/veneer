@@ -56,8 +56,11 @@ public class DiscordWebhookHandler {
      * @param brand The client brand
      * @param channel The channel that triggered the alert (can be null)
      * @param violations List of all violations (for multiple flags)
+     * @param violationType What was detected ({@code BLOCKED_CHANNEL}, {@code NO_BRAND}, ...); picks the console
+     *                      message, so the reason text is never parsed
      */
-    public void sendAlert(Player player, String reason, String brand, String channel, List<String> violations) {
+    public void sendAlert(Player player, String violationType, String reason, String brand, String channel,
+                          List<String> violations) {
         if (!config.isDiscordWebhookEnabled()) {
             return;
         }
@@ -81,7 +84,7 @@ public class DiscordWebhookHandler {
         }
         
         // Store any blocked channel for future reference
-        if (reason.contains("Using blocked channel:") && channel != null) {
+        if ("BLOCKED_CHANNEL".equals(violationType) && channel != null) {
             blockedChannels.put(playerUuid, channel);
         }
         
@@ -129,7 +132,7 @@ public class DiscordWebhookHandler {
                     }
                     
                     // Send the full webhook with all violations
-                    sendFullWebhook(player, reason, playerBrand, blockedChannel, allViolations);
+                    sendFullWebhook(player, violationType, reason, playerBrand, blockedChannel, allViolations);
                 }
             }, delaySeconds * 20L); // Convert seconds to ticks (20 ticks = 1 second)
         } else {
@@ -143,7 +146,7 @@ public class DiscordWebhookHandler {
             List<String> allViolations = pendingViolations.getOrDefault(playerUuid, new ArrayList<>());
             
             // Send the full webhook with all violations
-            sendFullWebhook(player, reason, brand, channel, allViolations.isEmpty() ? violations : allViolations);
+            sendFullWebhook(player, violationType, reason, brand, channel, allViolations.isEmpty() ? violations : allViolations);
         }
     }
     
@@ -166,9 +169,10 @@ public class DiscordWebhookHandler {
     /**
      * Sends a full webhook with all player information
      */
-    private void sendFullWebhook(Player player, String reason, String brand, String channel, List<String> violations) {
+    private void sendFullWebhook(Player player, String violationType, String reason, String brand, String channel,
+                                 List<String> violations) {
         // Get the appropriate console alert message
-        String consoleAlert = determineConsoleAlert(player, reason, brand, channel, violations);
+        String consoleAlert = determineConsoleAlert(player, violationType, reason, brand, channel, violations);
         
         // Send the full webhook
         sendWebhookDirectly(player, reason, brand, channel, violations, consoleAlert);
@@ -177,102 +181,40 @@ public class DiscordWebhookHandler {
     /**
      * Determines the appropriate console alert message based on the violation type
      */
-    private String determineConsoleAlert(Player player, String reason, String brand, String channel, List<String> violations) {
+    private String determineConsoleAlert(Player player, String violationType, String reason, String brand,
+                                         String channel, List<String> violations) {
+        String shownBrand = Text.inert(brand != null ? brand : "unknown");
         // For multiple violations, use the multiple flags console message
         if (violations != null && violations.size() > 1) {
-            String reasonsList = String.join(", ", violations);
             return config.getConsoleMultipleFlagsMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reasons%", reasonsList);
+                    .replace("%brand%", shownBrand)
+                    .replace("%reasons%", Text.inert(String.join(", ", violations)));
         }
-        
-        // For specific violation types, determine the appropriate message
-        if (reason.contains("Vanilla client with plugin channels")) {
-            return config.getVanillaCheckConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        } 
-        else if (reason.contains("Non-vanilla client with channels")) {
-            return config.getNonVanillaCheckConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        }
-        else if (reason.contains("Blocked channel:") || reason.contains("Client channels don't match whitelist")) {
-            String alert = config.getBlockedChannelsConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-            
-            if (channel != null) {
-                alert = alert.replace("%channel%", Text.inert(channel));
-            }
-            return alert;
-        }
-        else if (reason.contains("Blocked client brand:") || reason.contains("Client brand not in whitelist:")) {
-            // Use client-brands if enabled
-            String message = "%player% using client brand: %brand%";
-            if (config.isClientBrandsEnabled()) {
-                // Try to get a branded message first
-                String brandKey = config.getMatchingClientBrand(brand);
-                if (brandKey != null) {
-                    ConfigManager.ClientBrandConfig brandConfig = config.getClientBrandConfig(brandKey);
-                    message = brandConfig.getConsoleAlertMessage();
-                } else {
-                    // Fall back to default brand config
-                    message = config.getBlockedBrandsConsoleAlertMessage();
-                }
-            } else {
-                message = config.getBlockedBrandsConsoleAlertMessage();
-            }
-            return message.replace("%player%", player.getName())
-                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
-        }
-        else if (reason.contains("Spoofing Geyser client")) {
-            return config.getGeyserSpoofConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        }
-        else if (reason.contains("joined using client brand:")) {
-            // For client brand join alerts, use client-brands if available
-            String message = "%player% using client brand: %brand%";
-            if (config.isClientBrandsEnabled()) {
-                // Try to get a branded message first
-                String brandKey = config.getMatchingClientBrand(brand);
-                if (brandKey != null) {
-                    ConfigManager.ClientBrandConfig brandConfig = config.getClientBrandConfig(brandKey);
-                    message = brandConfig.getConsoleAlertMessage();
-                } else {
-                    // Fall back to default brand config
-                    message = config.getBlockedBrandsConsoleAlertMessage();
-                }
-            } else {
-                message = config.getBlockedBrandsConsoleAlertMessage();
-            }
-            return message.replace("%player%", player.getName())
-                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
-        }
-        else if (reason.contains("No client brand detected")) {
-            return config.getNoBrandConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%reason%", Text.inert(reason));
-        }
-        
-        // Default to the general console alert if no specific type is found
-        String alert = config.getConsoleAlertMessage()
+
+        String template = switch (violationType) {
+            case "VANILLA_WITH_CHANNELS" -> config.getVanillaCheckConsoleAlertMessage();
+            case "NON_VANILLA_WITH_CHANNELS" -> config.getNonVanillaCheckConsoleAlertMessage();
+            case "BLOCKED_CHANNEL", "CHANNEL_WHITELIST" -> config.getBlockedChannelsConsoleAlertMessage();
+            case "GEYSER_SPOOF" -> config.getGeyserSpoofConsoleAlertMessage();
+            case "NO_BRAND" -> config.getNoBrandConsoleAlertMessage();
+            case "CLIENT_BRAND", "JOIN_BRAND", "UNKNOWN_BRAND" -> brandConsoleMessage(brand);
+            default -> config.getConsoleAlertMessage();
+        };
+        String alert = template
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%brand%", shownBrand)
                 .replace("%reason%", Text.inert(reason));
-        
-        if (channel != null) {
-            alert = alert.replace("%channel%", Text.inert(channel));
-        }
-        return alert;
+        return channel != null ? alert.replace("%channel%", Text.inert(channel)) : alert;
     }
-    
+
+    /** The console message of the client-brands entry matching {@code brand}, else the blocked-brands one. */
+    private String brandConsoleMessage(String brand) {
+        String brandKey = config.isClientBrandsEnabled() ? config.getMatchingClientBrand(brand) : null;
+        return brandKey != null ? config.getClientBrandConfig(brandKey).getConsoleAlertMessage()
+                : config.getBlockedBrandsConsoleAlertMessage();
+    }
+
     /**
      * Directly sends a webhook
      */
@@ -342,50 +284,13 @@ public class DiscordWebhookHandler {
             int clientIndex = violation.indexOf(" (Client: ");
             String cleanViolation = clientIndex > 0 ? violation.substring(0, clientIndex) : violation;
             
-            // Look for patterns like "Client missing required channels for brand X: pattern"
-            if (cleanViolation.contains("Client missing required channels for brand")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            } 
-            // Also look for "Using blocked channel: X" pattern
-            else if (cleanViolation.contains("Using blocked channel:")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            }
-            // For any other violations that contain regex patterns
-            else if (cleanViolation.contains(": (?i)") || cleanViolation.contains(": ^") || cleanViolation.contains(".*")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            }
-            // Default case for other violations
-            else {
+            // Reasons are translated, so no wording is matched: what follows the last ": " is the brand, channel or
+            // pattern the reason names, and it goes in backticks
+            int patternStartIndex = cleanViolation.lastIndexOf(": ");
+            if (patternStartIndex > 0 && patternStartIndex + 2 < cleanViolation.length()) {
+                sb.append("• ").append(escapeJson(cleanViolation.substring(0, patternStartIndex + 2)))
+                        .append("`").append(escapeJson(cleanViolation.substring(patternStartIndex + 2))).append("`\\n");
+            } else {
                 sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
             }
         }

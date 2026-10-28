@@ -53,7 +53,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String subCommand = args[0].toLowerCase();
+        String subCommand = args[0].toLowerCase(Locale.ROOT);
         
         // Check permission
         if (!sender.hasPermission("veneer.spoof.use")) {
@@ -419,7 +419,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                                     .replace(".*", "")
                                     .replace("^", "")
                                     .replace("$", "");
-                                if (playerChannel.toLowerCase().contains(simplePattern.toLowerCase())) {
+                                if (playerChannel.toLowerCase(Locale.ROOT).contains(simplePattern.toLowerCase(Locale.ROOT))) {
                                     found = true;
                                     break;
                                 }
@@ -654,14 +654,14 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
         List<String> completions = new ArrayList<>();
         
         if (args.length == 1) {
-            String partialArg = args[0].toLowerCase();
+            String partialArg = args[0].toLowerCase(Locale.ROOT);
             for (String subcommand : subcommands) {
                 if (subcommand.startsWith(partialArg)) {
                     completions.add(subcommand);
                 }
             }
         } else if (args.length == 2) {
-            String partialArg = args[1].toLowerCase();
+            String partialArg = args[1].toLowerCase(Locale.ROOT);
 
             if (args[0].equalsIgnoreCase("brands"))
                 for (String s : List.of("allow", "block", "forget"))
@@ -678,7 +678,7 @@ public class SpoofCommand implements CommandExecutor, TabCompleter {
                 args[0].equalsIgnoreCase("runcheck")) {
                 completions.addAll(Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
-                        .filter(name -> name.toLowerCase().startsWith(partialArg))
+                        .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(partialArg))
                         .collect(Collectors.toList()));
             }
         }

@@ -99,8 +99,7 @@ public class VeneerPlugin extends JavaPlugin {
                 module.startup();
                 started.append(started.isEmpty() ? "" : ", ").append(module.id());
             } catch (Throwable t) {
-                getLogger().severe("Module '" + module.id() + "' failed to start: " + t);
-                t.printStackTrace();
+                getLogger().log(java.util.logging.Level.SEVERE, "Module '" + module.id() + "' failed to start", t);
                 module.shutdown();
                 disableCommands(module);
             }

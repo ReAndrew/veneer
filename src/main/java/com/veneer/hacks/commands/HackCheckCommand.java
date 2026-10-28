@@ -10,6 +10,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +51,7 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
         if (args.length >= 2) {
             hacks = new ArrayList<>();
             for (String id : args[1].split(",")) {
-                HackDefinition h = plugin.hacks().config().getHack(id.trim().toLowerCase());
+                HackDefinition h = plugin.hacks().config().getHack(id.trim().toLowerCase(Locale.ROOT));
                 if (h == null) {
                     sender.sendMessage(plugin.messages().in(sender).get("invalid-hack",
                             Map.of("hack", id.trim())));
@@ -81,14 +82,14 @@ public class HackCheckCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1)
             return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
-                    .filter(n -> n.toLowerCase().startsWith(args[0].toLowerCase()))
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[0].toLowerCase(Locale.ROOT)))
                     .collect(Collectors.toList());
         if (args.length == 2) {
             String typed = args[1];
             String prefix  = typed.contains(",") ? typed.substring(0, typed.lastIndexOf(',') + 1) : "";
             String current = typed.contains(",") ? typed.substring(typed.lastIndexOf(',') + 1) : typed;
             return plugin.hacks().config().getHacks().keySet().stream()
-                    .filter(id -> id.startsWith(current.toLowerCase()))
+                    .filter(id -> id.startsWith(current.toLowerCase(Locale.ROOT)))
                     .map(id -> prefix + id)
                     .collect(Collectors.toList());
         }

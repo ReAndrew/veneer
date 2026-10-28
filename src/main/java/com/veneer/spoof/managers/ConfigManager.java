@@ -3,6 +3,7 @@ package com.veneer.spoof.managers;
 import org.bukkit.configuration.ConfigurationSection;
 import com.veneer.VeneerPlugin;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -373,11 +374,7 @@ public class ConfigManager {
         return config.getString("messages.console-alert", "%player% flagged! %reason%");
     }
     
-    // Multiple flags messages
-    public String getMultipleFlagsMessage() {
-        return config.getString("messages.multiple-flags", "&8[&cVeneer&8] &e%player% has multiple violations: &c%reasons%");
-    }
-    
+    // Multiple flags message (console and Discord)
     public String getConsoleMultipleFlagsMessage() {
         return config.getString("messages.console-multiple-flags", "%player% has multiple violations: %reasons%");
     }
@@ -474,7 +471,7 @@ public class ConfigManager {
     }
     
     public String getChannelWhitelistMode() {
-        return config.getString("blocked-channels.whitelist-mode", "FALSE").toUpperCase();
+        return config.getString("blocked-channels.whitelist-mode", "FALSE").toUpperCase(Locale.ROOT);
     }
     
     public boolean isChannelWhitelistEnabled() {
@@ -539,7 +536,7 @@ public class ConfigManager {
     
     // Bedrock Handling
     public String getBedrockHandlingMode() {
-        return config.getString("bedrock-handling.mode", "EXEMPT").toUpperCase();
+        return config.getString("bedrock-handling.mode", "EXEMPT").toUpperCase(Locale.ROOT);
     }
     
     public boolean isBedrockExemptMode() {

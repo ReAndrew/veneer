@@ -100,7 +100,8 @@ public class AlertManager {
             config.isBlockedBrandsDiscordAlertEnabled()) {
             
             plugin.spoof().discord().sendAlert(
-                player, 
+                player,
+                "JOIN_BRAND",
                 "Joined with client brand: " + brand,
                 brand,
                 null,
@@ -121,42 +122,6 @@ public class AlertManager {
         
         // Use the centralized method to ensure no duplicates
         plugin.spoof().sendBrandAlert(player, brand, null);
-    }
-    
-    /**
-     * Sends a multiple violations alert for a player
-     * @param player The player with violations
-     * @param violations The list of violation reasons
-     * @param brand The player's client brand
-     */
-    public void sendMultipleViolationsAlert(Player player, List<String> violations, String brand) {
-        if (!canSendAlert(player.getUniqueId(), "MULTIPLE_VIOLATIONS")) {
-            return;
-        }
-        
-        // Join all reasons with commas
-        String reasonsList = String.join(", ", violations);
-        
-        // Format the player alert message for multiple violations
-        String playerAlert = config.getMultipleFlagsMessage()
-                .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                .replace("%reasons%", reasonsList);
-        
-        // Format the console alert message for multiple violations
-        String consoleAlert = config.getConsoleMultipleFlagsMessage()
-                .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                .replace("%reasons%", reasonsList);
-        
-        // Log to console
-        plugin.getLogger().info(consoleAlert);
-        
-        // Notify players with permission using our optimized list
-        sendAlertToRecipients(playerAlert);
-        
-        // Send to Discord if enabled
-        plugin.spoof().discord().sendAlert(player, "Multiple Violations", brand, null, violations);
     }
     
     /**
@@ -208,7 +173,7 @@ public class AlertManager {
         if (config.isDiscordWebhookEnabled() && brandConfig.shouldDiscordAlert()) {
             List<String> singleViolation = new ArrayList<>();
             singleViolation.add(reason);
-            plugin.spoof().discord().sendAlert(player, reason, brand, violatedChannel, singleViolation);
+            plugin.spoof().discord().sendAlert(player, violationType, reason, brand, violatedChannel, singleViolation);
         }
     }
     
@@ -315,7 +280,7 @@ public class AlertManager {
         if (config.isDiscordWebhookEnabled() && sendDiscordAlert) {
             List<String> singleViolation = new ArrayList<>();
             singleViolation.add(reason);
-            plugin.spoof().discord().sendAlert(player, reason, brand, violatedChannel, singleViolation);
+            plugin.spoof().discord().sendAlert(player, violationType, reason, brand, violatedChannel, singleViolation);
         }
     }
     

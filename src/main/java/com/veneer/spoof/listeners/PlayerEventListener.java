@@ -9,8 +9,6 @@ import com.github.retrooper.packetevents.wrapper.configuration.client.WrapperCon
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPluginMessage;
 import org.bukkit.entity.Player;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
 
 public class PlayerEventListener extends PacketListenerAbstract {
     private final VeneerPlugin plugin;
@@ -124,13 +122,9 @@ public class PlayerEventListener extends PacketListenerAbstract {
                         plugin.getLogger().info("[Debug] Processing no-brand alert for " + player.getName());
                     }
                     
-                    // Manually trigger alert for NO_BRAND violation
-                    Map<String, String> noBrandViolation = new HashMap<>();
-                    noBrandViolation.put("NO_BRAND", "No client brand detected");
-                    
                     // Process on main thread
                     com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
-                        plugin.spoof().detection().processViolation(player, "NO_BRAND", "No client brand detected");
+                        plugin.spoof().detection().processViolation(player, "NO_BRAND", plugin.messages().getRaw("spoof-reason-no-brand"));
                     });
                 }
             }, 20L); // 1 second delay to allow brand packet to arrive

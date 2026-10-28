@@ -61,7 +61,7 @@ public class ConfigManager {
             DetectionMode mode;
             try {
                 mode = DetectionMode.valueOf(
-                        section.getString(id + ".mode", "TRANSLATE").toUpperCase());
+                        section.getString(id + ".mode", "TRANSLATE").toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 mode = DetectionMode.TRANSLATE;
             }
@@ -81,7 +81,7 @@ public class ConfigManager {
                 HackResult result;
                 try {
                     result = HackResult.valueOf(
-                            section.getString(name + ".result", "DETECTED").toUpperCase()
+                            section.getString(name + ".result", "DETECTED").toUpperCase(Locale.ROOT)
                                     .replace(" ", "_").replace("-", "_"));
                 } catch (IllegalArgumentException e) {
                     result = HackResult.DETECTED;

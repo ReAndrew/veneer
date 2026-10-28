@@ -1,6 +1,7 @@
 package com.veneer.rptrack;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.FoliaScheduler;
@@ -410,7 +411,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
             debug(player.getName() + ": probe done, cached=" + cachedOneBased + ", no answer=" + silent
                     + ", liquidbounce=" + lb + ", declined=" + s.declined);
         }
-        if (lb) report(player, "LiquidBounce local HTTP server (port 15000) reachable");
+        if (lb) report(player, "rptrack-text-liquidbounce", List.of());
 
         if (unique) {
             // Not PROBE any more, so the probe timeout cannot run this twice while the database is read
@@ -553,9 +554,9 @@ public class RPTrackManager extends VeneerModule implements Listener {
             // a known machine is stored with that machine's packs
             plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, false);
             if (!l.direct().isEmpty() && alert)
-                report(player, "same client cache as: " + String.join(", ", l.direct()));
+                report(player, "rptrack-text-same-cache", l.direct());
             if (!l.indirect().isEmpty() && alert)
-                report(player, "probably the same client (one pack missing) as: " + String.join(", ", l.indirect()));
+                report(player, "rptrack-text-probably-same", l.indirect());
         });
     }
 
@@ -605,7 +606,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
             results.put(player.getUniqueId(), new Result(Long.bitCount(mask | own), linked.size(), lb));
             plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, false);
             if (!linked.isEmpty() && alert)
-                report(player, "same client cache as: " + String.join(", ", linked));
+                report(player, "rptrack-text-same-cache", linked);
         });
     }
 
@@ -636,9 +637,13 @@ public class RPTrackManager extends VeneerModule implements Listener {
         return 0;
     }
 
-    private void report(Player player, String text) {
-        String msg = "[RPTrack] " + player.getName() + ": " + text;
-        plugin.getLogger().info(msg);
-        if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(), "text", text));
+    /** Logs a finding in the server language and alerts staff, each in their own language ({@code key} takes {@code {players}}). */
+    private void report(Player player, String key, Collection<String> players) {
+        String names = String.join(", ", players);
+        plugin.getLogger().info("[RPTrack] " + player.getName() + ": "
+                + PlainTextComponentSerializer.plainText()
+                        .serialize(plugin.messages().with(key, "players", names)));
+        if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(),
+                "text", new Messages.Raw(m.plain(key, "players", names))));
     }
 }

@@ -216,7 +216,7 @@ public class DetectionManager {
                 violations.put("NO_BRAND", true);
 
                 Map<String, String> detectedViolations = new HashMap<>();
-                detectedViolations.put("NO_BRAND", "No client brand detected");
+                detectedViolations.put("NO_BRAND", reason("spoof-reason-no-brand"));
 
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
                 com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
@@ -224,7 +224,7 @@ public class DetectionManager {
                 });
             } else if (config.shouldBlockNonVanillaWithChannels()) {
                 Map<String, String> detectedViolations = new HashMap<>();
-                detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
+                detectedViolations.put("NON_VANILLA_WITH_CHANNELS", reason("spoof-reason-non-vanilla"));
                 final Map<String, String> finalViolations = new HashMap<>(detectedViolations);
                 com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
                     processViolations(player, finalViolations, "unknown");
@@ -267,7 +267,7 @@ public class DetectionManager {
         
         // Check for Geyser spoofing
         if (config.isPunishSpoofingGeyser() && isSpoofingGeyser(player, brand)) {
-            detectedViolations.put("GEYSER_SPOOF", "Spoofing Geyser client");
+            detectedViolations.put("GEYSER_SPOOF", reason("spoof-reason-geyser"));
         }
         
         // Exclude ignored channels like minecraft:brand when evaluating
@@ -292,13 +292,13 @@ public class DetectionManager {
                 // Check if this brand should be flagged
                 if (brandConfig.shouldFlag()) {
                     detectedViolations.put("CLIENT_BRAND", 
-                        "Using flagged client brand: " + brand + " (" + matchedBrandKey + ")");
+                        reason("spoof-reason-flagged-brand", "brand", brand, "key", matchedBrandKey));
                 }
                 
                 // Check for strict-check (vanilla spoof detection)
                 if (brandConfig.hasStrictCheck() && hasChannels) {
                     detectedViolations.put("VANILLA_WITH_CHANNELS", 
-                        "Client claiming '" + matchedBrandKey + "' detected with plugin channels");
+                        reason("spoof-reason-brand-with-channels", "brand", matchedBrandKey));
                 }
                 
                 // Check required channels for this brand - ONLY IF ENABLED BY PARAMETER
@@ -341,7 +341,7 @@ public class DetectionManager {
                                     .replace("^", "")
                                     .replace("$", "");
                                     
-                                if (channel.toLowerCase().contains(simplePatternStr.toLowerCase())) {
+                                if (channel.toLowerCase(Locale.ROOT).contains(simplePatternStr.toLowerCase(Locale.ROOT))) {
                                     patternMatched = true;
                                     
                                     if (config.isDebugMode()) {
@@ -369,7 +369,7 @@ public class DetectionManager {
                         if (isPastGracePeriod) {
                             String missingChannelsStr = String.join(", ", missingChannelPatterns);
                             detectedViolations.put("MISSING_REQUIRED_CHANNELS", 
-                                "Client missing required channels for brand " + matchedBrandKey + ": " + missingChannelsStr);
+                                reason("spoof-reason-missing-brand-channels", "brand", matchedBrandKey, "channels", missingChannelsStr));
                             
                             if (config.isDebugMode()) {
                                 plugin.getLogger().info("[Debug] Missing required channels for " + player.getName() + 
@@ -386,9 +386,9 @@ public class DetectionManager {
                 
                 // Always alert if this brand should alert on join and this is a join check
                 if (isJoinCheck && brandConfig.shouldAlert() && 
-                    !violations.getOrDefault("BRAND_" + matchedBrandKey.toUpperCase(), false)) {
+                    !violations.getOrDefault("BRAND_" + matchedBrandKey.toUpperCase(Locale.ROOT), false)) {
                     
-                    violations.put("BRAND_" + matchedBrandKey.toUpperCase(), true);
+                    violations.put("BRAND_" + matchedBrandKey.toUpperCase(Locale.ROOT), true);
                     
                     if (config.isDebugMode() && !brandConfig.shouldFlag()) {
                         plugin.getLogger().info("[Debug] Sending brand alert for " + player.getName() + 
@@ -412,7 +412,7 @@ public class DetectionManager {
 
                 // Non-vanilla strict check - flag if player either has channels or isn't vanilla
                 if (config.shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
-                    detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
+                    detectedViolations.put("NON_VANILLA_WITH_CHANNELS", reason("spoof-reason-non-vanilla"));
                 }
             } else {
                 // No matching brand found - use default brand config
@@ -423,17 +423,17 @@ public class DetectionManager {
                 
                 // Check if default config should flag unknown brands
                 if (config.getClientBrandConfig(null).shouldFlag()) {
-                    detectedViolations.put("UNKNOWN_BRAND", "Using unknown client brand: " + brand);
+                    detectedViolations.put("UNKNOWN_BRAND", reason("spoof-reason-unknown-brand", "brand", brand));
                 }
                 
                 // Vanilla check still takes precedence
                 if (config.isVanillaCheckEnabled() && claimsVanilla && hasChannels) {
-                    detectedViolations.put("VANILLA_WITH_CHANNELS", "Vanilla client with plugin channels");
+                    detectedViolations.put("VANILLA_WITH_CHANNELS", reason("spoof-reason-vanilla-channels"));
                 }
                 
                 // Non-vanilla strict check - flag if player either has channels or isn't vanilla
                 else if (config.shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
-                    detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
+                    detectedViolations.put("NON_VANILLA_WITH_CHANNELS", reason("spoof-reason-non-vanilla"));
                 }
             }
         } else {
@@ -441,12 +441,12 @@ public class DetectionManager {
             
             // Vanilla client check - this takes precedence
             if (config.isVanillaCheckEnabled() && claimsVanilla && hasChannels) {
-                detectedViolations.put("VANILLA_WITH_CHANNELS", "Vanilla client with plugin channels");
+                detectedViolations.put("VANILLA_WITH_CHANNELS", reason("spoof-reason-vanilla-channels"));
             }
             
             // Non-vanilla strict check - flag if player either has channels or isn't vanilla
             else if (config.shouldBlockNonVanillaWithChannels() && (!claimsVanilla || hasChannels)) {
-                detectedViolations.put("NON_VANILLA_WITH_CHANNELS", "Client modifications detected");
+                detectedViolations.put("NON_VANILLA_WITH_CHANNELS", reason("spoof-reason-non-vanilla"));
             }
         }
         
@@ -462,20 +462,20 @@ public class DetectionManager {
                         List<String> missingChannels = findMissingRequiredChannels(filteredChannels);
                         if (!missingChannels.isEmpty()) {
                             detectedViolations.put("CHANNEL_WHITELIST", 
-                                "Missing required channels: " + String.join(", ", missingChannels));
+                                reason("spoof-reason-missing-channels", "channels", String.join(", ", missingChannels)));
                         } else {
                             detectedViolations.put("CHANNEL_WHITELIST", 
-                                "Client channels don't match whitelist requirements");
+                                reason("spoof-reason-whitelist-mismatch"));
                         }
                     } else {
-                        detectedViolations.put("CHANNEL_WHITELIST", "No whitelisted channels detected");
+                        detectedViolations.put("CHANNEL_WHITELIST", reason("spoof-reason-no-whitelisted"));
                     }
                 }
             } else {
                 // Blacklist mode
                 String blockedChannel = findBlockedChannel(filteredChannels);
                 if (blockedChannel != null) {
-                    detectedViolations.put("BLOCKED_CHANNEL", "Using blocked channel: " + blockedChannel);
+                    detectedViolations.put("BLOCKED_CHANNEL", reason("spoof-reason-blocked-channel", "channel", blockedChannel));
                 }
             }
         }
@@ -766,7 +766,7 @@ public class DetectionManager {
         if (brand == null) return false;
         
         // Check if brand contains "geyser" (case insensitive)
-        boolean claimsGeyser = brand.toLowerCase().contains("geyser");
+        boolean claimsGeyser = brand.toLowerCase(Locale.ROOT).contains("geyser");
         
         // If player claims to be using Geyser but isn't detected as a Bedrock player
         return claimsGeyser && !plugin.bedrock().isBedrock(player);
@@ -872,5 +872,15 @@ public class DetectionManager {
         playerViolations.remove(playerUUID);
         recentlyCheckedPlayers.remove(playerUUID);
         requiredChannelCheckedPlayers.remove(playerUUID);
+    }
+
+    /**
+     * A violation reason in the server language. Values go in as they are: the alert templates make them inert, and
+     * the reason is plain text in the console and on Discord.
+     */
+    private String reason(String key, String... pairs) {
+        String text = plugin.messages().getRaw(key);
+        for (int i = 0; i + 1 < pairs.length; i += 2) text = text.replace("{" + pairs[i] + "}", String.valueOf(pairs[i + 1]));
+        return text;
     }
 }

@@ -436,9 +436,7 @@ spoof:
     alert: "&8[&cVeneer&8] &e%player% flagged! &c%reason%"
     # Message logged to console (no color codes needed)
     console-alert: "%player% flagged! %reason%"
-    # Message for multiple violations
-    multiple-flags: "&8[&cVeneer&8] &e%player% has multiple violations: &c%reasons%"
-    # Message for console when multiple violations
+    # Console and Discord line when a player has several violations
     console-multiple-flags: "%player% has multiple violations: %reasons%"
 
 hacks:

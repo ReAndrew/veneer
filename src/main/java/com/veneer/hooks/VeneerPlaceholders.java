@@ -7,6 +7,7 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -49,7 +50,7 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
             case "is_bedrock": return String.valueOf(plugin.bedrock().isBedrock(player));
             case "client_type": {
                 PlayerProfile data = plugin.profileOf(player.getUniqueId());
-                return data == null ? "unknown" : data.clientType().name().toLowerCase();
+                return data == null ? "unknown" : data.clientType().name().toLowerCase(Locale.ROOT);
             }
             case "alerts": return plugin.alerts().isEnabled(player.getUniqueId()) ? "on" : "off";
             case "group": return plugin.hooks().primaryGroup(player);
