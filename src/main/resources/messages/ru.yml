@@ -21,7 +21,6 @@ update-available: "{prefix}<green>Доступен Veneer {latest}</green> <gray
 # ======================================================================
 check-started: "{prefix}<white>Запуск проверки игрока <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white>..."
 check-complete: "{prefix}<white>Проверка игрока <yellow>{player}<white> завершена:"
-check-timeout: "{prefix}<yellow>{player} <white>не ответил — помечен как <red>ТАЙМАУТ<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>помечен — запуск повторной проверки..."
 anticheat-trigger: "{prefix}<gray>Античит обнаружил <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray>. Запуск автоматической проверки..."
 join-check: "{prefix}<gray>Автоматическая проверка <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>при входе..."
@@ -144,7 +143,7 @@ spoof-none-flagging: "<green>Сейчас нет игроков, замечен�
 
 # ======================================================================
 # SPOOF  violation reasons
-# Plain text, no tags. Listed under 'Violations detected'. Placeholders: {channel}, {channels}, {brand}.
+# Plain text, no tags. Listed under 'Violations detected', and %reason% of the spoof alerts in config.yml (server language). Placeholders: {channel}, {channels}, {brand}, {key}.
 # ======================================================================
 spoof-reason-non-vanilla: "Обнаружен не ванильный клиент"
 spoof-reason-vanilla-channels: "Ванильный клиент с каналами плагинов"
@@ -157,6 +156,10 @@ spoof-reason-no-whitelisted: "Каналы из белого списка не �
 spoof-reason-blocked-channel: "Используется заблокированный канал: {channel}"
 spoof-reason-missing-brand-channels: "Отсутствуют обязательные каналы для {brand}: {channels}"
 spoof-reason-unknown: "Неизвестная причина (проверьте конфигурацию)"
+spoof-reason-no-brand: "Бренд клиента не получен"
+spoof-reason-unknown-brand: "Неизвестный бренд клиента: {brand}"
+spoof-reason-flagged-brand: "Помеченный бренд клиента: {brand} ({key})"
+spoof-reason-brand-with-channels: "Клиент выдаёт себя за '{brand}', но у него есть каналы плагинов"
 
 # ======================================================================
 # SPOOF  /spoof channels and /spoof brand
@@ -219,7 +222,7 @@ veneer-help-arg-languages: "язык1,язык2"
 veneer-help-arg-language: "язык"
 veneer-cmd-help: "этот список"
 veneer-cmd-lang: "язык сообщений Veneer для вас"
-veneer-cmd-alerts: "включить или выключить ваши оповещения"
+veneer-cmd-alerts: "история оповещений и детектов; toggle включает и выключает ваши оповещения"
 veneer-cmd-info: "клиент, проверки модов, RPTrack и обходы игрока"
 veneer-cmd-reload: "перезагрузить config.yml и сообщения"
 veneer-cmd-version: "текущая и последняя версия"
@@ -234,6 +237,12 @@ veneer-cmd-hackcheck: "проверить игрока на моды"
 veneer-cmd-hacklang: "узнать язык игры игрока"
 veneer-cmd-hackeditor: "ссылка на веб-панель"
 veneer-cmd-rptrack: "отпечаток ресурспаков и связанные аккаунты"
+veneer-cmd-player: "страница с информацией об игроке"
+veneer-cmd-find: "найти игрока и открыть информацию о нём"
+veneer-cmd-check: "окно проверки игрока"
+veneer-cmd-brands: "страница фильтров брендов"
+veneer-cmd-channels: "группы каналов плагинов"
+veneer-cmd-players-only: "{prefix}<red>Эту команду могут использовать только игроки."
 veneer-lang-players-only: "{prefix}<red>Язык выбирают только игроки; консоль использует general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Ваш язык:</gray> <white>{lang}</white> <gray>(как на сервере). Доступны:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Ваш язык:</gray> <white>{lang}</white> <gray>(по языку игры). Доступны:</gray> <white>{available}</white><gray>, auto, reset</gray>"
@@ -248,6 +257,87 @@ veneer-latest-checking: "{prefix}<gray>Последняя версия: идёт
 veneer-latest-none: "{prefix}<gray>На GitHub ещё нет опубликованных релизов.</gray>"
 veneer-update-available: "{prefix}<green>Доступна версия {latest}:</green> <aqua>{url}</aqua>"
 veneer-latest-ok: "{prefix}<green>У вас последняя версия ({latest}).</green>"
+
+# ======================================================================
+# GUI  chest panel (/veneer with no arguments, requires veneer.admin)
+# Item names and lore are MiniMessage without {prefix}; chat lines (kicked, none-online) have it.
+# Placeholders: {date}, {player}, {brand}, {count}, {mods}, {type}, {checker}, {check}, {verbose}, {h}, {v}, {players}, {channels}.
+# ======================================================================
+gui-chest-title: "<dark_aqua><bold>Veneer</bold></dark_aqua>"
+gui-module-spoof: "Spoof"
+gui-module-hacks: "Hacks"
+gui-module-rptrack: "RPTrack"
+gui-module-on: "<green>✔ Включён"
+gui-module-off: "<red>✘ Выключен"
+gui-btn-editor: "Веб-редактор"
+gui-btn-reload: "Перезагрузить конфиг"
+gui-btn-version: "Версия"
+gui-btn-reload-lore: "<gray>Перезагружает config.yml и сообщения"
+gui-btn-version-lore: "<gray>Текущая версия и наличие обновлений"
+gui-btn-players: "Игроки"
+gui-btn-players-lore: "<gray>История игроков и поиск"
+gui-btn-detections: "Детекты"
+gui-btn-detections-lore: "<gray>Последние найденные моды"
+gui-btn-brands: "Фильтры брендов"
+gui-btn-brands-lore: "<gray>Разрешить или заблокировать бренды клиентов"
+gui-btn-grim: "Флаги GrimAC"
+gui-btn-grim-lore: "<gray>Последние нарушения GrimAC"
+gui-page-players: "<dark_aqua><bold>Игроки</bold></dark_aqua>"
+gui-page-detections: "<red><bold>Детекты</bold></red>"
+gui-page-brands: "<gold><bold>Фильтры брендов</bold></gold>"
+gui-page-grim: "<yellow><bold>Флаги GrimAC</bold></yellow>"
+gui-nav-prev: "<white>← Назад"
+gui-nav-next: "<white>Далее →"
+gui-nav-back: "<gray>↩ Главное меню"
+gui-nav-search: "<yellow>⌕ Поиск..."
+gui-nav-close: "<red>✕ Закрыть"
+gui-player-online: "<green>● В сети"
+gui-player-offline: "<gray>○ Не в сети"
+gui-player-last-seen: "<gray>Последний вход: <white>{date}"
+gui-player-grim-flagged: "<yellow>⚑ Есть флаги GrimAC"
+gui-detection-mods: "<gray>Моды: <red>{mods}"
+gui-detection-date: "<dark_gray>{date}"
+gui-detection-type: "<gray>[{type}]"
+gui-alert-type: "<gray>[{type}], проверил {checker}"
+gui-alerts-empty: "<gray>Оповещений нет"
+gui-brand-undecided: "<yellow>⚠ Не решено"
+gui-brand-allowed: "<green>✔ Разрешён"
+gui-brand-blocked: "<red>✘ Заблокирован"
+gui-brand-last: "<gray>Последний: <white>{player}"
+gui-brand-hint: "<dark_gray>ЛКМ: разрешить  ПКМ: заблокировать  СКМ: сбросить"
+gui-grim-check: "<gray>Проверка: <yellow>{check}"
+gui-grim-verbose: "<dark_gray>{verbose}"
+gui-grim-empty: "<gray>Нарушений пока нет"
+gui-search-prompt: "<yellow>Введите ник игрока в чат (<gray>. <yellow>для отмены):"
+gui-btn-alerts-log: "Журнал оповещений"
+gui-btn-alerts-log-lore: "<gray>История проверок с детектами"
+gui-btn-channels: "Группы каналов"
+gui-btn-channels-lore: "<gray>Встреченные наборы каналов плагинов"
+gui-page-alerts: "<yellow><bold>Оповещения</bold></yellow>"
+gui-page-channels: "<aqua><bold>Группы каналов</bold></aqua>"
+gui-player-brand: "<gray>Бренд: <white>{brand}"
+gui-player-channels: "<gray>Каналы: <white>{count}"
+gui-player-first-seen: "<gray>Первый вход: <white>{date}"
+gui-player-joins: "<gray>Входов: <white>{count}"
+gui-player-scans: "<gray>Проверок в базе: <white>{count}"
+gui-grim-flags-count: "<yellow>⚑ GrimAC: <white>флагов: {count}"
+gui-player-sensitivity: "<gray>Мышь: <white>H={h}%  V={v}%"
+gui-player-sensitivity-default: "<green>✔ По умолчанию (100%)"
+gui-player-sensitivity-nondefault: "<yellow>⚠ Чувствительность изменена"
+gui-player-sensitivity-nonvanilla: "<red>⚠ Нестандартная математика мыши"
+gui-player-btn-check: "<green>Проверить"
+gui-player-btn-check-lore: "<gray>Открывает окно проверки (только в сети)"
+gui-player-btn-scans: "Детекты"
+gui-player-btn-scans-lore: "<gray>История проверок этого игрока"
+gui-player-btn-alerts: "Оповещения"
+gui-player-btn-alerts-lore: "<gray>Оповещения по этому игроку"
+gui-channel-players: "<gray>Игроков с таким набором: <white>{count}"
+gui-channel-online: "<green>В сети: {players}"
+gui-channel-kick-hint: "<red>Shift + ПКМ, чтобы кикнуть игроков в сети"
+gui-channel-kicked: "{prefix}<green>Кикнуто игроков: {count}, каналы: <white>{channels}"
+gui-channel-none-online: "{prefix}<gray>В сети нет игроков с каналами: <white>{channels}"
+gui-channels-empty: "<gray>Группы каналов ещё не записаны"
+gui-channel-kick-reason: "<red>Кикнут администратором"
 
 # ======================================================================
 # VENEER  /veneer info <player>
@@ -281,7 +371,7 @@ veneer-rp-linked-none: "нет"
 
 # ======================================================================
 # RPTRACK  /rptrack and staff report
-# Placeholders: {label}, {player}, {mask}, {packs}, {linked}, {text}. {text} of rptrack-report is a technical line and stays English.
+# Placeholders: {label}, {player}, {mask}, {packs}, {linked}, {text}. {text} of rptrack-report is one of the rptrack-text-* lines; {players} there lists the linked accounts.
 # ======================================================================
 rptrack-disabled: "{prefix}<red>RPTrack отключён (rptrack.enabled).</red>"
 rptrack-usage: "{prefix}<red>Использование: /{label} \\<player></red>"
@@ -289,6 +379,9 @@ rptrack-none: "{prefix}<gray>Для</gray> <white>{player}</white> <gray>нет 
 rptrack-cache: "{prefix}<white>{player}</white> <gray>кэш:</gray> <white>{mask}</white> <gray>(паков: {packs})</gray>"
 rptrack-linked: "{prefix}<gray>Связанные аккаунты:</gray> <white>{linked}</white>"
 rptrack-report: "{prefix}<gray>[RPTrack]</gray> <white>{player}</white><gray>:</gray> {text}"
+rptrack-text-liquidbounce: "доступен локальный HTTP-сервер LiquidBounce (порт 15000)"
+rptrack-text-same-cache: "тот же кеш клиента, что у: {players}"
+rptrack-text-probably-same: "вероятно, тот же клиент (не хватает одного пака), что у: {players}"
 
 # ======================================================================
 # STARTUP BANNER  (console, shown inside the frame)
