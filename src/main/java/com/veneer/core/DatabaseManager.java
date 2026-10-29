@@ -122,17 +122,6 @@ public class DatabaseManager {
                     uuid TEXT PRIMARY KEY,
                     language TEXT NOT NULL
                 )""");
-            // Browsers bound to an account: sha256 of the cookie secret, and sha256 of nick, address and client
-            s.execute("""
-                CREATE TABLE IF NOT EXISTS web_devices (
-                    secret_hash TEXT PRIMARY KEY,
-                    player_uuid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    perms TEXT NOT NULL,
-                    bind_hash TEXT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    expires_at INTEGER NOT NULL
-                )""");
             // veneer.web.* rights of the player when the token was issued, comma separated
             try { s.execute("ALTER TABLE editor_tokens ADD COLUMN perms TEXT NOT NULL DEFAULT ''"); }
             catch (SQLException alreadyThere) {}
@@ -305,13 +294,14 @@ public class DatabaseManager {
     private List<Map<String, Object>> getHackResultsInternal(long scanId) {
         List<Map<String, Object>> list = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT hack_name, result FROM hack_results WHERE scan_id=? ORDER BY id ASC")) {
+                "SELECT hack_name, result, hack_id FROM hack_results WHERE scan_id=? ORDER BY id ASC")) {
             ps.setLong(1, scanId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> r = new LinkedHashMap<>();
                     r.put("hack_name", rs.getString("hack_name"));
                     r.put("result",    rs.getString("result"));
+                    r.put("hack_id",   rs.getString("hack_id"));
                     list.add(r);
                 }
             }
@@ -375,17 +365,30 @@ public class DatabaseManager {
         return list;
     }
 
-    /** Counts for the panel's overview: scans by type, players whose latest mod scan found something, known accounts. */
-    public synchronized Map<String, Object> getStats() {
+    /**
+     * Ids of the current result of each (player, mod): the latest DETECTED or NOT_DETECTED. Taken per mod, not per
+     * scan: an automatic scan checks only a few mods, and its clean result must not clear a mod it did not check.
+     * TIMEOUT and PROTECTED say nothing, so they keep the earlier answer. {@code %s} is an extra condition on s2.
+     */
+    private static final String CURRENT_RESULTS = """
+            SELECT MAX(r2.id) FROM hack_results r2 JOIN scans s2 ON s2.id = r2.scan_id
+            WHERE s2.type = 'hack' AND r2.result IN ('DETECTED', 'NOT_DETECTED') %s
+            GROUP BY s2.target_uuid, r2.hack_id""";
+
+    /** Counts for the panel's overview: scans by type, players with a mod found (tolerated mods left out), known accounts. */
+    public synchronized Map<String, Object> getStats(Collection<String> tolerated) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (connection == null) return out;
         try (Statement st = connection.createStatement()) {
             out.put("hack_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'hack'"));
             out.put("lang_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'lang'"));
             out.put("detected_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'hack' AND has_detected = 1"));
-            out.put("detected_players", count(st, """
-                    SELECT COUNT(*) FROM scans
-                    WHERE id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid) AND has_detected = 1"""));
+            // Mod ids come from the config, not from a request; quotes are doubled all the same
+            String skip = tolerated.isEmpty() ? "" : " AND r.hack_id NOT IN (" + String.join(",",
+                    tolerated.stream().map(id -> "'" + id.replace("'", "''") + "'").toList()) + ")";
+            out.put("detected_players", count(st, "SELECT COUNT(DISTINCT s.target_uuid) FROM hack_results r "
+                    + "JOIN scans s ON s.id = r.scan_id WHERE r.result = 'DETECTED'" + skip
+                    + " AND r.id IN (" + CURRENT_RESULTS.formatted("") + ")"));
             out.put("accounts", count(st, "SELECT COUNT(*) FROM (SELECT uuid FROM joins UNION SELECT target_uuid FROM scans)"));
             out.put("fingerprints", count(st, "SELECT COUNT(*) FROM rptrack"));
             out.put("scans_today", count(st, "SELECT COUNT(*) FROM scans WHERE timestamp > " + (System.currentTimeMillis() - 86_400_000L)));
@@ -515,7 +518,7 @@ public class DatabaseManager {
         return list;
     }
 
-    /** Removes everything stored about the given accounts (addresses, skin, client, fingerprint, scans with their results, language). */
+    /** Removes everything stored about the given accounts (addresses, skin, client, fingerprint, scans with their results, language); returns the rows removed. */
     public synchronized int deletePlayers(Collection<String> uuids) {
         if (connection == null || uuids.isEmpty()) return 0;
         String marks = String.join(",", Collections.nCopies(uuids.size(), "?"));
@@ -535,8 +538,7 @@ public class DatabaseManager {
                 try (PreparedStatement ps = connection.prepareStatement(sql)) {
                     int i = 1;
                     for (String uuid : uuids) ps.setString(i++, uuid);
-                    int n = ps.executeUpdate();
-                    if (sql.contains("FROM joins")) removed = n;
+                    removed += ps.executeUpdate();
                 }
             }
             connection.commit();
@@ -548,6 +550,35 @@ public class DatabaseManager {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) {}
         }
         return removed;
+    }
+
+    /** Ends every web panel link issued to this player. */
+    public synchronized void revokeTokens(String playerUUID) {
+        if (connection == null) return;
+        try (PreparedStatement ps = connection.prepareStatement("DELETE FROM editor_tokens WHERE player_uuid=?")) {
+            ps.setString(1, playerUUID);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("revokeTokens: " + e.getMessage());
+        }
+    }
+
+    /** The uuids stored under this name (joins, scans, fingerprints), any case; a name can have had several accounts. */
+    public synchronized Set<String> uuidsByName(String name) {
+        Set<String> out = new LinkedHashSet<>();
+        if (connection == null) return out;
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT uuid FROM joins WHERE name = ? COLLATE NOCASE
+                UNION SELECT target_uuid FROM scans WHERE target_name = ? COLLATE NOCASE
+                UNION SELECT uuid FROM rptrack WHERE name = ? COLLATE NOCASE""")) {
+            for (int i = 1; i <= 3; i++) ps.setString(i, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) if (rs.getString(1) != null && !rs.getString(1).isEmpty()) out.add(rs.getString(1));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("uuidsByName: " + e.getMessage());
+        }
+        return out;
     }
 
     public synchronized String saveToken(String playerUUID, String playerName, int expireMinutes, String perms) {
@@ -578,89 +609,9 @@ public class DatabaseManager {
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("saveToken: " + e.getMessage());
+            return null;
         }
         return token;
-    }
-
-    /** sha256 of what ties a browser to an account: the nick, the address (when {@code ip} is given) and the client's User-Agent. */
-    private static String bindHash(String name, String ip, String userAgent) {
-        return sha256(name + "\n" + (ip == null ? "" : ip) + "\n" + (userAgent == null ? "" : userAgent));
-    }
-
-    private static String sha256(String text) {
-        try {
-            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    /**
-     * Registers a browser for the account that owns a link token. The link is spent; the browser gets a random secret
-     * (returned, to be set as a cookie) and the database keeps only its sha256 together with the sha256 of nick,
-     * address and client, so the account is bound to this browser and its previous one stops working. Null when the
-     * link is unknown or expired, else the secret and its expiry.
-     */
-    public synchronized Map<String, String> registerDevice(String linkToken, String ip, String userAgent, boolean bindIp, int days) {
-        Map<String, String> info = validateToken(linkToken);
-        if (info == null) return null;
-        byte[] raw = new byte[32];
-        new java.security.SecureRandom().nextBytes(raw);
-        String secret = java.util.HexFormat.of().formatHex(raw);
-        long now = System.currentTimeMillis();
-        long expires = now + days * 86_400_000L;
-        try (PreparedStatement link = connection.prepareStatement("DELETE FROM editor_tokens WHERE token=?");
-             PreparedStatement old = connection.prepareStatement("DELETE FROM web_devices WHERE player_uuid=? OR expires_at<?");
-             PreparedStatement ins = connection.prepareStatement(
-                     "INSERT INTO web_devices (secret_hash,player_uuid,player_name,perms,bind_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)")) {
-            link.setString(1, linkToken);
-            link.executeUpdate();
-            old.setString(1, info.get("player_uuid"));
-            old.setLong(2, now);
-            old.executeUpdate();
-            ins.setString(1, sha256(secret));
-            ins.setString(2, info.get("player_uuid"));
-            ins.setString(3, info.get("player_name"));
-            ins.setString(4, info.get("perms"));
-            ins.setString(5, bindHash(info.get("player_name"), bindIp ? ip : null, userAgent));
-            ins.setLong(6, now);
-            ins.setLong(7, expires);
-            ins.executeUpdate();
-            return Map.of("secret", secret, "expires_at", String.valueOf(expires));
-        } catch (SQLException e) {
-            plugin.getLogger().warning("registerDevice: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** The account a browser secret belongs to, if the secret is known, unexpired and comes from the client it was bound to. */
-    public synchronized Map<String, String> validateDevice(String secret, String ip, String userAgent, boolean bindIp) {
-        if (connection == null || secret == null) return null;
-        try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT player_uuid, player_name, perms, bind_hash, expires_at FROM web_devices WHERE secret_hash=? AND expires_at>?")) {
-            ps.setString(1, sha256(secret));
-            ps.setLong(2, System.currentTimeMillis());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                String expected = bindHash(rs.getString("player_name"), bindIp ? ip : null, userAgent);
-                if (!java.security.MessageDigest.isEqual(expected.getBytes(), rs.getString("bind_hash").getBytes())) return null;
-                Map<String, String> info = new LinkedHashMap<>();
-                info.put("player_uuid", rs.getString("player_uuid"));
-                info.put("player_name", rs.getString("player_name"));
-                info.put("perms", rs.getString("perms"));
-                info.put("expires_at", String.valueOf(rs.getLong("expires_at")));
-                return info;
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().warning("validateDevice: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** The stored 64x64 skin of an account as a base64 PNG, or null. */
-    public synchronized String getSkin(String uuid) {
-        return getSkins(List.of(uuid)).get(uuid);
     }
 
     public synchronized Map<String, String> validateToken(String token) {
@@ -697,14 +648,15 @@ public class DatabaseManager {
      * Inserts the cache fingerprint of an account. An existing one gets the packs added ({@code replace} false) or
      * is replaced by {@code mask} ({@code replace} true).
      */
-    public synchronized void saveRPTrack(String uuid, String name, long mask, boolean liquidBounce, boolean replace) {
+    /** {@code lbProbed}: the LiquidBounce probe ran this time, so its answer replaces the stored one (a false hit clears). */
+    public synchronized void saveRPTrack(String uuid, String name, long mask, boolean liquidBounce, boolean lbProbed, boolean replace) {
         if (connection == null) return;
         long now = System.currentTimeMillis();
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO rptrack (uuid, name, mask, liquidbounce, first_seen, last_seen)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, mask = CASE WHEN ? THEN excluded.mask ELSE excluded.mask | rptrack.mask END,
-                    liquidbounce = excluded.liquidbounce OR rptrack.liquidbounce,
+                    liquidbounce = CASE WHEN ? THEN excluded.liquidbounce ELSE rptrack.liquidbounce END,
                     last_seen = excluded.last_seen""")) {
             ps.setString(1, uuid);
             ps.setString(2, name);
@@ -713,6 +665,7 @@ public class DatabaseManager {
             ps.setLong(5, now);
             ps.setLong(6, now);
             ps.setBoolean(7, replace);
+            ps.setBoolean(8, lbProbed);
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().warning("saveRPTrack: " + e.getMessage());
@@ -887,14 +840,22 @@ public class DatabaseManager {
      * not seen for {@code linkDays} (a skin is refreshed on join, so an old one belongs to an absent player), and
      * scans with their results after {@code scanDays}.
      */
+    private volatile boolean purged;
+
+    /** Whether {@link #purge} ran since the plugin started. */
+    public boolean purgedOnce() { return purged; }
+
     public synchronized void purge(int linkDays, int scanDays) {
         if (connection == null) return;
+        purged = true;
         long now = System.currentTimeMillis();
         try {
             if (linkDays > 0) {
                 purgeOlder("DELETE FROM joins WHERE last_seen < ?", now - linkDays * 86_400_000L);
                 purgeOlder("DELETE FROM skins WHERE updated < ?", now - linkDays * 86_400_000L);
                 purgeOlder("DELETE FROM clients WHERE updated < ?", now - linkDays * 86_400_000L);
+                // The resource-pack fingerprint links accounts too, so it is kept as long as the addresses
+                purgeOlder("DELETE FROM rptrack WHERE last_seen < ?", now - linkDays * 86_400_000L);
             }
             // results go with their scan (ON DELETE CASCADE)
             if (scanDays > 0) purgeOlder("DELETE FROM scans WHERE timestamp < ?", now - scanDays * 86_400_000L);
@@ -922,11 +883,18 @@ public class DatabaseManager {
      * Not synchronized as a whole: the rows are copied under the connection lock, and the pairwise comparison runs
      * outside it, so a large graph does not hold up scan saves on the main thread.
      */
-    public Map<String, Object> getLinkGraph(int maxPerIp, int minMatch, int maxPerClient, int minChannels) {
+    /** Whether two stored resource-pack fingerprints link their accounts (the RPTrack rule). */
+    public interface MaskLink { boolean linked(long a, long b); }
+
+    public Map<String, Object> getLinkGraph(int maxPerIp, MaskLink rp, int minMatch, int maxPerClient, int minChannels) {
         List<String[]> joinRows = new ArrayList<>(), clientRows = new ArrayList<>();
-        Set<String> detected = new HashSet<>();
-        loadLinkRows(joinRows, clientRows, detected);
+        Map<String, List<String>> detected = new HashMap<>();
+        Set<String> scanned = new HashSet<>();
+        loadLinkRows(joinRows, clientRows, detected, scanned);
         List<Map<String, Object>> tracks = getRPTracks();
+        Set<String> liquidbounce = new HashSet<>();
+        for (Map<String, Object> t : tracks)
+            if (t.get("liquidbounce") instanceof Number n && n.intValue() != 0) liquidbounce.add((String) t.get("uuid"));
 
         List<Map<String, Object>> edges = new ArrayList<>();
         Map<String, String> names = new LinkedHashMap<>();
@@ -949,9 +917,9 @@ public class DatabaseManager {
             long a = ((Number) tracks.get(i).get("mask")).longValue();
             for (int j = i + 1; j < tracks.size(); j++) {
                 long b = ((Number) tracks.get(j).get("mask")).longValue();
+                if (!rp.linked(a, b)) continue;
                 int common = Long.bitCount(a & b);
-                int needed = Math.max(1, minMatch);
-                if (common < needed) continue;
+                int needed = Math.max(1, Math.min(minMatch, common));
                 String ua = (String) tracks.get(i).get("uuid"), ub = (String) tracks.get(j).get("uuid");
                 names.putIfAbsent(ua, (String) tracks.get(i).get("name"));
                 names.putIfAbsent(ub, (String) tracks.get(j).get("name"));
@@ -986,7 +954,11 @@ public class DatabaseManager {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("id", d.getKey());
             n.put("name", names.getOrDefault(d.getKey(), d.getKey()));
-            n.put("detected", detected.contains(d.getKey()));
+            n.put("detected", detected.containsKey(d.getKey()) || liquidbounce.contains(d.getKey()));
+            // Ids of the mods the latest mod scan found, for their levels; the fingerprint's LiquidBounce is a cheat
+            n.put("mod_ids", detected.getOrDefault(d.getKey(), List.of()));
+            n.put("liquidbounce", liquidbounce.contains(d.getKey()));
+            n.put("scanned", scanned.contains(d.getKey()));
             n.put("links", d.getValue());
             n.put("skin", skins.get(d.getKey()));
             n.put("last_seen", lastSeen.get(d.getKey()));
@@ -999,8 +971,9 @@ public class DatabaseManager {
         return out;
     }
 
-    /** Join rows (uuid, name, ip) and the players whose latest mod scan found something. */
-    private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows, Set<String> detected) {
+    /** Join rows (uuid, name, ip), the mods each player's latest mod scan found, and the players ever mod-scanned. */
+    private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows,
+                                           Map<String, List<String>> detected, Set<String> scanned) {
         if (connection == null) return;
         try (Statement st = connection.createStatement()) {
             try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip, last_seen FROM joins ORDER BY last_seen DESC")) {
@@ -1010,10 +983,12 @@ public class DatabaseManager {
                 while (rs.next()) clientRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
             }
             try (ResultSet rs = st.executeQuery("""
-                    SELECT target_uuid FROM scans
-                    WHERE id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
-                      AND has_detected = 1""")) {
-                while (rs.next()) detected.add(rs.getString(1));
+                    SELECT s.target_uuid, r.hack_id FROM scans s JOIN hack_results r ON r.scan_id = s.id
+                    WHERE r.result = 'DETECTED' AND r.id IN (""" + CURRENT_RESULTS.formatted("") + ")")) {
+                while (rs.next()) detected.computeIfAbsent(rs.getString(1), k -> new ArrayList<>()).add(rs.getString(2));
+            }
+            try (ResultSet rs = st.executeQuery("SELECT DISTINCT target_uuid FROM scans WHERE type = 'hack'")) {
+                while (rs.next()) scanned.add(rs.getString(1));
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("getLinkGraph: " + e.getMessage());
@@ -1046,12 +1021,9 @@ public class DatabaseManager {
         if (connection == null) return new ArrayList<>();
         try (Statement st = connection.createStatement();
              ResultSet rs = st.executeQuery("""
-                SELECT r.hack_id, r.hack_name, s.target_name, s.target_uuid, MAX(s.timestamp) AS ts
+                SELECT r.hack_id, r.hack_name, s.target_name, s.target_uuid, s.timestamp AS ts
                 FROM hack_results r JOIN scans s ON s.id = r.scan_id
-                WHERE r.result = 'DETECTED'
-                  AND s.id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
-                GROUP BY r.hack_id, s.target_uuid
-                ORDER BY ts DESC""")) {
+                WHERE r.result = 'DETECTED' AND r.id IN (""" + CURRENT_RESULTS.formatted("") + ") ORDER BY ts DESC")) {
             while (rs.next()) {
                 Map<String, Object> mod = byMod.computeIfAbsent(rs.getString(1), k -> {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -1087,16 +1059,16 @@ public class DatabaseManager {
         out.put("mods", mods);
         if (connection == null) return out;
         try (PreparedStatement ps = connection.prepareStatement("""
-                SELECT r.hack_name, MAX(s.timestamp) AS ts
+                SELECT r.hack_name, s.timestamp AS ts, r.hack_id
                 FROM hack_results r JOIN scans s ON s.id = r.scan_id
-                WHERE s.target_uuid = ? AND r.result = 'DETECTED'
-                GROUP BY r.hack_id ORDER BY ts DESC""")) {
+                WHERE r.result = 'DETECTED' AND r.id IN (""" + CURRENT_RESULTS.formatted("AND s2.target_uuid = ?") + ") ORDER BY ts DESC")) {
             ps.setString(1, uuid);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("name", rs.getString(1));
                     m.put("last_seen", rs.getLong(2));
+                    m.put("id", rs.getString(3));
                     mods.add(m);
                 }
             }
@@ -1112,15 +1084,22 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().warning("getLinkDetails: " + e.getMessage());
         }
-        for (Map<String, Object> row : getRPTracks()) {
-            if (!uuid.equals(row.get("uuid"))) continue;
-            long mask = ((Number) row.get("mask")).longValue();
-            Map<String, Object> fp = new LinkedHashMap<>();
-            fp.put("bits", Long.toBinaryString(mask));
-            fp.put("packs", Long.bitCount(mask));
-            fp.put("liquidbounce", ((Number) row.get("liquidbounce")).intValue() != 0);
-            fp.put("last_seen", row.get("last_seen"));
-            out.put("fingerprint", fp);
+        // One row by key: the player page asks for this every 2.5 s during a scan
+        try (PreparedStatement ps = connection.prepareStatement("SELECT mask, liquidbounce, last_seen FROM rptrack WHERE uuid = ?")) {
+            ps.setString(1, uuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    long mask = rs.getLong(1);
+                    Map<String, Object> fp = new LinkedHashMap<>();
+                    fp.put("bits", Long.toBinaryString(mask));
+                    fp.put("packs", Long.bitCount(mask));
+                    fp.put("liquidbounce", rs.getInt(2) != 0);
+                    fp.put("last_seen", rs.getLong(3));
+                    out.put("fingerprint", fp);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("getLinkDetails fingerprint: " + e.getMessage());
         }
         return out;
     }
@@ -1141,5 +1120,7 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().warning("close: " + e.getMessage());
         }
+        // Late callers (a web request finishing during shutdown) see no connection instead of a closed one
+        connection = null;
     }
 }

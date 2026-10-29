@@ -17,7 +17,6 @@ import java.util.List;
 public final class PlayerEvents implements Listener {
 
     private final VeneerPlugin plugin;
-    private volatile long lastPurge;
 
     public PlayerEvents(VeneerPlugin plugin) {
         this.plugin = plugin;
@@ -33,18 +32,14 @@ public final class PlayerEvents implements Listener {
             var ip = address.getAddress().getHostAddress();
             var skin = event.getPlayer().getPlayerProfile().getTextures().getSkin();
             var skinUrl = skin != null ? skin.toString() : null;
+            // Addresses link accounts in the web panel; nothing needs them when it is off or storing is switched off
+            boolean store = plugin.hacks().running() && plugin.hacks().config().isWebEditorEnabled()
+                    && plugin.config().section("hacks.web-editor.links").getBoolean("store-addresses", true);
             FoliaScheduler.runAsync(plugin, () -> {
-                plugin.database().recordJoin(uuid, name, ip);
+                if (store) plugin.database().recordJoin(uuid, name, ip);
                 if (skinUrl != null && !plugin.database().hasFreshSkin(uuid, 7 * 86_400_000L)) {
                     String skinPng = Heads.fetch(skinUrl);
                     if (skinPng != null) plugin.database().saveSkin(uuid, skinPng);
-                }
-                long now = System.currentTimeMillis();
-                if (now - lastPurge > 3_600_000L) {
-                    lastPurge = now;
-                    var hacks = plugin.config().section("hacks");
-                    plugin.database().purge(hacks.getInt("web-editor.links.retention-days", 90),
-                            hacks.getInt("web-editor.history.retention-days", 180));
                 }
             });
         }

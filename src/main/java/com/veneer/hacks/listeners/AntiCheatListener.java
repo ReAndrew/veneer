@@ -1,7 +1,5 @@
 package com.veneer.hacks.listeners;
 
-import net.kyori.adventure.text.Component;
-import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.hacks.HackDefinition;
 import com.veneer.core.FoliaScheduler;
@@ -11,7 +9,6 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
-import java.util.function.Function;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -20,9 +17,11 @@ public class AntiCheatListener implements Listener {
 
     private final VeneerPlugin plugin;
 
+    // Legacy Bukkit-event fallbacks for Grim (tried only when the event-bus path fails)
     private static final String[] GRIM_CLASSES = {
-            "ac.grim.grimac.api.events.FlagEvent",
-            "ac.grim.grimac.events.FlagEvent"
+            "ac.grim.grimac.api.event.events.FlagEvent",   // modern API package
+            "ac.grim.grimac.api.events.FlagEvent",         // older builds
+            "ac.grim.grimac.events.FlagEvent"              // very old builds
     };
     private static final String[] VULCAN_CLASSES = {
             "me.frep.vulcan.api.event.VulcanFlagEvent",
@@ -35,6 +34,7 @@ public class AntiCheatListener implements Listener {
     private static final String[] MATRIX_CLASSES  = {"me.rerere.matrix.api.events.PlayerViolationEvent"};
     private static final String[] INTAVE_CLASSES = {"de.jpx3.intave.access.check.event.IntaveViolationEvent"};
     private static final String[] AAC_CLASSES = {"me.konsolas.aac.api.PlayerViolationEvent"};
+    private static final String[] THEMIS_CLASSES = {"me.activated.themis.api.event.ThemisFlagEvent"};
 
     public AntiCheatListener(VeneerPlugin plugin) {
         this.plugin = plugin;
@@ -46,7 +46,7 @@ public class AntiCheatListener implements Listener {
         if (plugin.hacks().config().isAnticheatEnabled("grim")) {
             boolean ok = tryRegisterGrimBus();
             for (String cls : GRIM_CLASSES)
-                if (!ok && tryRegister(cls, "Grim", true)) ok = true;
+                if (!ok && tryRegister(cls, "Grim")) ok = true;
             if (!ok) plugin.getLogger().info("[Hacks] Grim not found, skipping.");
         }
         registerAny(plugin.hacks().config().isAnticheatEnabled("vulcan"), "Vulcan", VULCAN_CLASSES);
@@ -54,12 +54,13 @@ public class AntiCheatListener implements Listener {
         registerAny(plugin.hacks().config().isAnticheatEnabled("matrix"), "Matrix", MATRIX_CLASSES);
         registerAny(plugin.hacks().config().isAnticheatEnabled("intave"), "Intave", INTAVE_CLASSES);
         registerAny(plugin.hacks().config().isAnticheatEnabled("aac"), "AAC", AAC_CLASSES);
+        registerAny(plugin.hacks().config().isAnticheatEnabled("themis"), "Themis", THEMIS_CLASSES);
     }
 
     private void registerAny(boolean enabled, String acName, String[] classes) {
         if (!enabled) return;
         for (String cls : classes)
-            if (tryRegister(cls, acName, false)) return;
+            if (tryRegister(cls, acName)) return;
         plugin.getLogger().info("[Hacks] " + acName + " not found, skipping.");
     }
 
@@ -77,12 +78,12 @@ public class AntiCheatListener implements Listener {
     }
 
     @SuppressWarnings("unchecked")
-    private boolean tryRegister(String className, String acName, boolean isGrim) {
+    private boolean tryRegister(String className, String acName) {
         try {
             Class<? extends Event> eventClass = (Class<? extends Event>) Class.forName(className);
             Bukkit.getPluginManager().registerEvent(
                     eventClass, this, EventPriority.NORMAL,
-                    (l, e) -> handleFlag(e, isGrim, acName), plugin, false);
+                    (l, e) -> handleFlag(e, acName), plugin, false);
             plugin.getLogger().info("[Hacks] " + acName + " hook registered (" + className + ").");
             return true;
         } catch (ClassNotFoundException e) {
@@ -93,9 +94,9 @@ public class AntiCheatListener implements Listener {
         }
     }
 
-    private void handleFlag(Event event, boolean isGrim, String acName) {
+    private void handleFlag(Event event, String acName) {
         if (!plugin.hacks().config().isDetectFlagEnabled()) return;
-        Player player = extractPlayer(event, isGrim, acName);
+        Player player = extractPlayer(event, acName);
         if (player == null) return;
         queueCheck(player, acName);
     }
@@ -117,7 +118,7 @@ public class AntiCheatListener implements Listener {
                         "Anticheat flag: " + acName));
     }
 
-    private Player extractPlayer(Event event, boolean isGrim, String acName) {
+    private Player extractPlayer(Event event, String acName) {
         Object raw = invokeNoArgs(event, "getPlayer");
         if (raw == null) raw = invokeNoArgs(event, "player");
 

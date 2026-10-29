@@ -34,7 +34,8 @@ public final class VeneerConfig {
 
     private final VeneerPlugin plugin;
     private final File file;
-    private YamlConfiguration cfg;
+    // Read by the web panel's threads: a reload fills in the new file first and then swaps it in
+    private volatile YamlConfiguration cfg;
 
     public VeneerConfig(VeneerPlugin plugin) {
         this.plugin = plugin;
@@ -44,8 +45,9 @@ public final class VeneerConfig {
 
     public void reload() {
         if (!file.exists()) plugin.saveResource("config.yml", false);
-        cfg = YamlConfiguration.loadConfiguration(file);
-        sync();
+        YamlConfiguration loaded = YamlConfiguration.loadConfiguration(file);
+        sync(loaded);
+        cfg = loaded;
     }
 
     /** A top-level or nested section; an empty one (with a warning) when missing. */
@@ -89,7 +91,7 @@ public final class VeneerConfig {
 
     // --------------------------------------------------------------- sync
 
-    private void sync() {
+    private void sync(YamlConfiguration cfg) {
         YamlConfiguration defaults;
         try (var in = plugin.getResource("config.yml")) {
             if (in == null) return;

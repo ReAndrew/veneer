@@ -9,13 +9,11 @@ import com.github.retrooper.packetevents.wrapper.configuration.client.WrapperCon
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPluginMessage;
 import org.bukkit.entity.Player;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
 
 public class PlayerEventListener extends PacketListenerAbstract {
     private final VeneerPlugin plugin;
     private final ConfigManager config;
-    
+
     // Extended delay in ticks for required channel checks (5 seconds)
     private static final long REQUIRED_CHANNEL_CHECK_DELAY = 5 * 20L;
 
@@ -27,9 +25,9 @@ public class PlayerEventListener extends PacketListenerAbstract {
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
         if (!(event.getPlayer() instanceof Player)) return;
-        
+
         Player player = (Player) event.getPlayer();
-        
+
         // No bypass check here: it would run on every packet. Channels are recorded for everyone (/veneer info
         // shows them); the checks they start honour the bypass in DetectionManager.checkPlayerAsync.
         // Handle plugin messages based on the packet type
@@ -41,10 +39,10 @@ public class PlayerEventListener extends PacketListenerAbstract {
             handlePluginMessage(player, packet.getChannelName(), packet.getData());
         }
     }
-    
+
     private boolean handlePluginMessage(Player player, String channel, byte[] data) {
         boolean channelRegistered = false;
-        
+
         // Handle channel registration/unregistration (for Fabric/Forge mods)
         if (channel.equals("minecraft:register") || channel.equals("minecraft:unregister")) {
             channelRegistered = handleChannelRegistration(player, channel, data);
@@ -52,15 +50,15 @@ public class PlayerEventListener extends PacketListenerAbstract {
             // Direct channel usage - check if this is a new channel
             channelRegistered = plugin.spoof().detection().addPlayerChannel(player, channel, true);
         }
-        
+
         return channelRegistered;
     }
-    
+
     private boolean handleChannelRegistration(Player player, String channel, byte[] data) {
         String payload = new String(data, StandardCharsets.UTF_8);
         String[] channels = payload.split("\0");
         boolean didRegister = false;
-        
+
         for (String registeredChannel : channels) {
             if (channel.equals("minecraft:register")) {
                 // Register the channel and trigger checks if needed
@@ -72,10 +70,10 @@ public class PlayerEventListener extends PacketListenerAbstract {
                 plugin.spoof().detection().removePlayerChannel(player, registeredChannel);
             }
         }
-        
+
         return didRegister;
     }
-    
+
     /**
      * Run the initial brand-only check
      * This doesn't check for required channels
@@ -84,7 +82,7 @@ public class PlayerEventListener extends PacketListenerAbstract {
         com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 if (config.isDebugMode()) {
-                    plugin.getLogger().info("[Debug] Running initial brand check for " + player.getName() + 
+                    plugin.getLogger().info("[Debug] Running initial brand check for " + player.getName() +
                                          " (without required channels check)");
                 }
                 plugin.spoof().detection().checkPlayerAsync(player, true, false);
@@ -108,13 +106,13 @@ public class PlayerEventListener extends PacketListenerAbstract {
     }
 
     public void onPlayerJoin(Player player) {
-        
+
         // Skip if player has bypass permission
         if (plugin.bypasses(player, "spoof", true)) return;
-        
+
         // Make sure the profile exists (channels may have registered during the configuration phase)
         plugin.profile(player);
-        
+
         // Special handling for no-brand detection
         if (config.isNoBrandCheckEnabled()) {
             com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
@@ -123,28 +121,24 @@ public class PlayerEventListener extends PacketListenerAbstract {
                     if (config.isDebugMode()) {
                         plugin.getLogger().info("[Debug] Processing no-brand alert for " + player.getName());
                     }
-                    
-                    // Manually trigger alert for NO_BRAND violation
-                    Map<String, String> noBrandViolation = new HashMap<>();
-                    noBrandViolation.put("NO_BRAND", "No client brand detected");
-                    
+
                     // Process on main thread
                     com.veneer.core.FoliaScheduler.runAtEntity(plugin, player, () -> {
-                        plugin.spoof().detection().processViolation(player, "NO_BRAND", "No client brand detected");
+                        plugin.spoof().detection().processViolation(player, "NO_BRAND", plugin.messages().getRaw("spoof-reason-no-brand"));
                     });
                 }
             }, 20L); // 1 second delay to allow brand packet to arrive
         }
-        
+
         // Schedule the checks with appropriate delays
         int standardDelay = config.getCheckDelay();
-        
+
         // First, do a "brand-only" check after the standard delay
         // This will only check for problematic brands but NOT required channels
         if (standardDelay >= 0) {
             scheduleInitialBrandCheck(player, standardDelay * 20L);
         }
-        
+
         // Then, do a complete check with required channels, but with a longer delay
         // This gives the client more time to register all its channels
         scheduleRequiredChannelsCheck(player, REQUIRED_CHANNEL_CHECK_DELAY);

@@ -8,47 +8,46 @@ import com.veneer.spoof.managers.ConfigManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DiscordWebhookHandler {
     private final VeneerPlugin plugin;
     private final ConfigManager config;
-    
+
     // Map to track players who have already been alerted for spoofing in the current session
     private final Map<UUID, Boolean> alertedPlayers = new ConcurrentHashMap<>();
-    
+
     // Map to track all pending violations for a player
     private final Map<UUID, List<String>> pendingViolations = new ConcurrentHashMap<>();
-    
+
     // Map to track player brands for alerts
     private final Map<UUID, String> playerBrands = new ConcurrentHashMap<>();
-    
+
     // Map to track blocked channels for alerts
     private final Map<UUID, String> blockedChannels = new ConcurrentHashMap<>();
-    
+
     public DiscordWebhookHandler(VeneerPlugin plugin) {
         this.plugin = plugin;
         this.config = plugin.spoof().config();
     }
-    
+
     /**
      * Starts collecting a player's violations for the alert
      * @param playerUuid The UUID of the player
      */
     public void registerPlayerJoin(UUID playerUuid) {
         pendingViolations.put(playerUuid, new ArrayList<>());
-        
+
         if (config.isDebugMode()) {
             plugin.getLogger().info("[Discord] Registered join time for player with UUID: " + playerUuid);
         }
     }
-    
+
     /**
      * Sends an alert to Discord webhook
      * @param player The player who triggered the alert
@@ -56,12 +55,15 @@ public class DiscordWebhookHandler {
      * @param brand The client brand
      * @param channel The channel that triggered the alert (can be null)
      * @param violations List of all violations (for multiple flags)
+     * @param violationType What was detected ({@code BLOCKED_CHANNEL}, {@code NO_BRAND}, ...); picks the console
+     *                      message, so the reason text is never parsed
      */
-    public void sendAlert(Player player, String reason, String brand, String channel, List<String> violations) {
+    public void sendAlert(Player player, String violationType, String reason, String brand, String channel,
+                          List<String> violations) {
         if (!config.isDiscordWebhookEnabled()) {
             return;
         }
-        
+
         String webhookUrl = config.getDiscordWebhookUrl();
         if (webhookUrl == null || webhookUrl.isEmpty()) {
             return;
@@ -69,52 +71,53 @@ public class DiscordWebhookHandler {
 
         UUID playerUuid = player.getUniqueId();
         PlayerProfile data = plugin.profiles().get(playerUuid);
-        
+
         // No data, no channels to check
         if (data == null) {
             return;
         }
-        
+
         // Store brand for this player
         if (brand != null) {
             playerBrands.put(playerUuid, brand);
         }
-        
+
         // Store any blocked channel for future reference
-        if (reason.contains("Using blocked channel:") && channel != null) {
+        if ("BLOCKED_CHANNEL".equals(violationType) && channel != null) {
             blockedChannels.put(playerUuid, channel);
         }
-        
+
         // Add this violation to the pending list
         List<String> pendingList = pendingViolations.computeIfAbsent(playerUuid, k -> new ArrayList<>());
         if (!pendingList.contains(reason)) {
             pendingList.add(reason);
         }
-        
+
         // Skip if player has already been alerted for spoofing in this session
         if (alertedPlayers.getOrDefault(playerUuid, false)) {
             if (config.isDebugMode()) {
                 plugin.getLogger().info("[Discord] Player " + player.getName() + " already alerted for spoofing in this session, collecting additional violations");
             }
-            
+
             return;
         }
-        
+
         // Mark player as alerted for this session
         alertedPlayers.put(playerUuid, true);
-        
+
         // Get the configured delay before sending discord alerts (in seconds)
         int delaySeconds = config.getCheckDelay();
-        
+
         // If there's a delay configured, schedule the webhook after the delay
         if (delaySeconds > 0) {
             if (config.isDebugMode()) {
-                plugin.getLogger().info("[Discord] Scheduling alert for player: " + player.getName() + 
+                plugin.getLogger().info("[Discord] Scheduling alert for player: " + player.getName() +
                                        " after " + delaySeconds + " seconds");
             }
-            
+
             // Schedule the webhook after the configured delay
-            com.veneer.core.FoliaScheduler.runAsyncLater(plugin, () -> {
+            // On the player's thread: PlaceholderAPI expansions read the player and are not thread-safe
+            com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
                 // The player may have left during the delay
                 PlayerProfile updatedData = plugin.profiles().get(playerUuid);
                 if (updatedData != null && player.isOnline()) {
@@ -122,31 +125,33 @@ public class DiscordWebhookHandler {
                     List<String> allViolations = pendingViolations.getOrDefault(playerUuid, new ArrayList<>());
                     String playerBrand = playerBrands.getOrDefault(playerUuid, brand);
                     String blockedChannel = blockedChannels.get(playerUuid);
-                    
+
                     if (config.isDebugMode()) {
-                        plugin.getLogger().info("[Discord] Sending delayed spoofing alert for player: " + 
+                        plugin.getLogger().info("[Discord] Sending delayed spoofing alert for player: " +
                                                player.getName() + " with " + allViolations.size() + " violations");
                     }
-                    
+
                     // Send the full webhook with all violations
-                    sendFullWebhook(player, reason, playerBrand, blockedChannel, allViolations);
+                    sendFullWebhook(player, violationType, reason, playerBrand, blockedChannel, allViolations);
                 }
             }, delaySeconds * 20L); // Convert seconds to ticks (20 ticks = 1 second)
         } else {
             // No delay, send immediate webhook
             if (config.isDebugMode()) {
-                plugin.getLogger().info("[Discord] Sending immediate spoofing alert for player: " + 
+                plugin.getLogger().info("[Discord] Sending immediate spoofing alert for player: " +
                                        player.getName());
             }
-            
+
             // Get all collected violations
             List<String> allViolations = pendingViolations.getOrDefault(playerUuid, new ArrayList<>());
-            
-            // Send the full webhook with all violations
-            sendFullWebhook(player, reason, brand, channel, allViolations.isEmpty() ? violations : allViolations);
+
+            // Send the full webhook with all violations, on the player's thread (checks run async)
+            List<String> toSend = allViolations.isEmpty() ? violations : List.copyOf(allViolations);
+            com.veneer.core.FoliaScheduler.runAtEntity(plugin, player,
+                    () -> sendFullWebhook(player, violationType, reason, brand, channel, toSend));
         }
     }
-    
+
     /**
      * Handle player logout - reset their alert status to enable new alerts when they log back in
      * @param uuid The player's UUID
@@ -157,124 +162,64 @@ public class DiscordWebhookHandler {
         pendingViolations.remove(uuid);
         playerBrands.remove(uuid);
         blockedChannels.remove(uuid);
-        
+
         if (config.isDebugMode()) {
             plugin.getLogger().info("[Discord] Reset alert status for player with UUID: " + uuid);
         }
     }
-    
+
     /**
      * Sends a full webhook with all player information
      */
-    private void sendFullWebhook(Player player, String reason, String brand, String channel, List<String> violations) {
+    private void sendFullWebhook(Player player, String violationType, String reason, String brand, String channel,
+                                 List<String> violations) {
         // Get the appropriate console alert message
-        String consoleAlert = determineConsoleAlert(player, reason, brand, channel, violations);
-        
+        String consoleAlert = determineConsoleAlert(player, violationType, reason, brand, channel, violations);
+
         // Send the full webhook
         sendWebhookDirectly(player, reason, brand, channel, violations, consoleAlert);
     }
-    
+
     /**
      * Determines the appropriate console alert message based on the violation type
      */
-    private String determineConsoleAlert(Player player, String reason, String brand, String channel, List<String> violations) {
+    private String determineConsoleAlert(Player player, String violationType, String reason, String brand,
+                                         String channel, List<String> violations) {
+        String shownBrand = Text.inert(brand != null ? brand : "unknown");
         // For multiple violations, use the multiple flags console message
         if (violations != null && violations.size() > 1) {
-            String reasonsList = String.join(", ", violations);
             return config.getConsoleMultipleFlagsMessage()
                     .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reasons%", reasonsList);
+                    .replace("%brand%", shownBrand)
+                    .replace("%reasons%", Text.inert(String.join(", ", violations)));
         }
-        
-        // For specific violation types, determine the appropriate message
-        if (reason.contains("Vanilla client with plugin channels")) {
-            return config.getVanillaCheckConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        } 
-        else if (reason.contains("Non-vanilla client with channels")) {
-            return config.getNonVanillaCheckConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        }
-        else if (reason.contains("Blocked channel:") || reason.contains("Client channels don't match whitelist")) {
-            String alert = config.getBlockedChannelsConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-            
-            if (channel != null) {
-                alert = alert.replace("%channel%", Text.inert(channel));
-            }
-            return alert;
-        }
-        else if (reason.contains("Blocked client brand:") || reason.contains("Client brand not in whitelist:")) {
-            // Use client-brands if enabled
-            String message = "%player% using client brand: %brand%";
-            if (config.isClientBrandsEnabled()) {
-                // Try to get a branded message first
-                String brandKey = config.getMatchingClientBrand(brand);
-                if (brandKey != null) {
-                    ConfigManager.ClientBrandConfig brandConfig = config.getClientBrandConfig(brandKey);
-                    message = brandConfig.getConsoleAlertMessage();
-                } else {
-                    // Fall back to default brand config
-                    message = config.getBlockedBrandsConsoleAlertMessage();
-                }
-            } else {
-                message = config.getBlockedBrandsConsoleAlertMessage();
-            }
-            return message.replace("%player%", player.getName())
-                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
-        }
-        else if (reason.contains("Spoofing Geyser client")) {
-            return config.getGeyserSpoofConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                    .replace("%reason%", Text.inert(reason));
-        }
-        else if (reason.contains("joined using client brand:")) {
-            // For client brand join alerts, use client-brands if available
-            String message = "%player% using client brand: %brand%";
-            if (config.isClientBrandsEnabled()) {
-                // Try to get a branded message first
-                String brandKey = config.getMatchingClientBrand(brand);
-                if (brandKey != null) {
-                    ConfigManager.ClientBrandConfig brandConfig = config.getClientBrandConfig(brandKey);
-                    message = brandConfig.getConsoleAlertMessage();
-                } else {
-                    // Fall back to default brand config
-                    message = config.getBlockedBrandsConsoleAlertMessage();
-                }
-            } else {
-                message = config.getBlockedBrandsConsoleAlertMessage();
-            }
-            return message.replace("%player%", player.getName())
-                          .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
-        }
-        else if (reason.contains("No client brand detected")) {
-            return config.getNoBrandConsoleAlertMessage()
-                    .replace("%player%", player.getName())
-                    .replace("%reason%", Text.inert(reason));
-        }
-        
-        // Default to the general console alert if no specific type is found
-        String alert = config.getConsoleAlertMessage()
+
+        String template = switch (violationType) {
+            case "VANILLA_WITH_CHANNELS" -> config.getVanillaCheckConsoleAlertMessage();
+            case "NON_VANILLA_WITH_CHANNELS" -> config.getNonVanillaCheckConsoleAlertMessage();
+            case "BLOCKED_CHANNEL", "CHANNEL_WHITELIST" -> config.getBlockedChannelsConsoleAlertMessage();
+            case "GEYSER_SPOOF" -> config.getGeyserSpoofConsoleAlertMessage();
+            case "NO_BRAND" -> config.getNoBrandConsoleAlertMessage();
+            case "CLIENT_BRAND", "JOIN_BRAND", "UNKNOWN_BRAND" -> brandConsoleMessage(brand);
+            default -> config.getConsoleAlertMessage();
+        };
+        String alert = template
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
+                .replace("%brand%", shownBrand)
                 .replace("%reason%", Text.inert(reason));
-        
-        if (channel != null) {
-            alert = alert.replace("%channel%", Text.inert(channel));
-        }
-        return alert;
+        return channel != null ? alert.replace("%channel%", Text.inert(channel)) : alert;
     }
-    
+
+    /** The console message of the client-brands entry matching {@code brand}, else the blocked-brands one. */
+    private String brandConsoleMessage(String brand) {
+        String brandKey = config.isClientBrandsEnabled() ? config.getMatchingClientBrand(brand) : null;
+        return brandKey != null ? config.getClientBrandConfig(brandKey).getConsoleAlertMessage()
+                : config.getBlockedBrandsConsoleAlertMessage();
+    }
+
     /**
-     * Directly sends a webhook
+     * Sends the alert through the spoof.discord templates. Placeholders: %player%, %uuid%, %reason%, %brand%,
+     * %version%, %violations% and %channels% (one bullet per line), %alert% (the console line), plus PlaceholderAPI.
      */
     private void sendWebhookDirectly(Player player, String reason, String brand, String channel,
                                     List<String> violations, String consoleAlert) {
@@ -285,162 +230,57 @@ public class DiscordWebhookHandler {
         }
 
         plugin.debug("[Discord] Sending webhook for player: " + player.getName());
-        String json = createFullWebhookJson(player, reason, brand, channel, violations, consoleAlert);
-        plugin.webhook().post(webhookUrl, json);
+        Map<String, String> values = new HashMap<>();
+        values.put("player", player.getName());
+        values.put("uuid", player.getUniqueId().toString());
+        values.put("reason", reason == null ? "" : reason);
+        values.put("brand", Text.inert(brand != null ? brand : "unknown"));
+        values.put("version", clientVersion(player));
+        values.put("violations", violationLines(reason, violations));
+        values.put("channels", channelLines(player));
+        values.put("alert", consoleAlert == null ? "" : consoleAlert);
+        plugin.webhook().report(webhookUrl, Webhook.color(config.getDiscordEmbedColor(), 0x2AB7CA),
+                config.getDiscordEmbedTitle(), config.getDiscordMessage(), config.isDiscordUseComponentsV2(), player, values);
     }
 
-    /**
-     * Creates the JSON payload for the full Discord webhook
-     */
-    private String createFullWebhookJson(Player player, String reason, String brand, String channel, 
-                                        List<String> violations, String consoleAlert) {
+    /** One bullet per violation; what follows the last ": " (the brand, channel or pattern) goes in backticks. */
+    private static String violationLines(String reason, List<String> violations) {
+        List<String> list = new ArrayList<>();
+        if (violations != null && !violations.isEmpty()) list.addAll(violations);
+        else if (reason != null && !reason.isEmpty()) list.add(reason);
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"embeds\":[{");
-        
-        // Title
-        String title = config.getDiscordEmbedTitle()
-                .replace("%player%", player.getName())
-                .replace("%reason%", Text.inert(reason));
-        sb.append("\"title\":\"").append(escapeJson(title)).append("\",");
-        
-        // Color (convert hex to decimal)
-        String colorHex = config.getDiscordEmbedColor().replace("#", "");
-        try {
-            Color color = Color.decode("#" + colorHex);
-            int decimal = color.getRGB() & 0xFFFFFF;
-            sb.append("\"color\":").append(decimal).append(",");
-        } catch (NumberFormatException e) {
-            sb.append("\"color\":2831050,"); // Default teal color
-        }
-        
-        // Description - Use violation content from config
-        sb.append("\"description\":\"");
-        
-        // ALWAYS use a consistent format with "Violations" header for all alerts
-        // Start with player info
-        sb.append("**Player**: ").append(escapeJson(player.getName())).append("\\n");
-        
-        // Create a clean list of violations
-        List<String> cleanViolations = new ArrayList<>();
-        
-        // If we have explicit violations list, use it
-        if (violations != null && !violations.isEmpty()) {
-            cleanViolations = new ArrayList<>(violations);
-            cleanViolations.removeIf(v -> v.contains("Multiple Violations"));
-        } 
-        // Otherwise use the reason as a single violation
-        else if (reason != null && !reason.isEmpty()) {
-            cleanViolations.add(reason);
-        }
-        
-        // Always show "Violations:" header with bullet points
-        sb.append("**Violations**:\\n");
-        
-        // Add each violation as a bullet point
-        for (String violation : cleanViolations) {
-            // Clean up any "(Client: X)" text
+        for (String violation : list) {
             int clientIndex = violation.indexOf(" (Client: ");
-            String cleanViolation = clientIndex > 0 ? violation.substring(0, clientIndex) : violation;
-            
-            // Look for patterns like "Client missing required channels for brand X: pattern"
-            if (cleanViolation.contains("Client missing required channels for brand")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            } 
-            // Also look for "Using blocked channel: X" pattern
-            else if (cleanViolation.contains("Using blocked channel:")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            }
-            // For any other violations that contain regex patterns
-            else if (cleanViolation.contains(": (?i)") || cleanViolation.contains(": ^") || cleanViolation.contains(".*")) {
-                int patternStartIndex = cleanViolation.lastIndexOf(": ");
-                if (patternStartIndex > 0) {
-                    // Split into prefix and pattern parts
-                    String prefix = cleanViolation.substring(0, patternStartIndex + 2); // Include the ": " part
-                    String pattern = cleanViolation.substring(patternStartIndex + 2);
-                    
-                    // Output with backticks around the pattern
-                    sb.append("• ").append(escapeJson(prefix)).append("`").append(escapeJson(pattern)).append("`\\n");
-                } else {
-                    sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-                }
-            }
-            // Default case for other violations
-            else {
-                sb.append("• ").append(escapeJson(cleanViolation)).append("\\n");
-            }
+            String clean = clientIndex > 0 ? violation.substring(0, clientIndex) : violation;
+            int cut = clean.lastIndexOf(": ");
+            if (sb.length() > 0) sb.append('\n');
+            if (cut > 0 && cut + 2 < clean.length())
+                sb.append("• ").append(clean, 0, cut + 2).append('`').append(clean.substring(cut + 2).replace('`', '\u02cb')).append('`');
+            else
+                sb.append("• ").append(clean);
         }
-        
-        // Add other standard information
-        sb.append("**Client Version**: ").append(getClientVersionFromPlaceholders(player)).append("\\n");
-        
-        // Wrap brand in backticks for Discord
-        sb.append("**Brand**: `").append(escapeJson(Text.inert(brand != null ? brand : "unknown"))).append("`\\n");
-        
-        // Add channels
-        sb.append("**Channels**:\\n");
-        PlayerProfile data = plugin.profiles().get(player.getUniqueId());
-        if (data != null && !data.getChannels().isEmpty()) {
-            Set<String> channels = data.getChannels();
-            for (String ch : channels) {
-                // Wrap channel in backticks for Discord
-                sb.append("• `").append(escapeJson(ch)).append("`\\n");
-            }
-        } else {
-            sb.append("• None detected\\n");
-        }
-        
-        // Close the description
-        sb.append("\",");
-        
-        // Timestamp
-        sb.append("\"timestamp\":\"").append(java.time.OffsetDateTime.now()).append("\"");
-        
-        sb.append("}]}");
         return sb.toString();
     }
-    
-    /**
-     * Helper method to get client version from PlaceholderAPI
-     */
-    private String getClientVersionFromPlaceholders(Player player) {
-        String version = "Unknown";
-        // Check if ViaVersion and PlaceholderAPI are installed
-        if (Bukkit.getPluginManager().isPluginEnabled("ViaVersion") && 
-            Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            try {
-                // If so, try to get the version through PlaceholderAPI
-                version = me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(
-                    player, "%viaversion_player_protocol_version%");
-            } catch (Exception e) {
-                if (config.isDebugMode()) {
-                    plugin.getLogger().warning("[Discord] Error getting ViaVersion: " + e.getMessage());
-                }
-            }
+
+    private String channelLines(Player player) {
+        PlayerProfile data = plugin.profiles().get(player.getUniqueId());
+        if (data == null || data.getChannels().isEmpty()) return "• none";
+        StringBuilder sb = new StringBuilder();
+        for (String ch : new java.util.TreeSet<>(data.getChannels())) {
+            if (sb.length() > 0) sb.append('\n');
+            sb.append("• `").append(ch.replace('`', '\u02cb')).append('`');
+        }
+        return sb.toString();
+    }
+
+    /** The client version PacketEvents reports, else ViaVersion's through PlaceholderAPI, else "unknown". */
+    private String clientVersion(Player player) {
+        String version = com.veneer.hacks.utils.ClientVersions.name(player);
+        if (!"unknown".equals(version)) return version;
+        if (Bukkit.getPluginManager().isPluginEnabled("ViaVersion")) {
+            String via = Webhook.fill("%viaversion_player_protocol_version%", player, Map.of());
+            if (!via.startsWith("%")) return via;
         }
         return version;
-    }
-    
-    private static String escapeJson(String text) {
-        return Webhook.escape(text);
     }
 }

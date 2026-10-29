@@ -27,7 +27,7 @@ commands:
     permission: veneer.hacks.lang
   hackeditor:
     description: Open the web panel (scan history and manual scans)
-    usage: /hackeditor
+    usage: /hackeditor [revoke]
     permission: veneer.hacks.editor
   rptrack:
     description: Show a player's resource-pack cache fingerprint and linked accounts
@@ -36,19 +36,19 @@ commands:
 
 permissions:
   veneer.admin:
-    description: /veneer reload, info and version; update notices
+    description: The /veneer panel (players, detections, brands, channels, alert history), info, check, reload and version; update notices
     default: op
   veneer.lang:
     description: Choose your own message language with /veneer lang
     default: true
   veneer.alerts:
-    description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts)
+    description: Receive spoof, mod scan and RPTrack alerts (toggle with /veneer alerts toggle)
     default: op
   veneer.spoof.use:
     description: Use /spoof
     default: op
   veneer.spoof.admin:
-    description: Admin /spoof subcommands (check, blockedchannels, blockedbrands)
+    description: Admin /spoof subcommands (check, brands allow/block/forget, blockedchannels, blockedbrands) and brand verdicts in the panel
     default: op
   # Bypasses have no children: the plugin resolves them itself, the most specific one set wins (a false on
   # veneer.bypass.hacks beats a true on veneer.bypass). veneer.* and * never grant them.
@@ -82,6 +82,14 @@ permissions:
   veneer.hacks.editor:
     description: Use /hackeditor
     default: op
+  veneer.admin.forget:
+    description: Erase everything stored about a player (/veneer forget)
+    default: op
+  veneer.web.use:
+    description: Open the web panel (/hackeditor); same as veneer.hacks.editor
+    default: op
+    children:
+      veneer.hacks.editor: true
   veneer.web.scan:
     description: Run scans from the web panel
     default: op
@@ -98,6 +106,7 @@ permissions:
     description: All web panel rights
     default: false
     children:
+      veneer.web.use: true
       veneer.web.scan: true
       veneer.web.delete: true
       veneer.web.links: true
@@ -123,6 +132,7 @@ permissions:
     default: false
     children:
       veneer.admin: true
+      veneer.admin.forget: true
       veneer.alerts: true
       veneer.lang: true
       veneer.rptrack: true

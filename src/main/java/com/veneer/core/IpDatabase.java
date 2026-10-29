@@ -51,6 +51,9 @@ public final class IpDatabase {
             value = Arrays.copyOf(value == null ? new Object[0] : value, n);
         }
 
+        /** Drops the unused tail left by the doubling. */
+        void trim() { grow(Math.max(1, size)); }
+
         void add(long[] start, long[] end, Object v) {
             if (size == value.length) grow(size * 2);
             startHi[size] = start[0]; startLo[size] = start[1];
@@ -79,6 +82,7 @@ public final class IpDatabase {
     private final Set<Integer> weakAsns;
     private final List<String> weakKeywords;
     private volatile Tables tables;
+    private volatile boolean stopped;
 
     public IpDatabase(VeneerPlugin plugin, int refreshDays, Collection<Integer> weakAsns, Collection<String> weakKeywords) {
         this.plugin = plugin;
@@ -97,12 +101,32 @@ public final class IpDatabase {
     }
 
     private void refresh() {
+        if (stopped) return;
+        boolean changed = false;
         try {
-            if (download() || tables == null) load();
+            changed = download();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Hacks] IP database download failed: " + e);
+        }
+        // Files already on disk are used even when this download failed (no outbound HTTPS, CDN down)
+        try {
+            if ((changed || tables == null) && complete()) load();
+            else if (tables == null) plugin.getLogger().warning("[Hacks] IP database not available: files missing in " + dir);
         } catch (Exception e) {
             plugin.getLogger().warning("[Hacks] IP database not available: " + e);
         }
-        if (plugin.isEnabled()) FoliaScheduler.runAsyncLater(plugin, this::refresh, RECHECK_TICKS);
+        if (!stopped && plugin.isEnabled()) FoliaScheduler.runAsyncLater(plugin, this::refresh, RECHECK_TICKS);
+    }
+
+    /** Stops the refreshes and drops the tables (the web panel stopped). */
+    public void stop() {
+        stopped = true;
+        tables = null;
+    }
+
+    private boolean complete() {
+        for (String[] f : FILES) if (!new File(dir, f[1]).isFile()) return false;
+        return true;
     }
 
     public boolean loaded() { return tables != null; }
@@ -136,12 +160,27 @@ public final class IpDatabase {
         long maxAge = refreshDays * 86_400_000L;
         boolean changed = false;
         for (String[] f : FILES) {
+            if (stopped) break;
             File out = new File(dir, f[1]);
             if (out.isFile() && System.currentTimeMillis() - out.lastModified() < maxAge) continue;
             File part = new File(dir, f[1] + ".part");
-            HttpResponse<java.nio.file.Path> res = http.send(
-                    HttpRequest.newBuilder(URI.create(CDN + f[0])).timeout(Duration.ofMinutes(5)).build(),
+            HttpResponse<java.nio.file.Path> res;
+            // The request timeout only covers the headers: the whole transfer gets its own limit, so a stalled
+            // body cannot hold this thread (and every later refresh) forever
+            var call = http.sendAsync(HttpRequest.newBuilder(URI.create(CDN + f[0])).timeout(Duration.ofMinutes(1)).build(),
                     HttpResponse.BodyHandlers.ofFile(part.toPath()));
+            try {
+                res = call.get(10, java.util.concurrent.TimeUnit.MINUTES);
+            } catch (Exception e) {
+                call.cancel(true);
+                Files.deleteIfExists(part.toPath());
+                // A stale copy is better than none
+                if (out.isFile()) {
+                    plugin.getLogger().warning("[Hacks] IP database: " + f[0] + " not refreshed (" + e + "), keeping the old copy");
+                    continue;
+                }
+                throw e;
+            }
             if (res.statusCode() != 200) {
                 Files.deleteIfExists(part.toPath());
                 // A stale copy is better than none
@@ -168,6 +207,9 @@ public final class IpDatabase {
             });
             read(f == 0 ? "country-ipv4.csv" : "country-ipv6.csv", (s, e, rest) -> c.add(s, e, codes.computeIfAbsent(rest, k -> k)));
         }
+        for (Ranges r : asn) r.trim();
+        for (Ranges r : country) r.trim();
+        if (stopped) return;
         tables = new Tables(asn, country, orgs);
         plugin.getLogger().info("[Hacks] IP database loaded: " + (asn[0].size + asn[1].size) + " provider ranges, "
                 + (country[0].size + country[1].size) + " country ranges.");

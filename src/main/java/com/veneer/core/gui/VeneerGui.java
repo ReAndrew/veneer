@@ -1,31 +1,18 @@
 package com.veneer.core.gui;
 
-import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.Alerts;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.Messages;
 import com.veneer.core.PlayerProfile;
-import com.veneer.hacks.utils.ClientVersions;
 import com.veneer.spoof.managers.BrandVerdicts;
-import io.papermc.paper.dialog.Dialog;
-import io.papermc.paper.dialog.DialogResponseView;
 import io.papermc.paper.event.player.AsyncChatEvent;
-import io.papermc.paper.registry.data.dialog.ActionButton;
-import io.papermc.paper.registry.data.dialog.DialogBase;
-import io.papermc.paper.registry.data.dialog.DialogBase.DialogAfterAction;
-import io.papermc.paper.registry.data.dialog.DialogInstancesProvider;
-import io.papermc.paper.registry.data.dialog.action.DialogAction;
-import io.papermc.paper.registry.data.dialog.input.BooleanDialogInput;
-import io.papermc.paper.registry.data.dialog.input.DialogInput;
-import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.ClickCallback;
-import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -37,8 +24,8 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.persistence.PersistentDataType;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -47,14 +34,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class VeneerGui implements Listener {
 
-    private static final boolean DIALOG_API;
     private static final boolean GRIM_API;
 
     static {
-        boolean d = false, g = false;
-        try { Class.forName("io.papermc.paper.dialog.Dialog"); d = true; } catch (ClassNotFoundException ignored) {}
+        boolean g = false;
         try { Class.forName("ac.grim.grimac.api.GrimAPIProvider"); g = true; } catch (ClassNotFoundException ignored) {}
-        DIALOG_API = d;
         GRIM_API = g;
     }
 
@@ -65,7 +49,7 @@ public final class VeneerGui implements Listener {
     // Main chest menu slot layout (4 rows = 36 slots)
     private static final int SLOT_SPOOF = 1, SLOT_HACKS = 3, SLOT_RPTRACK = 5;
     private static final int SLOT_PLAYERS = 10, SLOT_DETECTIONS = 11, SLOT_BRANDS = 12,
-            SLOT_GRIM = 13, SLOT_ALERTS = 14, SLOT_EDITOR = 15;
+            SLOT_GRIM = 13, SLOT_ALERTS = 14, SLOT_EDITOR = 15, SLOT_CHANNELS = 16;
     private static final int SLOT_RELOAD = 19, SLOT_VERSION = 21;
     private static final int SLOT_CLOSE = 35;
 
@@ -86,6 +70,8 @@ public final class VeneerGui implements Listener {
     }
 
     private final VeneerPlugin plugin;
+    /** The channel group an item of the channels page stands for, so a click can find its players. */
+    private final NamespacedKey channelsKey;
     private final GrimViolationTracker grimTracker;
     private final Map<UUID, Page> awaitingSearch = new ConcurrentHashMap<>();
 
@@ -96,14 +82,14 @@ public final class VeneerGui implements Listener {
             try { tracker = new GrimViolationTracker(plugin); } catch (Throwable ignored) {}
         }
         grimTracker = tracker;
+        channelsKey = new NamespacedKey(plugin, "channels");
     }
 
     // ── Public entry points ──────────────────────────────────────────────────
 
     public boolean open(Player player) {
         if (!player.hasPermission("veneer.admin")) return false;
-        if (DIALOG_API && clientSupportsDialog(player)) openDialog(player);
-        else openMainChest(player);
+        openMainChest(player);
         return true;
     }
 
@@ -249,114 +235,15 @@ public final class VeneerGui implements Listener {
         admin.openInventory(inv);
     }
 
-    /** Opens the check dialog for a specific online player (Dialog API required). */
+    /** Runs all enabled checks for a player immediately (no dialog). */
     public void openCheckDialog(Player admin, String targetName) {
         if (!admin.hasPermission("veneer.admin")) return;
         Player target = plugin.getServer().getPlayerExact(targetName);
         Messages m = plugin.messages().in(admin);
-
-        if (target == null) {
-            m.send(admin, "player-not-found", "player", targetName);
-            return;
-        }
-
-        boolean hackEnabled    = plugin.hacks().running() && admin.hasPermission("veneer.hacks.check");
-        boolean langEnabled    = hackEnabled && admin.hasPermission("veneer.hacks.lang");
-        boolean rptrackEnabled = plugin.rptrack().running() && admin.hasPermission("veneer.rptrack");
-
-        if (!DIALOG_API || !clientSupportsDialog(admin)) {
-            // Fallback: run all enabled checks immediately
-            if (hackEnabled)    admin.performCommand("hackcheck " + targetName);
-            if (langEnabled)    admin.performCommand("hacklang " + targetName);
-            if (rptrackEnabled) admin.performCommand("rptrack " + targetName);
-            return;
-        }
-
-        DialogInstancesProvider dip = DialogInstancesProvider.instance();
-        List<DialogInput> inputs = new ArrayList<>();
-        if (hackEnabled)    inputs.add(dip.booleanBuilder("do_hack",    m.get("gui-check-do-hack")).initial(true).build());
-        if (langEnabled)    inputs.add(dip.booleanBuilder("do_lang",    m.get("gui-check-do-lang")).initial(true).build());
-        if (rptrackEnabled) inputs.add(dip.booleanBuilder("do_rptrack", m.get("gui-check-do-rptrack")).initial(false).build());
-
-        if (inputs.isEmpty()) {
-            m.send(admin, "module-not-running", "module", "hacks/rptrack");
-            return;
-        }
-
-        ClickCallback.Options opts = ClickCallback.Options.builder()
-                .uses(1).lifetime(Duration.ofMinutes(5)).build();
-
-        boolean hackF = hackEnabled, langF = langEnabled, rptrackF = rptrackEnabled;
-        ActionButton runBtn = ActionButton.builder(m.get("gui-check-run-btn"))
-                .action(DialogAction.customClick((view, audience) -> {
-                    if (!(audience instanceof Player p)) return;
-                    Boolean doHack    = view.getBoolean("do_hack");
-                    Boolean doLang    = view.getBoolean("do_lang");
-                    Boolean doRptrack = view.getBoolean("do_rptrack");
-                    FoliaScheduler.runAtEntity(plugin, p, () -> {
-                        if (hackF    && Boolean.TRUE.equals(doHack))    p.performCommand("hackcheck " + targetName);
-                        if (langF    && Boolean.TRUE.equals(doLang))    p.performCommand("hacklang " + targetName);
-                        if (rptrackF && Boolean.TRUE.equals(doRptrack)) p.performCommand("rptrack " + targetName);
-                    });
-                }, opts))
-                .width(200).build();
-
-        ActionButton closeBtn = ActionButton.builder(m.get("gui-btn-close")).width(150).build();
-
-        DialogBase base = DialogBase.builder(m.get("gui-check-dialog-title", Map.of("player", targetName)))
-                .inputs(inputs)
-                .canCloseWithEscape(true).pause(false).afterAction(DialogAfterAction.CLOSE).build();
-
-        Dialog dialog = Dialog.create(f -> {
-            var entry = f.empty();
-            entry.base(base).type(DialogType.multiAction(List.of(runBtn)).exitAction(closeBtn).build());
-        });
-        admin.showDialog(dialog);
-    }
-
-    // ── Dialog main menu (1.21.5+ clients) ───────────────────────────────────
-
-    private boolean clientSupportsDialog(Player player) {
-        ClientVersion cv = ClientVersions.of(player);
-        return cv != null && !cv.isOlderThan(ClientVersion.V_1_21_5);
-    }
-
-    private void openDialog(Player player) {
-        Messages m = plugin.messages().in(player);
-        List<ActionButton> buttons = new ArrayList<>();
-
-        buttons.add(dBtn(m.get("gui-btn-players"),    "/veneer gui players"));
-        buttons.add(dBtn(m.get("gui-btn-detections"), "/veneer gui detections"));
-        if (plugin.spoof().running() && player.hasPermission("veneer.spoof.use"))
-            buttons.add(dBtn(m.get("gui-btn-brands"), "/veneer gui brands"));
-        if (GRIM_API && grimTracker != null)
-            buttons.add(dBtn(m.get("gui-btn-grim"),   "/veneer gui grim"));
-        buttons.add(dBtn(m.get("gui-btn-channels"),   "/veneer gui channels"));
-        if (plugin.spoof().running() && player.hasPermission("veneer.spoof.use"))
-            buttons.add(dBtn(m.get("gui-btn-spoof-check"), "/spoof runcheck *"));
-        if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
-            buttons.add(dBtn(m.get("gui-btn-editor"), "/hackeditor"));
-        if (player.hasPermission(Alerts.PERMISSION))
-            buttons.add(dBtn(m.get("gui-btn-alerts-log"), "/veneer alerts"));
-        buttons.add(dBtn(m.get("gui-btn-reload"),  "/veneer reload"));
-        buttons.add(dBtn(m.get("gui-btn-version"), "/veneer version"));
-
-        ActionButton closeBtn = ActionButton.builder(m.get("gui-btn-close")).width(150).build();
-        DialogInstancesProvider dip = DialogInstancesProvider.instance();
-        DialogBase base = DialogBase.builder(m.get("gui-title"))
-                .body(List.of(dip.plainMessageDialogBody(statusLine(m))))
-                .canCloseWithEscape(true).pause(false).afterAction(DialogAfterAction.CLOSE).build();
-        Dialog dialog = Dialog.create(f -> {
-            var entry = f.empty();
-            entry.base(base).type(DialogType.multiAction(buttons).columns(2).exitAction(closeBtn).build());
-        });
-        player.showDialog(dialog);
-    }
-
-    private static ActionButton dBtn(Component label, String cmd) {
-        return ActionButton.builder(label)
-                .action(DialogAction.staticAction(ClickEvent.runCommand(cmd)))
-                .width(150).build();
+        if (target == null) { m.send(admin, "player-not-found", "player", targetName); return; }
+        if (plugin.hacks().running()   && admin.hasPermission("veneer.hacks.check")) admin.performCommand("hackcheck " + targetName);
+        if (plugin.hacks().running()   && admin.hasPermission("veneer.hacks.lang"))  admin.performCommand("hacklang " + targetName);
+        if (plugin.rptrack().running() && admin.hasPermission("veneer.rptrack"))      admin.performCommand("rptrack " + targetName);
     }
 
     // ── Chest main menu ───────────────────────────────────────────────────────
@@ -382,7 +269,8 @@ public final class VeneerGui implements Listener {
         if (player.hasPermission(Alerts.PERMISSION))
             inv.setItem(SLOT_ALERTS, navItem(Material.BELL,         m.get("gui-btn-alerts-log"), m.get("gui-btn-alerts-log-lore")));
         if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
-            inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-version-lore")));
+            inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-editor-lore")));
+        inv.setItem(SLOT_CHANNELS, navItem(Material.COMPARATOR, m.get("gui-btn-channels"), m.get("gui-btn-channels-lore")));
 
         inv.setItem(SLOT_RELOAD,  navItem(Material.COMPARATOR,    m.get("gui-btn-reload"),   m.get("gui-btn-reload-lore")));
         inv.setItem(SLOT_VERSION, navItem(Material.KNOWLEDGE_BOOK, m.get("gui-btn-version"), m.get("gui-btn-version-lore")));
@@ -439,7 +327,7 @@ public final class VeneerGui implements Listener {
                 lore.add(m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen))))
                         .decoration(TextDecoration.ITALIC, false));
             if (GRIM_API && grimTracker != null && grimTracker.hasViolations(safeUuid(uuid)))
-                lore.add(Component.text("⚑ GrimAC flags").color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                lore.add(m.get("gui-player-grim-flagged").decoration(TextDecoration.ITALIC, false));
             skullMeta.lore(lore);
             skull.setItemMeta(skullMeta);
             inv.setItem(slot++, skull);
@@ -483,9 +371,9 @@ public final class VeneerGui implements Listener {
 
             ItemStack item = new ItemStack(detected.isEmpty() ? Material.PAPER : Material.WRITTEN_BOOK);
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName).color(NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("[" + type.toUpperCase(Locale.ROOT) + "]").color(NamedTextColor.GRAY)
+            lore.add(m.get("gui-detection-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?"))
                     .decoration(TextDecoration.ITALIC, false));
             if (!detected.isEmpty())
                 lore.add(m.get("gui-detection-mods", Map.of("mods", String.join(", ", detected)))
@@ -537,10 +425,10 @@ public final class VeneerGui implements Listener {
 
             ItemStack item = new ItemStack(Material.BELL);
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName).color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("[" + type.toUpperCase(Locale.ROOT) + "] by " + checker)
-                    .color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            lore.add(m.get("gui-alert-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?",
+                    "checker", checker != null ? checker : "?")).decoration(TextDecoration.ITALIC, false));
             if (!detected.isEmpty())
                 lore.add(m.get("gui-detection-mods", Map.of("mods", String.join(", ", detected)))
                         .decoration(TextDecoration.ITALIC, false));
@@ -555,8 +443,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No alerts found").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-alerts-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -636,8 +523,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No violations recorded yet").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-grim-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -691,16 +577,14 @@ public final class VeneerGui implements Listener {
                 String onlineNames = online.stream().map(Player::getName)
                         .limit(5).reduce((a, b) -> a + ", " + b).orElse("");
                 if (online.size() > 5) onlineNames += " +" + (online.size() - 5);
-                lore.add(Component.text("Online: " + onlineNames).color(NamedTextColor.GREEN)
-                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(m.get("gui-channel-online", Map.of("players", onlineNames)).decoration(TextDecoration.ITALIC, false));
                 lore.add(m.get("gui-channel-kick-hint").decoration(TextDecoration.ITALIC, false));
             }
             if (lastSeen > 0)
                 lore.add(m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen))))
                         .decoration(TextDecoration.ITALIC, false));
-            // Store full channel list in lore for retrieval on click
-            for (String ch : channelList)
-                lore.add(Component.text("§0" + ch).color(NamedTextColor.BLACK).decoration(TextDecoration.ITALIC, false));
+            meta.getPersistentDataContainer().set(channelsKey, PersistentDataType.STRING,
+                    String.join(",", new TreeSet<>(Arrays.asList(channelList))));
             meta.lore(lore);
             item.setItemMeta(meta);
             inv.setItem(slot++, item);
@@ -709,8 +593,7 @@ public final class VeneerGui implements Listener {
         if (slot == 0) {
             ItemStack none = noName(Material.STRUCTURE_VOID);
             ItemMeta meta = none.getItemMeta();
-            meta.displayName(Component.text("No channel groups recorded").color(NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(m.get("gui-channels-empty").decoration(TextDecoration.ITALIC, false));
             none.setItemMeta(meta);
             inv.setItem(22, none);
         }
@@ -766,6 +649,7 @@ public final class VeneerGui implements Listener {
             case SLOT_BRANDS     -> { player.closeInventory(); openBrands(player, 0); }
             case SLOT_GRIM       -> { if (grimTracker != null) { player.closeInventory(); openGrim(player, 0); } }
             case SLOT_ALERTS     -> { player.closeInventory(); openAlerts(player, 0, null); }
+            case SLOT_CHANNELS   -> { player.closeInventory(); openChannels(player, 0); }
             case SLOT_EDITOR     -> { player.closeInventory(); player.performCommand("hackeditor"); }
             case SLOT_RELOAD     -> { player.closeInventory(); player.performCommand("veneer reload"); }
             case SLOT_VERSION    -> { player.closeInventory(); player.performCommand("veneer version"); }
@@ -814,9 +698,17 @@ public final class VeneerGui implements Listener {
             int idx = holder.pageNum() * PAGE_SIZE + slot;
             if (idx >= all.size()) return;
             BrandVerdicts.Entry e = all.get(idx);
+            // Same right as /spoof brands allow|block|forget
+            if (!player.hasPermission("veneer.spoof.admin")) {
+                player.sendMessage(plugin.messages().in(player).get("no-permission"));
+                return;
+            }
             ClickType ct = event.getClick();
-            BrandVerdicts.Verdict next = ct.isLeftClick() ? BrandVerdicts.Verdict.ALLOW
-                    : ct.isRightClick() ? BrandVerdicts.Verdict.BLOCK : null;
+            BrandVerdicts.Verdict next;
+            if (ct.isLeftClick()) next = BrandVerdicts.Verdict.ALLOW;
+            else if (ct.isRightClick()) next = BrandVerdicts.Verdict.BLOCK;
+            else if (ct == ClickType.MIDDLE) next = null;
+            else return; // drop, number keys and the like must not reset a verdict
             plugin.spoof().verdicts().decide(e.id(), next, player.getName());
             Messages m = plugin.messages().in(player);
             event.getInventory().setItem(slot, buildBrandItem(plugin.spoof().verdicts().get(e.id()), m));
@@ -877,18 +769,10 @@ public final class VeneerGui implements Listener {
 
     private void handleChannels(Player player, VeneerMenuHolder holder, int slot, ItemStack item, ClickType clickType) {
         if (slot < PAGE_SIZE) {
-            if (item == null || !item.hasItemMeta() || !item.getItemMeta().hasLore()) return;
-            if (!clickType.isRightClick()) return;
-            // Extract channel set from hidden lore lines (prefixed with §0)
-            List<Component> lore = item.getItemMeta().lore();
-            if (lore == null) return;
-            List<String> channels = new ArrayList<>();
-            for (Component line : lore) {
-                String text = plain(line);
-                if (text.startsWith("§0")) channels.add(text.substring(2)); // strip §0
-            }
-            if (channels.isEmpty()) return;
-            String channelKey = String.join(",", new java.util.TreeSet<>(channels));
+            // Shift is the confirmation: a plain right-click must not kick a whole group by accident
+            if (clickType != ClickType.SHIFT_RIGHT || item == null || !item.hasItemMeta()) return;
+            String channelKey = item.getItemMeta().getPersistentDataContainer().get(channelsKey, PersistentDataType.STRING);
+            if (channelKey == null || channelKey.isEmpty()) return;
             // Kick online players with this channel group
             int kicked = 0;
             for (Player p : List.copyOf(plugin.getServer().getOnlinePlayers())) {
@@ -896,7 +780,9 @@ public final class VeneerGui implements Listener {
                 if (profile == null) continue;
                 String key = String.join(",", new java.util.TreeSet<>(profile.getChannels()));
                 if (channelKey.equals(key)) {
-                    p.kick(Component.text("Kicked by admin").color(NamedTextColor.RED));
+                    // Folia: each player is kicked on their own region thread
+                    Component reason = plugin.messages().in(p).get("gui-channel-kick-reason");
+                    FoliaScheduler.runAtEntity(plugin, p, () -> p.kick(reason));
                     kicked++;
                 }
             }
@@ -933,15 +819,6 @@ public final class VeneerGui implements Listener {
         player.closeInventory();
         awaitingSearch.put(player.getUniqueId(), page);
         plugin.messages().in(player).send(player, "gui-search-prompt");
-    }
-
-    private Component statusLine(Messages m) {
-        Component on = m.get("gui-module-on"), off = m.get("gui-module-off");
-        return m.get("gui-module-spoof").append(Component.text(": ")).append(plugin.spoof().running() ? on : off)
-                .appendSpace()
-                .append(m.get("gui-module-hacks")).append(Component.text(": ")).append(plugin.hacks().running() ? on : off)
-                .appendSpace()
-                .append(m.get("gui-module-rptrack")).append(Component.text(": ")).append(plugin.rptrack().running() ? on : off);
     }
 
     private ItemStack moduleItem(boolean running, Component name, Messages m) {

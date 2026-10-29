@@ -3,16 +3,22 @@ package com.veneer.hooks;
 import com.veneer.VeneerPlugin;
 import com.veneer.rptrack.RPTrackManager;
 import com.veneer.core.PlayerProfile;
+import com.veneer.core.Text;
+import com.veneer.hacks.utils.ClientVersions;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
  * PlaceholderAPI expansion {@code %veneer_<key>%}.
- * brand, channels, channels_count, is_spoofing, is_bedrock, client_type, alerts, group,
- * rptrack_packs, rptrack_linked, rptrack_liquidbounce.
+ * brand, channels, channels_count, is_spoofing, is_bedrock, client_type, version, version_real, version_mismatch,
+ * alerts, group, rptrack_packs, rptrack_linked, rptrack_liquidbounce.
+ *
+ * <p>Brand and channels are sent by the client, so their tag and colour characters are replaced with look-alikes
+ * ({@link Text#inert}): another plugin that formats the placeholder must not run a player's tags or {@code &} codes.
  */
 public class VeneerPlaceholders extends PlaceholderExpansion {
 
@@ -34,12 +40,12 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
         switch (id) {
             case "brand": {
                 String brand = plugin.brandOf(player);
-                return brand != null ? brand : "unknown";
+                return brand != null ? Text.inert(brand) : "unknown";
             }
             case "channels": {
                 PlayerProfile data = plugin.profileOf(player.getUniqueId());
                 Set<String> ch = data == null ? Set.of() : data.getChannels();
-                return ch.isEmpty() ? "none" : String.join(", ", ch);
+                return ch.isEmpty() ? "none" : Text.inert(String.join(", ", ch));
             }
             case "channels_count": {
                 PlayerProfile data = plugin.profileOf(player.getUniqueId());
@@ -49,7 +55,19 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
             case "is_bedrock": return String.valueOf(plugin.bedrock().isBedrock(player));
             case "client_type": {
                 PlayerProfile data = plugin.profileOf(player.getUniqueId());
-                return data == null ? "unknown" : data.clientType().name().toLowerCase();
+                return data == null ? "unknown" : data.clientType().name().toLowerCase(Locale.ROOT);
+            }
+            case "version": {
+                var v = ClientVersions.of(player);
+                return v != null ? v.getReleaseName() : "unknown";
+            }
+            case "version_real": {
+                PlayerProfile data = plugin.profileOf(player.getUniqueId());
+                return data == null || data.getVersionReal() == null ? "unknown" : data.getVersionReal();
+            }
+            case "version_mismatch": {
+                PlayerProfile data = plugin.profileOf(player.getUniqueId());
+                return String.valueOf(data != null && data.isVersionMismatch());
             }
             case "alerts": return plugin.alerts().isEnabled(player.getUniqueId()) ? "on" : "off";
             case "group": return plugin.hooks().primaryGroup(player);

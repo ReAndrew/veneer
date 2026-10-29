@@ -37,6 +37,14 @@ public class HackEditorCommand implements CommandExecutor {
         }
 
         String uuid = player.getUniqueId().toString(), name = player.getName();
+        // /hackeditor revoke: every link issued to this player stops working (a link that leaked, rights taken away)
+        if (args.length > 0 && args[0].equalsIgnoreCase("revoke")) {
+            FoliaScheduler.runAsync(plugin, () -> {
+                plugin.database().revokeTokens(uuid);
+                FoliaScheduler.runAtEntity(plugin, player, () -> player.sendMessage(plugin.messages().in(player).get("editor-revoked")));
+            });
+            return true;
+        }
         // The token carries the rights the player has now; changing them later needs a new /hackeditor
         String perms = String.join(",", WEB_PERMS.stream().filter(p -> player.hasPermission("veneer.web." + p)).toList());
         int expire = plugin.hacks().config().getTokenExpireMinutes();
@@ -45,7 +53,12 @@ public class HackEditorCommand implements CommandExecutor {
         // The insert waits for the database connection, which the web panel may be holding: not on the main thread
         FoliaScheduler.runAsync(plugin, () -> {
             String token = plugin.database().saveToken(uuid, name, expire, perms);
-            String url  = "http://" + host + ":" + port + "/editor?token=" + token;
+            if (token == null) {
+                FoliaScheduler.runAtEntity(plugin, player, () -> player.sendMessage(plugin.messages().in(player).get("editor-failed")));
+                return;
+            }
+            String base = plugin.hacks().config().getPublicUrl();
+            String url  = (base.isEmpty() ? "http://" + host + ":" + port : base) + "/editor?token=" + token;
             FoliaScheduler.runAtEntity(plugin, player,
                     () -> player.sendMessage(plugin.messages().in(player).get("editor-url", Map.of("url", url))));
         });

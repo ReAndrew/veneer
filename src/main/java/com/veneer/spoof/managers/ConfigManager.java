@@ -3,6 +3,7 @@ package com.veneer.spoof.managers;
 import org.bukkit.configuration.ConfigurationSection;
 import com.veneer.VeneerPlugin;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,10 +18,10 @@ public class ConfigManager {
 
     private final VeneerPlugin plugin;
     private ConfigurationSection config;
-    
+
     // Cache for compiled regex patterns
     private final Map<String, Pattern> channelPatterns = new HashMap<>();
-    
+
     // Client brand configurations
     private boolean clientBrandsEnabled;
     // Insertion order: when two patterns match, the brand listed first in the config wins
@@ -45,7 +46,7 @@ public class ConfigManager {
         // Added fields for required channels punishment
         private boolean requiredChannelsPunish;
         private List<String> requiredChannelsPunishments = new ArrayList<>();
-        
+
         public boolean isEnabled() { return enabled; }
         public List<Pattern> getPatterns() { return patterns; }
         public List<String> getPatternStrings() { return patternStrings; }
@@ -74,7 +75,7 @@ public class ConfigManager {
 
         // Clear and recompile regex patterns
         channelPatterns.clear();
-        
+
         // Compile channel patterns
         List<String> channelRegexes = getBlockedChannels();
         for (String regex : channelRegexes) {
@@ -84,7 +85,7 @@ public class ConfigManager {
                 plugin.getLogger().warning("Invalid channel regex pattern: " + regex + " - " + e.getMessage());
             }
         }
-        
+
         // Load client brand configurations
         loadClientBrandConfigs();
     }
@@ -95,22 +96,22 @@ public class ConfigManager {
     private void loadClientBrandConfigs() {
         // Clear existing configurations
         clientBrands.clear();
-        
+
         // Check if client brands system is enabled
         clientBrandsEnabled = config.getBoolean("client-brands.enabled", true);
-        
+
         // Load default brand config
         ConfigurationSection defaultSection = config.getConfigurationSection("client-brands.default");
         defaultBrandConfig = new ClientBrandConfig();
-        
+
         if (defaultSection != null) {
             defaultBrandConfig.enabled = true;
             defaultBrandConfig.flag = defaultSection.getBoolean("flag", true);
             defaultBrandConfig.alert = defaultSection.getBoolean("alert", true);
             defaultBrandConfig.discordAlert = defaultSection.getBoolean("discord-alert", false);
-            defaultBrandConfig.alertMessage = defaultSection.getString("alert-message", 
+            defaultBrandConfig.alertMessage = defaultSection.getString("alert-message",
                 "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%");
-            defaultBrandConfig.consoleAlertMessage = defaultSection.getString("console-alert-message", 
+            defaultBrandConfig.consoleAlertMessage = defaultSection.getString("console-alert-message",
                 "%player% using unknown client: %brand%");
             defaultBrandConfig.punish = defaultSection.getBoolean("punish", false);
             defaultBrandConfig.punishments = defaultSection.getStringList("punishments");
@@ -125,7 +126,7 @@ public class ConfigManager {
             defaultBrandConfig.punish = false;
             defaultBrandConfig.punishments = new ArrayList<>();
         }
-        
+
         // Brands staff decided on: allowed ones are a known clean client, blocked ones flag like a cheat client
         ClientBrandConfig allowed = new ClientBrandConfig();
         allowed.enabled = true;
@@ -154,16 +155,16 @@ public class ConfigManager {
                 if (brandSection != null && !brandKey.equals(STAFF_ALLOWED) && !brandKey.equals(STAFF_BLOCKED)) {
                     ClientBrandConfig brandConfig = loadBrandConfig(brandSection);
                     clientBrands.put(brandKey, brandConfig);
-                    
+
                     if (isDebugMode()) {
-                        plugin.getLogger().info("[Debug] Loaded client brand config: " + brandKey + 
+                        plugin.getLogger().info("[Debug] Loaded client brand config: " + brandKey +
                                               " with " + brandConfig.patterns.size() + " patterns");
                     }
                 }
             }
         }
     }
-    
+
     /**
      * Load a specific brand configuration from a config section
      */
@@ -178,15 +179,15 @@ public class ConfigManager {
         brandConfig.punish = section.getBoolean("punish", false);
         brandConfig.punishments = section.getStringList("punishments");
         brandConfig.strictCheck = section.getBoolean("strict-check", false);
-        
+
         // Added loading for required channels punishment fields
         brandConfig.requiredChannelsPunish = section.getBoolean("required-channels-punish", false);
         brandConfig.requiredChannelsPunishments = section.getStringList("required-channels-punishments");
-        
+
         // Load and compile pattern strings
         List<String> patterns = section.getStringList("values");
         brandConfig.patternStrings.addAll(patterns);
-        
+
         for (String pattern : patterns) {
             try {
                 brandConfig.patterns.add(Pattern.compile(pattern));
@@ -196,11 +197,11 @@ public class ConfigManager {
                 brandConfig.patterns.add(Pattern.compile("^" + Pattern.quote(pattern) + "$"));
             }
         }
-        
+
         // Load and compile required channel patterns
         List<String> requiredChannels = section.getStringList("required-channels");
         brandConfig.requiredChannelStrings.addAll(requiredChannels);
-        
+
         for (String channel : requiredChannels) {
             try {
                 brandConfig.requiredChannels.add(Pattern.compile(channel));
@@ -210,7 +211,7 @@ public class ConfigManager {
                 brandConfig.requiredChannels.add(Pattern.compile("^" + Pattern.quote(channel) + "$"));
             }
         }
-        
+
         return brandConfig;
     }
 
@@ -221,14 +222,14 @@ public class ConfigManager {
     public boolean isDebugMode() {
         return plugin.config().debug();
     }
-    
+
     /**
      * @return Whether the client brands system is enabled
      */
     public boolean isClientBrandsEnabled() {
         return clientBrandsEnabled;
     }
-    
+
     /**
      * Check if a brand matches any configured client brands
      * @param brand The brand to check
@@ -241,12 +242,12 @@ public class ConfigManager {
         BrandVerdicts verdicts = plugin.spoof().verdicts();
         BrandVerdicts.Verdict verdict = verdicts != null ? verdicts.verdict(brand) : null;
         if (verdict != null) return verdict == BrandVerdicts.Verdict.ALLOW ? STAFF_ALLOWED : STAFF_BLOCKED;
-        
+
         for (Map.Entry<String, ClientBrandConfig> entry : clientBrands.entrySet()) {
             ClientBrandConfig brandConfig = entry.getValue();
-            
+
             if (!brandConfig.isEnabled()) continue;
-            
+
             for (Pattern pattern : brandConfig.getPatterns()) {
                 try {
                     if (pattern.matcher(brand).matches()) {
@@ -260,10 +261,10 @@ public class ConfigManager {
                 }
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Get the configuration for a specific client brand
      * @param brandKey The brand key to get configuration for
@@ -272,16 +273,16 @@ public class ConfigManager {
     public ClientBrandConfig getClientBrandConfig(String brandKey) {
         return clientBrands.getOrDefault(brandKey, defaultBrandConfig);
     }
-    
-    
-    
+
+
+
     /**
      * @return Whether brand detection is enabled (maps to client-brands.enabled)
      */
     public boolean isBlockedBrandsEnabled() {
         return isClientBrandsEnabled();
     }
-    
+
     /**
      * Checks if a brand is blocked under the new system
      * @param brand The brand to check
@@ -289,7 +290,7 @@ public class ConfigManager {
      */
     public boolean isBrandBlocked(String brand) {
         if (!isClientBrandsEnabled()) return false;
-        
+
         // Match to a client brand
         String matchedBrandKey = getMatchingClientBrand(brand);
         if (matchedBrandKey != null) {
@@ -298,12 +299,12 @@ public class ConfigManager {
             // Return whether this brand should be flagged
             return brandConfig.shouldFlag();
         }
-        
+
         // If no brand pattern matched, use the default config for unknown brands
         return defaultBrandConfig.shouldFlag();
     }
-    
-    
+
+
     /**
      * @return Whether brand whitelist mode is enabled (backward compatibility)
      */
@@ -317,24 +318,24 @@ public class ConfigManager {
         }
         return false;
     }
-    
+
     /**
      * Get all brand patterns for backward compatibility
      * @return List of brand patterns
      */
     public List<String> getBlockedBrands() {
         List<String> result = new ArrayList<>();
-        
+
         // Collect all brand patterns
         for (ClientBrandConfig brandConfig : clientBrands.values()) {
             if (brandConfig.isEnabled()) {
                 result.addAll(brandConfig.getPatternStrings());
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Get the alert message for blocked brands (backward compatibility)
      * @return The alert message
@@ -343,7 +344,7 @@ public class ConfigManager {
         // Use the default client brand alert message
         return defaultBrandConfig.getAlertMessage();
     }
-    
+
     /**
      * Get the console alert message for blocked brands (backward compatibility)
      * @return The console alert message
@@ -352,7 +353,7 @@ public class ConfigManager {
         // Use the default client brand console alert message
         return defaultBrandConfig.getConsoleAlertMessage();
     }
-    
+
     /**
      * Check if Discord alerts are enabled for blocked brands (backward compatibility)
      * @return True if Discord alerts are enabled, false otherwise
@@ -361,166 +362,162 @@ public class ConfigManager {
         // Use the default client brand discord alert setting
         return defaultBrandConfig.shouldDiscordAlert();
     }
-    
-    
-    
+
+
+
     // Global alert messages (legacy)
     public String getAlertMessage() {
         return config.getString("messages.alert", "&8[&cVeneer&8] &e%player% flagged! &c%reason%");
     }
-    
+
     public String getConsoleAlertMessage() {
         return config.getString("messages.console-alert", "%player% flagged! %reason%");
     }
-    
-    // Multiple flags messages
-    public String getMultipleFlagsMessage() {
-        return config.getString("messages.multiple-flags", "&8[&cVeneer&8] &e%player% has multiple violations: &c%reasons%");
-    }
-    
+
+    // Multiple flags message (console and Discord)
     public String getConsoleMultipleFlagsMessage() {
         return config.getString("messages.console-multiple-flags", "%player% has multiple violations: %reasons%");
     }
-    
+
     // Global punishments (legacy)
     public List<String> getPunishments() {
         return config.getStringList("punishments");
     }
-    
+
     // No Brand Check
     public boolean isNoBrandCheckEnabled() {
         return config.getBoolean("no-brand-check.enabled", true);
     }
-    
+
     public boolean isNoBrandDiscordAlertEnabled() {
         return config.getBoolean("no-brand-check.discord-alert", true);
     }
-    
+
     public boolean shouldPunishNoBrand() {
         return config.getBoolean("no-brand-check.punish", false);
     }
-    
+
     public String getNoBrandAlertMessage() {
-        return config.getString("no-brand-check.alert-message", 
+        return config.getString("no-brand-check.alert-message",
                                "&8[&cVeneer&8] &e%player% flagged! &cNo client brand detected");
     }
-    
+
     public String getNoBrandConsoleAlertMessage() {
-        return config.getString("no-brand-check.console-alert-message", 
+        return config.getString("no-brand-check.console-alert-message",
                                "%player% flagged! No client brand detected");
     }
-    
+
     public List<String> getNoBrandPunishments() {
         return config.getStringList("no-brand-check.punishments");
     }
-    
+
     // Vanilla Spoof Check (claims vanilla but has channels)
     public boolean isVanillaCheckEnabled() {
         return config.getBoolean("vanillaspoof-check.enabled", true);
     }
-    
+
     public boolean isVanillaCheckDiscordAlertEnabled() {
         return config.getBoolean("vanillaspoof-check.discord-alert", true);
     }
-    
+
     public boolean shouldPunishVanillaCheck() {
         return config.getBoolean("vanillaspoof-check.punish", true);
     }
-    
+
     public String getVanillaCheckAlertMessage() {
         return config.getString("vanillaspoof-check.alert-message", getAlertMessage());
     }
-    
+
     public String getVanillaCheckConsoleAlertMessage() {
         return config.getString("vanillaspoof-check.console-alert-message", getConsoleAlertMessage());
     }
-    
+
     public List<String> getVanillaCheckPunishments() {
         return config.getStringList("vanillaspoof-check.punishments");
     }
-    
+
     // Non-Vanilla Check (anything not vanilla with channels)
     public boolean shouldBlockNonVanillaWithChannels() {
         return config.getBoolean("non-vanilla-check.enabled", false);
     }
-    
+
     public boolean isNonVanillaCheckDiscordAlertEnabled() {
         return config.getBoolean("non-vanilla-check.discord-alert", false);
     }
-    
+
     public boolean shouldPunishNonVanillaCheck() {
         return config.getBoolean("non-vanilla-check.punish", true);
     }
-    
+
     public String getNonVanillaCheckAlertMessage() {
         return config.getString("non-vanilla-check.alert-message", getAlertMessage());
     }
-    
+
     public String getNonVanillaCheckConsoleAlertMessage() {
         return config.getString("non-vanilla-check.console-alert-message", getConsoleAlertMessage());
     }
-    
+
     public List<String> getNonVanillaCheckPunishments() {
         return config.getStringList("non-vanilla-check.punishments");
     }
-    
+
     // Blocked Channels Check
     public boolean isBlockedChannelsEnabled() {
         return config.getBoolean("blocked-channels.enabled", false);
     }
-    
+
     public boolean isBlockedChannelsDiscordAlertEnabled() {
         return config.getBoolean("blocked-channels.discord-alert", false);
     }
-    
+
     public String getChannelWhitelistMode() {
-        return config.getString("blocked-channels.whitelist-mode", "FALSE").toUpperCase();
+        return config.getString("blocked-channels.whitelist-mode", "FALSE").toUpperCase(Locale.ROOT);
     }
-    
+
     public boolean isChannelWhitelistEnabled() {
         String mode = getChannelWhitelistMode();
         return mode.equals("SIMPLE") || mode.equals("STRICT");
     }
-    
+
     public boolean isChannelWhitelistStrict() {
         return getChannelWhitelistMode().equals("STRICT");
     }
-    
+
     public List<String> getBlockedChannels() {
         return config.getStringList("blocked-channels.values");
     }
-    
+
     public String getBlockedChannelsAlertMessage() {
         return config.getString("blocked-channels.alert-message", getAlertMessage());
     }
-    
+
     public String getBlockedChannelsConsoleAlertMessage() {
         return config.getString("blocked-channels.console-alert-message", getConsoleAlertMessage());
     }
-    
+
     // Added whitelist message methods
     public String getChannelWhitelistAlertMessage() {
-        return config.getString("blocked-channels.whitelist-alert-message", 
+        return config.getString("blocked-channels.whitelist-alert-message",
             "&8[&cVeneer&8] &e%player% flagged! &cChannels don't match whitelist requirements");
     }
-    
+
     public String getChannelWhitelistConsoleAlertMessage() {
-        return config.getString("blocked-channels.whitelist-console-alert-message", 
+        return config.getString("blocked-channels.whitelist-console-alert-message",
             "%player% flagged! Channels don't match whitelist requirements");
     }
-    
+
     public boolean shouldPunishBlockedChannels() {
         return config.getBoolean("blocked-channels.punish", true);
     }
-    
+
     public List<String> getBlockedChannelsPunishments() {
         return config.getStringList("blocked-channels.punishments");
     }
-    
+
     // Channel regex matching
     public boolean matchesChannelPattern(String channel) {
         if (channel == null) return false;
-        
+
         for (Map.Entry<String, Pattern> entry : channelPatterns.entrySet()) {
             try {
                 if (entry.getValue().matcher(channel).matches()) {
@@ -533,69 +530,79 @@ public class ConfigManager {
                 }
             }
         }
-        
+
         return false; // No patterns matched
     }
-    
+
     // Bedrock Handling
     public String getBedrockHandlingMode() {
-        return config.getString("bedrock-handling.mode", "EXEMPT").toUpperCase();
+        return config.getString("bedrock-handling.mode", "EXEMPT").toUpperCase(Locale.ROOT);
     }
-    
+
     public boolean isBedrockExemptMode() {
         return getBedrockHandlingMode().equals("EXEMPT");
     }
-    
+
     // Geyser Spoof Detection
     public boolean isPunishSpoofingGeyser() {
         return config.getBoolean("bedrock-handling.geyser-spoof.enabled", true);
     }
-    
+
     public boolean isGeyserSpoofDiscordAlertEnabled() {
         return config.getBoolean("bedrock-handling.geyser-spoof.discord-alert", true);
     }
-    
+
     public boolean shouldPunishGeyserSpoof() {
         return config.getBoolean("bedrock-handling.geyser-spoof.punish", true);
     }
-    
+
     public String getGeyserSpoofAlertMessage() {
         return config.getString("bedrock-handling.geyser-spoof.alert-message", getAlertMessage());
     }
-    
+
     public String getGeyserSpoofConsoleAlertMessage() {
         return config.getString("bedrock-handling.geyser-spoof.console-alert-message", getConsoleAlertMessage());
     }
-    
+
     public List<String> getGeyserSpoofPunishments() {
         return config.getStringList("bedrock-handling.geyser-spoof.punishments");
     }
-    
-    
-    
+
+
+
     // Global Alert settings
     public boolean isJoinBrandAlertsEnabled() {
         return config.getBoolean("global-alerts.join-brand-alerts", false);
     }
-    
-    
+
+
     // Discord webhook settings
     public boolean isDiscordWebhookEnabled() {
         return config.getBoolean("discord.enabled", false);
     }
-    
+
     /** The webhook for spoof alerts: {@code spoof.discord.webhook}, else {@code general.discord.webhook}. */
     public String getDiscordWebhookUrl() {
         return plugin.config().webhook(config.getString("discord.webhook", ""));
     }
-    
+
     public String getDiscordEmbedTitle() {
         return config.getString("discord.embed-title", "**Veneer spoof alert**");
     }
-    
+
     public String getDiscordEmbedColor() {
         return config.getString("discord.embed-color", "#2AB7CA");
     }
-    
-    
+
+    /** The alert text; see DiscordWebhookHandler for the placeholders. */
+    public String getDiscordMessage() {
+        return config.getString("discord.message", "**Player**: %player%\n**Violations**:\n%violations%\n"
+                + "**Client Version**: %version%\n**Brand**: `%brand%`\n**Channels**:\n%channels%");
+    }
+
+    public boolean isDiscordUseComponentsV2() {
+        return config.getBoolean("discord.use-components-v2", false);
+    }
+
+
 }

@@ -18,6 +18,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -29,7 +31,7 @@ import java.util.stream.Collectors;
 public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
-            "help", "info", "player", "find", "check", "brands", "channels", "alerts", "lang", "reload", "version");
+            "help", "info", "player", "find", "check", "brands", "channels", "alerts", "lang", "reload", "version", "forget");
     /** {@code /veneer <name> ...} runs the plugin.yml command it maps to, with its own permission check. */
     private static final Map<String, String> PASSTHROUGH = Map.of(
             "spoof", "spoof", "hackcheck", "hackcheck", "scan", "hackcheck", "hacklang", "hacklang",
@@ -42,28 +44,29 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     private record HelpEntry(String module, String usage, String key, String permission) {}
 
     private static final List<HelpEntry> HELP = List.of(
-            new HelpEntry(null,    "/veneer help",                       "help",     null),
-            new HelpEntry(null,    "/veneer lang [{language}|auto|reset]","lang",    "veneer.lang"),
-            new HelpEntry(null,    "/veneer player ({player})",          "player",   "veneer.admin"),
-            new HelpEntry(null,    "/veneer find <{player}>",            "find",     "veneer.admin"),
-            new HelpEntry(null,    "/veneer check <{player}>",           "check",    "veneer.admin"),
-            new HelpEntry("spoof", "/veneer brands",                     "brands",   "veneer.spoof.use"),
-            new HelpEntry(null,    "/veneer channels",                   "channels", "veneer.admin"),
-            new HelpEntry(null,    "/veneer alerts ({player})",          "alerts",   Alerts.PERMISSION),
-            new HelpEntry(null,    "/veneer info <{player}>",            "info",     "veneer.admin"),
-            new HelpEntry(null,    "/veneer reload",                     "reload",   "veneer.admin"),
-            new HelpEntry(null,    "/veneer version",                    "version",  "veneer.admin"),
-            new HelpEntry("spoof", "/spoof brand <{player}>", "spoof-brand", "veneer.spoof.use"),
-            new HelpEntry("spoof", "/spoof channels <{player}>", "spoof-channels", "veneer.spoof.use"),
-            new HelpEntry("spoof", "/spoof runcheck [{player}|*]", "spoof-runcheck", "veneer.spoof.use"),
-            new HelpEntry("spoof", "/spoof check [{player}|*]", "spoof-check", "veneer.spoof.admin"),
-            new HelpEntry("spoof", "/spoof brands [allow|block|forget <id>]", "spoof-brands", "veneer.spoof.admin"),
-            new HelpEntry("spoof", "/spoof blockedbrands", "spoof-blockedbrands", "veneer.spoof.admin"),
-            new HelpEntry("spoof", "/spoof blockedchannels", "spoof-blockedchannels", "veneer.spoof.admin"),
-            new HelpEntry("hacks", "/hackcheck <{player}> [{mods}]", "hackcheck", "veneer.hacks.check"),
-            new HelpEntry("hacks", "/hacklang <{player}> [{languages}]", "hacklang", "veneer.hacks.lang"),
-            new HelpEntry("hacks", "/hackeditor", "hackeditor", "veneer.hacks.editor"),
-            new HelpEntry("rptrack", "/rptrack <{player}>", "rptrack", "veneer.rptrack"));
+            new HelpEntry(null,      "/veneer help",                             "help",                  null),
+            new HelpEntry(null,      "/veneer lang [{language}|auto|reset]",     "lang",                  "veneer.lang"),
+            new HelpEntry(null,      "/veneer player ({player})",                "player",                "veneer.admin"),
+            new HelpEntry(null,      "/veneer find <{player}>",                  "find",                  "veneer.admin"),
+            new HelpEntry(null,      "/veneer check <{player}>",                 "check",                 "veneer.admin"),
+            new HelpEntry("spoof",   "/veneer brands",                           "brands",                "veneer.admin"),
+            new HelpEntry(null,      "/veneer channels",                         "channels",              "veneer.admin"),
+            new HelpEntry(null,      "/veneer alerts [{player}|toggle]",         "alerts",                Alerts.PERMISSION),
+            new HelpEntry(null,      "/veneer info <{player}>",                  "info",                  "veneer.admin"),
+            new HelpEntry(null,      "/veneer reload",                           "reload",                "veneer.admin"),
+            new HelpEntry(null,      "/veneer version",                          "version",               "veneer.admin"),
+            new HelpEntry(null,      "/veneer forget <{player}>",                "forget",                "veneer.admin.forget"),
+            new HelpEntry("spoof",   "/spoof brand <{player}>",                  "spoof-brand",           "veneer.spoof.use"),
+            new HelpEntry("spoof",   "/spoof channels <{player}>",               "spoof-channels",        "veneer.spoof.use"),
+            new HelpEntry("spoof",   "/spoof runcheck [{player}|*]",             "spoof-runcheck",        "veneer.spoof.use"),
+            new HelpEntry("spoof",   "/spoof check [{player}|*]",                "spoof-check",           "veneer.spoof.admin"),
+            new HelpEntry("spoof",   "/spoof brands [allow|block|forget <id>]",  "spoof-brands",          "veneer.spoof.admin"),
+            new HelpEntry("spoof",   "/spoof blockedbrands",                     "spoof-blockedbrands",   "veneer.spoof.admin"),
+            new HelpEntry("spoof",   "/spoof blockedchannels",                   "spoof-blockedchannels", "veneer.spoof.admin"),
+            new HelpEntry("hacks",   "/hackcheck <{player}> [{mods}]",           "hackcheck",             "veneer.hacks.check"),
+            new HelpEntry("hacks",   "/hacklang <{player}> [{languages}]",       "hacklang",              "veneer.hacks.lang"),
+            new HelpEntry("hacks",   "/hackeditor",                              "hackeditor",            "veneer.hacks.editor"),
+            new HelpEntry("rptrack", "/rptrack <{player}>",                      "rptrack",               "veneer.rptrack"));
 
 
     private final VeneerPlugin plugin;
@@ -87,13 +90,14 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
-            case "gui" -> { if (sender instanceof Player p) plugin.gui().openPage(p, args); }
+            case "forget" -> forget(sender, args);
+            case "gui" -> { if (sender instanceof Player p && !denied(sender, "veneer.admin")) plugin.gui().openPage(p, args); }
             case "player", "p" -> playerPage(sender, args, false);
             case "find" -> playerPage(sender, args, true);
             case "check" -> checkPage(sender, args);
             case "brands" -> {
                 if (!(sender instanceof Player p)) { plugin.messages().send(sender, "veneer-cmd-players-only"); return true; }
-                if (denied(sender, "veneer.spoof.use")) return true;
+                if (denied(sender, "veneer.admin")) return true;
                 plugin.gui().openPage(p, new String[]{"gui", "brands"});
             }
             case "channels" -> {
@@ -107,6 +111,33 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             }
         }
         return true;
+    }
+
+    /**
+     * {@code /veneer forget <player|uuid>}: erases everything stored about the account (an erasure request). A name
+     * covers every account that used it. An online player is recorded again on the next join.
+     */
+    private void forget(CommandSender sender, String[] args) {
+        if (denied(sender, "veneer.admin.forget")) return;
+        if (args.length < 2) { plugin.messages().send(sender, "veneer-forget-usage"); return; }
+        String who = args[1];
+        FoliaScheduler.runAsync(plugin, () -> {
+            Set<String> uuids;
+            try {
+                uuids = Set.of(UUID.fromString(who).toString());
+            } catch (IllegalArgumentException notUuid) {
+                uuids = plugin.database().uuidsByName(who);
+            }
+            int rows = plugin.database().deletePlayers(uuids);
+            if (rows > 0) plugin.getLogger().info(sender.getName() + " erased the stored data of " + who + " (" + uuids + ", " + rows + " rows)");
+            int removed = rows;
+            Runnable reply = () -> {
+                if (removed > 0) plugin.messages().send(sender, "veneer-forget-done", "player", who, "rows", String.valueOf(removed));
+                else plugin.messages().send(sender, "veneer-forget-nothing", "player", who);
+            };
+            if (sender instanceof Player p) FoliaScheduler.runAtEntity(plugin, p, reply);
+            else FoliaScheduler.runGlobal(plugin, reply);
+        });
     }
 
     private boolean denied(CommandSender sender, String permission) {
@@ -200,6 +231,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().in(sender).get(on ? "alerts-enabled" : "alerts-disabled"));
             return;
         }
+        // The history is part of the admin panel; veneer.alerts alone only toggles
+        if (denied(sender, "veneer.admin")) return;
         String target = args.length >= 2 ? args[1] : null;
         plugin.gui().openPage(player, target == null
                 ? new String[]{"gui", "alerts"}
@@ -247,6 +280,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
         if (s == null) plugin.messages().send(sender, "veneer-latest-checking");
         else if (s.latest() == null) plugin.messages().send(sender, "veneer-latest-none");
         else if (s.updateAvailable()) plugin.messages().send(sender, "veneer-update-available", "latest", s.latest(), "url", s.url());
+        else if (s.ahead()) plugin.messages().send(sender, "veneer-latest-ahead", "latest", s.latest(), "current", current);
         else plugin.messages().send(sender, "veneer-latest-ok", "latest", s.latest());
     }
 
@@ -368,7 +402,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             return options.stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2 && (sub.equals("info") || sub.equals("player") || sub.equals("p")
-                || sub.equals("find") || sub.equals("check")))
+                || sub.equals("find") || sub.equals("check") || sub.equals("forget")))
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (args.length == 2 && sub.equals("alerts"))

@@ -74,6 +74,8 @@
         .results-table tr:last-child td{border-bottom:none}
         .badge{display:inline-flex;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600}
         .badge-DETECTED{background:#3d1a1a;border:1px solid #7c2020;color:var(--red)}
+        .badge-DETECTED.lvl-2{background:#3a2c0d;border-color:#7d5a12;color:#e3b341}
+        .badge-DETECTED.lvl-3{background:#12301b;border-color:#1f6f35;color:#56d364}
         .badge-NOT_DETECTED{background:#1a2e1a;border:1px solid #2d5a2d;color:var(--green)}
         .badge-PROTECTED{background:#2e2410;border:1px solid #5a3d10;color:var(--yellow)}
         .badge-SKIPPED{background:var(--surface2);border:1px solid var(--border);color:var(--gray)}
@@ -142,7 +144,9 @@
           .layout.wide > .panel{display:none}
           .stat-row{grid-template-columns:repeat(2,1fr)}
           .graph-box{height:70vh}
-          .node-card{width:auto;left:12px}
+          /* Docked at the bottom, at most half the box, so the selected head stays visible above it */
+          .node-card{width:auto;left:12px;top:auto;bottom:12px;max-height:45%}
+          .graph-info{flex-wrap:wrap;gap:6px 12px;right:12px}
           .dbg-log{width:auto;right:10px}
         }
 </style>
@@ -219,7 +223,11 @@
     function nav(route) {
       if (location.hash.slice(1) === route) render(); else location.hash = route;
     }
+    // Bumped on every page change: a page whose data arrives after the user went elsewhere drops it
+    let renderGen = 0;
+    const stale = gen => gen !== renderGen;
     function render() {
+      renderGen++;
       const h = location.hash.slice(1), i = h.indexOf('/');
       const page = i < 0 ? h : h.slice(0, i), arg = i < 0 ? '' : decodeURIComponent(h.slice(i + 1));
       document.querySelector('.layout').classList.toggle('wide', page === 'links' && perms.includes('links'));
@@ -233,6 +241,8 @@
     window.addEventListener('hashchange', render);
     const playerRoute = name => 'player/' + encodeURIComponent(name);
     let perms = [];
+    // Level of each configured mod (1 cheat, 2 forbidden, 3 tolerated), for results that carry only the mod id
+    let LEVELS = {};
 
     async function apiPost(path, body) {
       return apiFetch(path, {
@@ -282,6 +292,7 @@
         const info = await apiFetch('validate');
         // The server refuses what the token has no right to; hide those controls so they are not offered
         perms = String(info.perms || '').split(',');
+        LEVELS = info.levels || {};
         document.body.classList.toggle('no-links', !perms.includes('links'));
         document.body.classList.toggle('no-scan', !perms.includes('scan'));
         document.body.classList.toggle('no-delete', !perms.includes('delete'));
@@ -378,8 +389,20 @@
       return sprite;
     }
 
+    // Frame colour of a head, the most serious state wins: banned, a cheat (level 1), a forbidden mod (level 2),
+    // a spoof flag; scanned with nothing forbidden (or only tolerated mods, level 3) is green, never scanned blue
+    const nodeColour = n => n.banned ? 0x6e7681 : n.level === 1 ? 0xf85149 : n.level === 2 ? 0xe3b341
+      : n.spoof ? 0xdb61a2 : (n.scanned || n.level === 3) ? 0x3fb950 : 0x4493f8;
+    // Online accounts have a white name, offline ones a grey one
+    const nameColour = n => n.online ? 0xffffff : 0x8b949e;
+    // Search matches are cyan: yellow is a level-2 mod
+    const HIT = 0x39c5cf;
+    // Mod badge by level; LiquidBounce from the fingerprint has no level and is a cheat
+    const modBadge = (m, style) => '<span class="badge badge-DETECTED lvl-' + (m.level || 1) + '"' + (style ? ' style="' + style + '"' : '') +
+      ' title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>';
+
     function skinCube(n, size) {
-      const edge = size, colour = n.detected ? 0xf85149 : 0x4493f8;
+      const edge = size, colour = nodeColour(n);
       const group = new THREE.Group();
       const canvases = FACES.map(() => { const c = document.createElement('canvas'); c.width = c.height = 8; return c; });
       const mats = canvases.map(c => {
@@ -419,7 +442,7 @@
       group.add(frame);
       // The name hangs under the head on screen: the sprite sits at the head's centre and its anchor is moved
       // up by the head's half-diagonal, which works from any camera angle
-      const label = textSprite(n.name, Math.max(7, edge * .75), 0xc9d1d9);
+      const label = textSprite(n.name, Math.max(7, edge * .75), nameColour(n));
       label.center.set(.5, 1 + edge * 1.05 / label.scale.y);
       group.add(label);
       n._label = label;
@@ -433,7 +456,9 @@
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let mods;
-      try { mods = await apiFetch('mods'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      const gen = renderGen;
+      try { mods = await apiFetch('mods'); } catch(e) { if (!stale(gen)) main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      if (stale(gen)) return;
       if (!mods.length) {
         main.innerHTML = '<div class="section-title">' + t('Mods detected') + '</div><div class="empty-state">' + t('No mods have been detected yet.') + '</div>';
         return;
@@ -441,12 +466,18 @@
       main.innerHTML = '<div class="section-title">' + t('Mods detected ({0})', mods.length) + '</div><div class="scan-cards">' +
         mods.map(m =>
           '<div class="scan-card" style="cursor:default"><div class="scan-card-header">' +
-          '<span class="scan-card-type" style="font-size:13px">' + esc(m.name) + '</span>' +
+          '<span class="scan-card-type" style="font-size:13px;color:' + ['', 'var(--red)', '#e3b341', '#56d364'][m.level || 1] + '" title="' + esc(t(['', 'cheats', 'forbidden mods', 'tolerated mods'][m.level || 1])) + '">' + esc(m.name) + '</span>' +
           '<span class="scan-card-time">' + t(m.count === 1 ? '{0} player' : '{0} players', m.count) + '</span></div>' +
           '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px">' +
           m.players.map(p => '<span class="player-item" style="padding:4px 8px" data-player="' + esc(p.name) + '" title="' + esc(timeAgo(p.last_seen)) + '">' +
             '<img src="' + headUrl(p.uuid) + '" onerror="this.style.visibility=\'hidden\'" alt="" style="width:20px;height:20px"><span class="player-item-name">' + esc(p.name) + '</span></span>').join('') +
           '</div></div>').join('') + '</div>';
+    }
+
+    // CC BY 4.0 asks for the source of the country data wherever it is shown: under every list that shows it
+    function ipCredit(rows) {
+      if (!rows || !rows.some(r => r.org !== undefined)) return '';
+      return '<div class="ip-credit" style="font-size:10px;opacity:.7;margin-top:4px">' + t('IP data') + ': <a href="https://iptoasn.com/" target="_blank" rel="noopener" style="color:inherit">IPtoASN</a>, <a href="https://www.nro.net/" target="_blank" rel="noopener" style="color:inherit">NRO</a> (CC BY 4.0) ' + t('via') + ' <a href="https://github.com/sapics/ip-location-db" target="_blank" rel="noopener" style="color:inherit">ip-location-db</a></div>';
     }
 
     function provider(r) {
@@ -466,7 +497,10 @@
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       let data;
-      try { data = await apiFetch('links'); } catch(e) { main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      const gen = renderGen;
+      try { data = await apiFetch('links'); } catch(e) { if (!stale(gen)) main.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+      // The user went to another page while the graph loaded: it must not be drawn over that page
+      if (stale(gen)) return;
       if (!data.nodes.length) {
         main.innerHTML = '<div class="section-title">' + t('Linked accounts') + '</div><div class="empty-state">' + t('No linked accounts yet. Links appear when accounts join from the same address, share an RPTrack fingerprint or play with the same uncommon client.') + '</div>';
         return;
@@ -480,6 +514,7 @@
         '<label>' + t('at least') + ' <input type="range" id="g-min" min="0" max="90" step="5" value="0" style="width:90px;padding:0"> <span id="g-min-v">0%</span></label>' +
         '<label>' + t('seen') + ' <select id="g-days">' + [[0, 'any time'], [1, 'last 24 h'], [7, 'last 7 days'], [30, 'last 30 days'], [90, 'last 90 days']]
           .map(([v, n]) => '<option value="' + v + '">' + t(n) + '</option>').join('') + '</select></label>' +
+        '<label title="' + esc(t('Only the accounts linked to the selected one, directly or through others')) + '"><input type="checkbox" id="g-group"' + (focus ? ' checked' : '') + '> ' + t('only this group') + '</label>' +
         '<label><input type="checkbox" id="g-2d"> ' + t('flat') + '</label>' +
         // The debug log is for diagnosing camera problems: shown only when the page is opened with &debug
         (new URLSearchParams(location.search).has('debug') ? '<label><input type="checkbox" id="g-dbg"> debug</label>' : '<input type="checkbox" id="g-dbg" hidden>') +
@@ -490,6 +525,8 @@
       // A search matches a name, or the start of an address the account joined from (when IPs may be seen)
       const matches = n => n.name.toLowerCase().includes(hl) || (n.ips || []).some(ip => ip.startsWith(hl));
       let hl = '', searchScale = 1, hover = null, selected = null, fitted = false, ownMoveUntil = 0, lastCam = null, lastLog = 0;
+      // The account whose group "only this group" keeps: the one the page was opened for, then the last one selected
+      let groupRoot = focus || null, groupShown = false;
       const dbgBox = document.createElement('pre'); dbgBox.className = 'dbg-log'; dbgBox.style.display = 'none';
       const dbgOn = () => document.getElementById('g-dbg').checked;
       const dbg = msg => {
@@ -513,16 +550,31 @@
         const minPct = +document.getElementById('g-min').value / 100, days = +document.getElementById('g-days').value;
         // The period keeps accounts seen in it (an account never seen joining has no time and stays)
         const recent = new Set(data.nodes.filter(n => !days || !n.last_seen || Date.now() - n.last_seen <= days * 86400000).map(n => n.id));
-        // Reasons for one pair are merged: pct = 1 - product of (1 - p), so each extra shared sign raises it
+        // Reasons for one pair are merged: pct = 1 - product of (1 - p), so each extra shared sign raises it.
+        // Shared addresses count as one reason (the best one plus 5 % per extra address, at most 70 %): a household
+        // or a provider's pool shares many, and they are not independent signs. WebServerManager.alts does the same.
         const pairs = new Map();
         data.edges.filter(e => use[e.type] && recent.has(e.source) && recent.has(e.target)).forEach(e => {
           const key = e.source < e.target ? e.source + '|' + e.target : e.target + '|' + e.source;
-          const l = pairs.get(key) || {source: e.source, target: e.target, miss: 1, types: new Set(), why: []};
-          l.miss *= 1 - e.p; l.types.add(e.type);
+          const l = pairs.get(key) || {source: e.source, target: e.target, miss: 1, ipBest: 0, ipCount: 0, types: new Set(), why: []};
+          if (e.type === 'ip') { l.ipBest = Math.max(l.ipBest, e.p); l.ipCount++; } else l.miss *= 1 - e.p;
+          l.types.add(e.type);
           l.why.push(describeEdge(e));
           pairs.set(key, l);
         });
-        const links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss})).filter(l => l.pct >= minPct);
+        const addressP = l => l.ipCount ? Math.min(.7, l.ipBest + .05 * (l.ipCount - 1)) : 0;
+        let links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss * (1 - addressP(l))})).filter(l => l.pct >= minPct);
+        groupShown = false;
+        // Only this group: the accounts reachable from the root over the links left after the filters
+        if (document.getElementById('g-group').checked && groupRoot) {
+          const near = {};
+          links.forEach(l => { (near[l.source] = near[l.source] || []).push(l.target); (near[l.target] = near[l.target] || []).push(l.source); });
+          const group = new Set([groupRoot]), queue = [groupRoot];
+          while (queue.length) (near[queue.shift()] || []).forEach(o => { if (!group.has(o)) { group.add(o); queue.push(o); } });
+          // A root with no link left would empty the graph: then the whole graph stays, and the box says so
+          if (group.size > 1) { links = links.filter(l => group.has(l.source)); groupShown = true; }
+          else document.getElementById('g-group').checked = false;
+        }
         const deg = {}; links.forEach(l => { deg[l.source] = (deg[l.source]||0) + 1; deg[l.target] = (deg[l.target]||0) + 1; });
         const nodes = data.nodes.filter(n => deg[n.id]).map(n => ({...n, links: deg[n.id]}));
         stopGraph();
@@ -541,12 +593,15 @@
           .linkWidth(l => .4 + l.pct * 2.2)
           .linkLabel(l => Math.round(l.pct * 100) + '% — ' + l.why.map(esc).join(', '))
           .linkThreeObjectExtend(true)
-          .linkThreeObject(l => { const t = textSprite(Math.round(l.pct * 100) + '%', 6, 0x8b949e); t.visible = false; l._label = t; return t; })
+          // The % label of a line is drawn only while a head on it is hovered (see place): an empty group until then,
+          // so a large graph does not make a canvas texture for every line
+          .linkThreeObject(l => { const g = new THREE.Group(); l._holder = g; return g; })
           .linkPositionUpdate((t, {start, end}) => { t.position.set((start.x + end.x) / 2, (start.y + end.y) / 2, ((start.z || 0) + (end.z || 0)) / 2); })
           .onNodeClick((n, ev) => { dbg('click on node ' + n.name + (ev ? ' (button ' + ev.button + ')' : '')); select(n); })
           .onBackgroundClick(() => { dbg('click on background'); select(null); })
           .onNodeHover(n => { hover = n ? n.id : null; })
-          .warmupTicks(200)
+          // The warm-up runs before the first frame in one go: fewer ticks for a large graph keep the page responsive
+          .warmupTicks(nodes.length > 600 ? 20 : nodes.length > 200 ? 80 : 200)
           // No tick limit: a fixed count cut the motion off mid-flight after a drag; the time limit is a safety net
           .cooldownTicks(Infinity)
           .cooldownTime(8000)
@@ -563,7 +618,12 @@
           .graphData({nodes, links});
         const select = async n => {
           if (n && n === selected) n = null;
+          // "Only this group" ticked while the whole graph shows (nothing was selected yet): the pick narrows it
+          if (n && document.getElementById('g-group').checked && !groupShown) {
+            groupRoot = n.id; focus = n.id; build(); return;
+          }
           selected = n;
+          if (n) groupRoot = n.id;
           if (!n) { card.style.display = 'none'; fit(700, 'back to overview'); return; }
           const d = n.x === undefined ? null : n;
           if (d) moveCamera({x: n.x + 50, y: n.y + 30, z: (n.z || 0) + 75}, {x: n.x, y: n.y, z: n.z || 0}, 700, 'zoom to ' + n.name);
@@ -579,15 +639,20 @@
           // LiquidBounce comes from the fingerprint, not a sign scan: it joins the other cheats in one list
           const cheats = det.mods.slice();
           if (fp && fp.liquidbounce && !cheats.some(m => m.name.toLowerCase() === 'liquidbounce'))
-            cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint')});
+            cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint'), level: 1});
+          // The most serious of the mods listed below, so the line and the badges always agree
+          const worst = cheats.length ? Math.min(...cheats.map(m => m.level || 1)) : 0;
           card.innerHTML =
             '<h3>' + esc(n.name) + '<button title="' + esc(t('Close')) + '">✕</button></h3>' +
-            '<div style="color:var(--text2)">' + (cheats.length ? '<span style="color:var(--red)">☢ ' + t('mods detected') + '</span>' : t('no mods detected')) + '</div>' +
-            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
+            '<div style="color:var(--text2)">' + [n.online ? '<span style="color:#fff">● ' + t('online') + '</span>' : '',
+              n.banned ? '<span style="color:#8b949e">⛔ ' + t('banned') + '</span>' : '',
+              n.spoof ? '<span style="color:#db61a2">⚑ ' + t('spoof flag') + '</span>' : '',
+              cheats.length ? '<span style="color:' + ['', 'var(--red)', '#e3b341', '#56d364'][worst] + '">☢ ' + t(['', 'cheats', 'forbidden mods', 'tolerated mods'][worst]) + '</span>' : t('no mods detected')].filter(Boolean).join(' · ') + '</div>' +
+            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.slice().sort((a, b) => (a.level || 1) - (b.level || 1)).map(m => modBadge(m)).join('') + '</div>' : '') +
             '<h4>' + t('Addresses') + '</h4>' +
             (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) +
               (r.org !== undefined ? '<small style="display:block;color:var(--text2);font-size:10px">' + esc(provider(r)) + (r.weak ? ' · <span style="color:#d29922">' + t('VPN / hosting') + '</span>' : '') + '</small>' : '') +
-              '</span><span>' + r.count + '× · ' + timeAgo(r.last_seen) + '</span></div>').join('') : '<div style="color:var(--text2)">' + t('none recorded') + '</div>') +
+              '</span><span>' + r.count + '× · ' + timeAgo(r.last_seen) + '</span></div>').join('') + ipCredit(det.ips) : '<div style="color:var(--text2)">' + t('none recorded') + '</div>') +
             '<h4>' + t('Fingerprint') + '</h4>' +
             (fp ? '<div class="row"><span class="bits">' + esc(fp.bits) + '</span><span>' + t('{0} packs', fp.packs) + '</span></div>' : '<div style="color:var(--text2)">' + t('not tracked') + '</div>') +
             '<h4>' + t('Possible alts') + '</h4>' +
@@ -611,15 +676,30 @@
         graph3d.d3Force('charge').strength(-320).distanceMax(450);
         // Keep heads from sitting inside each other (d3's collide force is not exposed by the bundle)
         let simNodes = [];
+        // Heads are put in a grid of cells as wide as the largest push distance, and only heads in neighbouring
+        // cells are compared: every pair was compared before, which froze the page for seconds at 1000 accounts
+        const CELL = 80;
         const collide = () => {
-          for (let i = 0; i < simNodes.length; i++) for (let j = i + 1; j < simNodes.length; j++) {
-            const a = simNodes[i], b = simNodes[j];
-            const dx = b.x - a.x, dy = b.y - a.y, dz = (b.z || 0) - (a.z || 0);
-            const d = Math.hypot(dx, dy, dz) || .01, min = ((a._edge || 10) + (b._edge || 10)) * .85 + 44;
-            if (d >= min) continue;
-            const f = (min - d) / d * .2;
-            a.vx -= dx * f; a.vy -= dy * f; b.vx += dx * f; b.vy += dy * f;
-            if (a.vz !== undefined) { a.vz -= dz * f; b.vz += dz * f; }
+          const grid = new Map(), key = (x, y, z) => x + ',' + y + ',' + z;
+          for (const n of simNodes) {
+            const k = key(Math.floor(n.x / CELL), Math.floor(n.y / CELL), Math.floor((n.z || 0) / CELL));
+            (grid.get(k) || grid.set(k, []).get(k)).push(n);
+          }
+          for (const a of simNodes) {
+            const cx = Math.floor(a.x / CELL), cy = Math.floor(a.y / CELL), cz = Math.floor((a.z || 0) / CELL);
+            for (let ix = -1; ix <= 1; ix++) for (let iy = -1; iy <= 1; iy++) for (let iz = -1; iz <= 1; iz++) {
+              const cell = grid.get(key(cx + ix, cy + iy, cz + iz));
+              if (!cell) continue;
+              for (const b of cell) {
+                if (b.index <= a.index) continue; // each pair once
+                const dx = b.x - a.x, dy = b.y - a.y, dz = (b.z || 0) - (a.z || 0);
+                const min = ((a._edge || 10) + (b._edge || 10)) * .85 + 44, d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 >= min * min) continue;
+                const d = Math.sqrt(d2) || .01, f = (min - d) / d * .2;
+                a.vx -= dx * f; a.vy -= dy * f; b.vx += dx * f; b.vy += dy * f;
+                if (a.vz !== undefined) { a.vz -= dz * f; b.vz += dz * f; }
+              }
+            }
           }
         };
         collide.initialize = ns => { simNodes = ns; };
@@ -631,22 +711,28 @@
         graph3d.d3Force('pull', pull);
         info.innerHTML = '<span>' + t('{0} accounts, {1} links', nodes.length, links.length) + '</span>' +
           '<span class="legend" title="' + esc(t('Thicker line = higher match. Hover a head or a line for details.')) + '">' +
-          '<span class="sq" style="border-color:#4493f8"></span>' + t('account') + '<span class="sq" style="border-color:#f85149"></span>' + t('mods detected') +
+          '<span class="sq" style="border-color:#f85149"></span>' + t('cheats') + '<span class="sq" style="border-color:#e3b341"></span>' + t('forbidden mods') +
+          '<span class="sq" style="border-color:#3fb950"></span>' + t('clean') + '<span class="sq" style="border-color:#4493f8"></span>' + t('not scanned') +
+          '<span class="sq" style="border-color:#db61a2"></span>' + t('spoof flag') + '<span class="sq" style="border-color:#6e7681"></span>' + t('banned') +
+          '<b style="color:#fff;margin-left:12px;font-weight:600">' + t('name') + '</b> ' + t('online') +
           '<i style="border-color:#8b949e"></i>' + t('same address') + '<i style="border-color:#3fb950"></i>' + t('same fingerprint') +
           '<i style="border-color:#a371f7"></i>' + t('same client') + '</span>' +
-          // CC BY 4.0 asks for the source of the country data wherever it is shown
-          (data.edges.some(e => e.org !== undefined) ? '<span style="font-size:10px;opacity:.7">' + t('IP data') + ': <a href="https://iptoasn.com/" target="_blank" rel="noopener" style="color:inherit">IPtoASN</a>, <a href="https://www.nro.net/" target="_blank" rel="noopener" style="color:inherit">NRO</a> (CC BY 4.0) ' + t('via') + ' <a href="https://github.com/sapics/ip-location-db" target="_blank" rel="noopener" style="color:inherit">ip-location-db</a></span>' : '');
+          ipCredit(data.edges);
         box.appendChild(info); box.appendChild(card); box.appendChild(dbgBox);
         const place = () => {
           if (!box.isConnected || !graph3d) { stopGraph(); return; } // another tab replaced the graph
           const now = performance.now(), dt = Math.min(.1, (now - (place.last || now)) / 1000);
           place.last = now;
-          links.forEach(l => { if (l._label) l._label.visible = !!hover && (l.source.id === hover || l.target.id === hover); });
+          links.forEach(l => {
+            const on = !!hover && (l.source.id === hover || l.target.id === hover);
+            if (on && !l._label && l._holder) { l._label = textSprite(Math.round(l.pct * 100) + '%', 6, 0x8b949e); l._holder.add(l._label); }
+            if (l._label) l._label.visible = on;
+          });
           nodes.forEach(n => {
             if (n.x === undefined) return;
             const hit = hl && matches(n);
             if (n._label) {
-              n._label.material.color.set(hit ? 0xd29922 : 0xc9d1d9);
+              n._label.material.color.set(hit ? HIT : nameColour(n));
               n._label.material.opacity = hl && !hit ? .3 : 1;
             }
             const obj = n.__threeObj;
@@ -664,7 +750,7 @@
             }
             // Dragging with the right button turns only the cube the pointer hit: the frame follows it
             if (n._frame && n._cube) n._frame.quaternion.copy(n._cube.quaternion);
-            if (n._frame) n._frame.material.color.set(hit ? 0xd29922 : (n.detected ? 0xf85149 : 0x4493f8));
+            if (n._frame) n._frame.material.color.set(hit ? HIT : nodeColour(n));
           });
           // Camera moves we did not start (mouse controls) are logged too, at most four times a second
           const cp = graph3d.camera().position;
@@ -678,21 +764,30 @@
         };
         place();
         fit(0, 'initial');
+        rescale();
       };
-      ['g-ip', 'g-rp', 'g-cl', 'g-days', 'g-2d'].forEach(id => { document.getElementById(id).onchange = build; });
+      // A filter change keeps the selected account in focus after the new layout
+      const rebuild = () => { focus = (selected && selected.id) || (document.getElementById('g-group').checked ? groupRoot : null); build(); };
+      ['g-ip', 'g-rp', 'g-cl', 'g-days', 'g-2d', 'g-group'].forEach(id => { document.getElementById(id).onchange = rebuild; });
       const minInput = document.getElementById('g-min');
       minInput.oninput = () => { document.getElementById('g-min-v').textContent = minInput.value + '%'; };
-      minInput.onchange = build;
+      minInput.onchange = rebuild;
       document.getElementById('g-dbg').onchange = e => { dbgBox.style.display = e.target.checked ? '' : 'none'; if (e.target.checked) dbg('debug on'); };
       // Matching heads grow more the rarer the match: 1 + 0.35 * log2(all / matching), at most 2.2x.
       // One match among 36 gets the full 2.2x, half of the graph matching gets 1.35x, everyone matching stays 1x.
-      document.getElementById('g-search').oninput = e => {
-        hl = e.target.value.trim().toLowerCase();
+      const rescale = () => {
         const all = graph3d ? graph3d.graphData().nodes : [];
         const matching = hl ? all.filter(matches).length : 0;
         searchScale = matching ? Math.min(2.2, 1 + .35 * Math.log2(all.length / matching)) : 1;
         dbg('search "' + hl + '": ' + matching + ' of ' + all.length + ' match, heads x' + searchScale.toFixed(2));
       };
+      document.getElementById('g-search').oninput = e => { hl = e.target.value.trim().toLowerCase(); rescale(); };
+      // The graph follows the size of its box (window resized, phone turned)
+      const resize = new ResizeObserver(() => {
+        if (!box.isConnected) { resize.disconnect(); return; } // another page replaced the graph
+        if (graph3d) graph3d.width(box.clientWidth).height(box.clientHeight);
+      });
+      resize.observe(box);
       build();
     }
 
@@ -700,7 +795,9 @@
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading...') + '</div>';
       try {
+        const gen = renderGen;
         const [st, recent] = await Promise.all([apiFetch('stats'), apiFetch('scans?limit=15')]);
+        if (stale(gen)) return;
         const card = (num, label, route, colour) =>
           '<div class="stat-card' + (route ? ' link" onclick="nav(\'' + route + '\')' : '') + '"><div class="stat-card-num"' +
           (colour ? ' style="color:' + colour + '"' : '') + '>' + Number(num || 0).toLocaleString() + '</div><div class="stat-card-label">' + t(label) + '</div></div>';
@@ -767,7 +864,7 @@
         // Found mods first: they are what the card is for
         const shown = results.filter(r => r.result === 'DETECTED').concat(results.filter(r => r.result !== 'DETECTED'));
         preview = shown.slice(0, 6).map(r => r.result === 'DETECTED'
-          ? '<span class="badge badge-DETECTED">' + esc(r.hack_name) + '</span>' : badge(r.result)).join(' ') +
+          ? '<span class="badge badge-DETECTED lvl-' + (LEVELS[r.hack_id] || 1) + '">' + esc(r.hack_name) + '</span>' : badge(r.result)).join(' ') +
           (results.length > 6 ? ' <span class="muted" style="font-size:11px">+' + (results.length - 6) + '</span>' : '');
       } else {
         const r = results[0];
@@ -787,7 +884,9 @@
       const main = document.getElementById('main-content');
       main.innerHTML = '<div class="loading">' + t('Loading scan #{0}...', id) + '</div>';
       try {
+        const gen = renderGen;
         const scan = await apiFetch('scan/' + id);
+        if (stale(gen)) return;
         const results = scan.results || [];
 
         let body = '';
@@ -801,7 +900,8 @@
             results.forEach(r => { counts[r.result] = (counts[r.result] || 0) + 1; });
             let rows = '';
             for (const r of sorted) {
-              rows += '<tr><td>' + esc(r.hack_name) + '</td><td>' + badge(r.result) + '</td></tr>';
+              rows += '<tr><td>' + esc(r.hack_name) + '</td><td>' + (r.result === 'DETECTED' && LEVELS[r.hack_id] > 1
+                ? badge(r.result).replace('badge-DETECTED', 'badge-DETECTED lvl-' + LEVELS[r.hack_id]) : badge(r.result)) + '</td></tr>';
             }
             body = '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border)">' +
               Object.keys(order).filter(k => counts[k]).map(k => badge(k).replace('</span>', ' × ' + counts[k] + '</span>')).join('') + '</div>' +
@@ -909,7 +1009,7 @@
             kv(t('First seen'), dateTime(data.first_seen)) + kv(t('Last seen'), data.online ? '<span style="color:var(--green)">' + t('now') + '</span>' : dateTime(data.last_seen)) +
             (data.joins ? kv(t('Joins'), Number(data.joins).toLocaleString()) : '') +
             kv(t('Mods'), mods.length
-              ? mods.map(m => '<span class="badge badge-DETECTED" style="margin:1px" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('')
+              ? mods.slice().sort((a, b) => (a.level || 1) - (b.level || 1)).map(m => modBadge(m, 'margin:1px')).join('')
               : '<span class="muted">' + t('no mods detected') + '</span>') +
             kv(t('Fingerprint'), fp ? '<span class="bits" style="font-family:monospace">' + esc(fp.bits) + '</span> <small>' + t('{0} packs', fp.packs) + '</small>' : '<span class="muted">' + t('not tracked') + '</span>') +
             '</div>';
@@ -917,7 +1017,7 @@
           if (data.ips) {
             cards += '<div class="info-card"><h4>' + t('Addresses') + '</h4>' +
               (data.ips.length ? data.ips.map(r => kv(esc(r.ip) + (r.org !== undefined ? '<small>' + esc(provider(r)) + (r.weak ? ' · <span class="warn">' + t('VPN / hosting') + '</span>' : '') + '</small>' : ''),
-                r.count + '× · ' + esc(timeAgo(r.last_seen)))).join('') : '<div class="muted">' + t('none recorded') + '</div>') +
+                r.count + '× · ' + esc(timeAgo(r.last_seen)))).join('') + ipCredit(data.ips) : '<div class="muted">' + t('none recorded') + '</div>') +
               '</div>';
           }
           if (data.alts) {

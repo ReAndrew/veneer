@@ -92,6 +92,8 @@ public class HacksModule extends VeneerModule {
     @Override
     protected void reload() {
         config.reload();
+        // Levels and link settings may have changed: the cached account graph was built with the old ones
+        if (web != null) web.clearCache();
         if (config.isWebEditorEnabled() != (web != null))
             plugin.getLogger().info("hacks.web-editor.enabled changed: restart the server to apply it.");
     }

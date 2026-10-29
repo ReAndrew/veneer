@@ -247,12 +247,18 @@ public class LangCheckManager {
 
         ConfigManager cfg = plugin.hacks().config();
         if (cfg.isLangDiscordEnabled()) {
-            String description = cfg.getLangDiscordMessage()
-                    .replace("&name&",    target.getName())
-                    .replace("&checker&", checkerName)
-                    .replace("&lang&",    detected != null ? detected : "Unknown (" + response + ")");
-            plugin.webhook().report(cfg.getLangWebhookUrl(), cfg.getLangEmbedColor(), "Veneer language check",
-                    description, cfg.isLangDiscordUseComponentsV2());
+            var profile = plugin.profileOf(target.getUniqueId());
+            Map<String, String> values = new java.util.HashMap<>();
+            values.put("player", target.getName());
+            values.put("name", target.getName()); // &name& of older configs
+            values.put("uuid", target.getUniqueId().toString());
+            values.put("checker", checkerName);
+            values.put("lang", detected != null ? detected : "unknown (" + response + ")");
+            values.put("response", response);
+            values.put("brand", profile != null && profile.getBrand() != null ? profile.getBrand() : "unknown");
+            values.put("version", com.veneer.hacks.utils.ClientVersions.name(target));
+            plugin.webhook().report(cfg.getLangWebhookUrl(), cfg.getLangEmbedColor(), cfg.getLangDiscordTitle(),
+                    cfg.getLangDiscordMessage(), cfg.isLangDiscordUseComponentsV2(), target, values);
         }
     }
 

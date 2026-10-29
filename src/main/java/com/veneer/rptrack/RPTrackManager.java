@@ -1,6 +1,7 @@
 package com.veneer.rptrack;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
 import com.veneer.core.FoliaScheduler;
@@ -36,7 +37,7 @@ import java.util.zip.ZipOutputStream;
 public class RPTrackManager extends VeneerModule implements Listener {
 
     private static final String DEAD_URL = "http://127.0.0.1:0"; // Tracker RP Tester
-    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png"; //For old LiquidBounce NextGen clients without ExploitPreventer 
+    private static final String LB_URL = "http://127.0.0.1:15000/default/img/steve.png"; //For old LiquidBounce NextGen clients without ExploitPreventer
     private static final UUID HIDE_ID = UUID.nameUUIDFromBytes("veneer-hide".getBytes(StandardCharsets.UTF_8));
     private static final String[] LANGS = ("af_za ar_sa ast_es az_az bar ba_ru be_by be_latn bg_bg brb br_fr bs_ba ca_es cs_cz cv_cu "
             + "cy_gb da_dk de_at de_ch de_de el_gr en_au en_ca en_gb en_nz enp en_pt en_ud en_us enws eo_uy esan es_ar es_cl es_ec "
@@ -410,7 +411,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
             debug(player.getName() + ": probe done, cached=" + cachedOneBased + ", no answer=" + silent
                     + ", liquidbounce=" + lb + ", declined=" + s.declined);
         }
-        if (lb) report(player, "LiquidBounce local HTTP server (port 15000) reachable");
+        if (lb) report(player, "rptrack-text-liquidbounce", List.of());
 
         if (unique) {
             // Not PROBE any more, so the probe timeout cannot run this twice while the database is read
@@ -511,6 +512,20 @@ public class RPTrackManager extends VeneerModule implements Listener {
         }
     }
 
+    /**
+     * Whether two stored fingerprints come from one installation, by the rule the join check uses: at least
+     * {@code match} shared packs, or in unique mode one set inside the other (all packs or all but one, sets of 3+).
+     */
+    public boolean linked(long a, long b) {
+        int common = Long.bitCount(a & b);
+        if (!unique) return common >= minMatch;
+        int size = Math.min(Long.bitCount(a), Long.bitCount(b));
+        return size >= 3 && common >= size - 1;
+    }
+
+    /** Shared packs a link needs (clamped to send); in unique mode the smaller set less one. */
+    public int minMatch() { return minMatch; }
+
     /** Unique mode: stored sets fully (direct) or all but one pack (indirect) in a client's cache. */
     private record Links(long own, List<String> direct, List<String> indirect) { }
 
@@ -551,11 +566,11 @@ public class RPTrackManager extends VeneerModule implements Listener {
             results.put(player.getUniqueId(), new Result(Long.bitCount(l.own() != 0 ? l.own() : cache), l.direct().size(), lb));
             // A known account keeps its own set (anything else in the cache is another account's); a new one on
             // a known machine is stored with that machine's packs
-            plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, false);
+            plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, lbProbe, false);
             if (!l.direct().isEmpty() && alert)
-                report(player, "same client cache as: " + String.join(", ", l.direct()));
+                report(player, "rptrack-text-same-cache", l.direct());
             if (!l.indirect().isEmpty() && alert)
-                report(player, "probably the same client (one pack missing) as: " + String.join(", ", l.indirect()));
+                report(player, "rptrack-text-probably-same", l.indirect());
         });
     }
 
@@ -576,7 +591,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
         // Unique mode replaces: an account whose cache was wiped gets a new set, and two merged sets would break the rule.
         // The reservation is dropped once the set is in the database, so no pick in between misses it.
         FoliaScheduler.runAsync(plugin, () -> {
-            plugin.database().saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit, unique);
+            plugin.database().saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit, lbProbe, unique);
             reserved.remove(held);
         });
     }
@@ -603,9 +618,9 @@ public class RPTrackManager extends VeneerModule implements Listener {
                         + Long.bitCount(own) + " packs still cached, " + Long.bitCount(mask & ~own) + " extra");
             debug(player.getName() + ": linked accounts " + linked);
             results.put(player.getUniqueId(), new Result(Long.bitCount(mask | own), linked.size(), lb));
-            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, false);
+            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, lbProbe, false);
             if (!linked.isEmpty() && alert)
-                report(player, "same client cache as: " + String.join(", ", linked));
+                report(player, "rptrack-text-same-cache", linked);
         });
     }
 
@@ -636,9 +651,23 @@ public class RPTrackManager extends VeneerModule implements Listener {
         return 0;
     }
 
-    private void report(Player player, String text) {
-        String msg = "[RPTrack] " + player.getName() + ": " + text;
-        plugin.getLogger().info(msg);
-        if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(), "text", text));
+    /** Logs a finding in the server language and alerts staff, each in their own language ({@code key} takes {@code {players}}). */
+    private void report(Player player, String key, Collection<String> players) {
+        String names = String.join(", ", players);
+        plugin.getLogger().info("[RPTrack] " + player.getName() + ": "
+                + PlainTextComponentSerializer.plainText()
+                        .serialize(plugin.messages().with(key, "players", names)));
+        if (alert) plugin.alerts().sendToPlayers(m -> m.with("rptrack-report", "player", player.getName(),
+                "text", new Messages.Raw(m.plain(key, "players", names))));
+        if (cfg.getBoolean("discord.enabled", false)) {
+            String text = PlainTextComponentSerializer.plainText().serialize(plugin.messages().with(key, "players", names));
+            plugin.webhook().report(plugin.config().webhook(cfg.getString("discord.webhook-url", "")),
+                    com.veneer.core.Webhook.color(cfg.getString("discord.embed-color"), 0x9B59B6),
+                    cfg.getString("discord.title", "Veneer RPTrack"),
+                    cfg.getString("discord.message", "**Player:** %player%\n**Finding:** %text%"),
+                    cfg.getBoolean("discord.use-components-v2", true), player,
+                    Map.of("player", player.getName(), "uuid", player.getUniqueId().toString(), "text", text,
+                            "players", names, "version", com.veneer.hacks.utils.ClientVersions.name(player)));
+        }
     }
 }

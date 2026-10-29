@@ -58,7 +58,12 @@ public class BrandVerdicts {
             Entry e = new Entry(((Number) row.get("id")).intValue(), (String) row.get("brand"),
                     ((Number) row.get("first_seen")).longValue());
             String v = (String) row.get("verdict");
-            e.verdict = v == null ? null : Verdict.valueOf(v.toUpperCase(Locale.ROOT));
+            try {
+                e.verdict = v == null ? null : Verdict.valueOf(v.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                // an edited or foreign value: treat the brand as undecided instead of failing the module
+                plugin.getLogger().warning("Unknown brand verdict '" + v + "' for " + e.brand + ", treated as undecided");
+            }
             e.decidedBy = (String) row.get("decided_by");
             e.decidedAt = row.get("decided_at") instanceof Number n ? n.longValue() : 0;
             e.lastPlayer = (String) row.get("last_player");

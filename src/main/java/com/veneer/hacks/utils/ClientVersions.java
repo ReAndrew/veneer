@@ -25,6 +25,12 @@ public final class ClientVersions {
         }
     }
 
+    /** The player's client version for messages ("1.21.4"), or "unknown". */
+    public static String name(Player player) {
+        ClientVersion v = player == null ? null : of(player);
+        return v != null ? v.getReleaseName() : "unknown";
+    }
+
     /** "1.20" or "1.20.1" as a ClientVersion, or null when the text names no known release. */
     public static ClientVersion parse(String text) {
         try {

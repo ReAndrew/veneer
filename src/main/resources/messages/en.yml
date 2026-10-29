@@ -19,12 +19,11 @@ update-available: "{prefix}<green>Veneer {latest} is available</green> <gray>(ru
 # MOD SCAN  (/hackcheck, join and anticheat checks)
 # Placeholders: {player}. Scan results go to staff with veneer.alerts and to the player who started the scan.
 # ======================================================================
-check-started: "{prefix}<white>Starting check on <yellow>{player}<white>..."
+check-started: "{prefix}<white>Starting check on <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><white>..."
 check-complete: "{prefix}<white>Check complete for <yellow>{player}<white>:"
-check-timeout: "{prefix}<yellow>{player} <white>did not respond - marked as <red>TIMEOUT<white>."
 doublecheck: "{prefix}<yellow>DoubleCheck<gray>: <white>{player} <gray>flagged - running confirmation scan..."
-anticheat-trigger: "{prefix}<gray>Anticheat flagged <yellow>{player}<gray>. Queuing auto-check..."
-join-check: "{prefix}<gray>Auto-checking <yellow>{player} <gray>on join..."
+anticheat-trigger: "{prefix}<gray>Anticheat flagged <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click><gray>. Queuing auto-check..."
+join-check: "{prefix}<gray>Auto-checking <yellow><click:run_command:'/veneer player {player}'><hover:show_text:'<gray>Open profile'>{player}</hover></click> <gray>on join..."
 already-checking: "{prefix}<yellow>{player} <white>is already being checked."
 invalid-hack: "{prefix}<red>Unknown hack: <white>{hack}"
 hackcheck-usage: "{prefix}<red>Usage: /hackcheck \\<player> [hack1,hack2,...]</red>"
@@ -44,6 +43,7 @@ result-timeout: "<yellow>TIMEOUT"
 result-skipped: "<gray>SKIPPED"
 check-nothing-found: "{prefix}<green>    Nothing detected"
 check-channels: "{prefix}<white>  Channels<gray>: <aqua>{channels}"
+check-brand: "{prefix}<white>  Software<gray>: <yellow>{brand}"
 
 # ======================================================================
 # LANGUAGE CHECK  (/hacklang)
@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Auto-checking language of <yellow>{player}<gray>
 editor-url: "{prefix}<white>Editor: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Web editor is disabled in config.yml."
 editor-players-only: "{prefix}<red>Only players can open the editor.</red>"
+editor-failed: "{prefix}<red>Could not create a panel link, see the server log.</red>"
+editor-revoked: "{prefix}<green>Your web panel links no longer work.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -143,7 +145,7 @@ spoof-none-flagging: "<green>No players are currently detected as spoofing."
 
 # ======================================================================
 # SPOOF  violation reasons
-# Plain text, no tags. Listed under 'Violations detected'. Placeholders: {channel}, {channels}, {brand}.
+# Plain text, no tags. Listed under 'Violations detected', and %reason% of the spoof alerts in config.yml (server language). Placeholders: {channel}, {channels}, {brand}, {key}.
 # ======================================================================
 spoof-reason-non-vanilla: "Non-vanilla client detected"
 spoof-reason-vanilla-channels: "Vanilla client with plugin channels"
@@ -156,6 +158,10 @@ spoof-reason-no-whitelisted: "No whitelisted channels detected"
 spoof-reason-blocked-channel: "Using blocked channel: {channel}"
 spoof-reason-missing-brand-channels: "Missing required channels for {brand}: {channels}"
 spoof-reason-unknown: "Unknown reason (check configuration)"
+spoof-reason-no-brand: "No client brand detected"
+spoof-reason-unknown-brand: "Using unknown client brand: {brand}"
+spoof-reason-flagged-brand: "Using flagged client brand: {brand} ({key})"
+spoof-reason-brand-with-channels: "Client claiming '{brand}' detected with plugin channels"
 
 # ======================================================================
 # SPOOF  /spoof channels and /spoof brand
@@ -218,10 +224,11 @@ veneer-help-arg-languages: "lang1,lang2"
 veneer-help-arg-language: "language"
 veneer-cmd-help: "this list"
 veneer-cmd-lang: "the language you read Veneer messages in"
-veneer-cmd-alerts: "turn your staff alerts on or off"
+veneer-cmd-alerts: "alert and detection history; toggle turns your staff alerts on or off"
 veneer-cmd-info: "client, mod scan, RPTrack and bypasses of a player"
 veneer-cmd-reload: "reload config.yml and the messages"
 veneer-cmd-version: "running and latest release"
+veneer-cmd-forget: "erase everything stored about a player"
 veneer-cmd-spoof-brand: "a player's client brand"
 veneer-cmd-spoof-channels: "a player's plugin channels"
 veneer-cmd-spoof-runcheck: "run the spoof checks again"
@@ -233,6 +240,15 @@ veneer-cmd-hackcheck: "scan a player for mods"
 veneer-cmd-hacklang: "find out a player's game language"
 veneer-cmd-hackeditor: "link to the web panel"
 veneer-cmd-rptrack: "resource-pack fingerprint and linked accounts"
+veneer-cmd-player: "player info page"
+veneer-cmd-find: "search a player and open their info"
+veneer-cmd-check: "check dialog for a player"
+veneer-cmd-brands: "brand filters page"
+veneer-cmd-channels: "plugin channel groups"
+veneer-cmd-players-only: "{prefix}<red>This command can only be used by players."
+veneer-forget-usage: "{prefix}<red>Usage: /veneer forget \\<player|uuid></red>"
+veneer-forget-done: "{prefix}<green>Erased everything stored about</green> <white>{player}</white> <gray>({rows} rows: addresses, scans, fingerprint, client, skin).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Nothing is stored about</gray> <white>{player}</white><gray>.</gray>"
 veneer-lang-players-only: "{prefix}<red>Only players can choose a language; the console uses general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Your language:</gray> <white>{lang}</white> <gray>(the server's). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Your language:</gray> <white>{lang}</white> <gray>(follows your game language). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"
@@ -247,21 +263,23 @@ veneer-latest-checking: "{prefix}<gray>Latest release: checking, run this again 
 veneer-latest-none: "{prefix}<gray>No release is published on GitHub yet.</gray>"
 veneer-update-available: "{prefix}<green>Version {latest} is available:</green> <aqua>{url}</aqua>"
 veneer-latest-ok: "{prefix}<green>You are on the latest release ({latest}).</green>"
-# GUI panel (/veneer with no arguments, requires veneer.admin)
-gui-title: "<bold>Veneer</bold>"
+veneer-latest-ahead: "{prefix}<aqua>This build ({current}) is newer than the latest release ({latest}).</aqua>"
+
+# ======================================================================
+# GUI  chest panel (/veneer with no arguments, requires veneer.admin)
+# Item names and lore are MiniMessage without {prefix}; chat lines (kicked, none-online) have it.
+# Placeholders: {date}, {player}, {brand}, {count}, {mods}, {type}, {checker}, {check}, {verbose}, {h}, {v}, {players}, {channels}.
+# ======================================================================
 gui-chest-title: "<dark_aqua><bold>Veneer</bold></dark_aqua>"
 gui-module-spoof: "Spoof"
 gui-module-hacks: "Hacks"
 gui-module-rptrack: "RPTrack"
 gui-module-on: "<green>✔ Enabled"
 gui-module-off: "<red>✘ Disabled"
-gui-btn-spoof-check: "Check All (Spoof)"
 gui-btn-editor: "Web Editor"
-gui-btn-alerts: "Toggle Alerts"
+gui-btn-editor-lore: "<gray>Sends you a link to the web panel"
 gui-btn-reload: "Reload Config"
 gui-btn-version: "Version Info"
-gui-btn-close: "Close"
-gui-btn-alerts-lore: "<gray>Toggles your staff alert notifications"
 gui-btn-reload-lore: "<gray>Reloads config.yml and messages"
 gui-btn-version-lore: "<gray>Shows version and update status"
 gui-btn-players: "Players"
@@ -284,8 +302,12 @@ gui-nav-close: "<red>✕ Close"
 gui-player-online: "<green>● Online"
 gui-player-offline: "<gray>○ Offline"
 gui-player-last-seen: "<gray>Last seen: <white>{date}"
+gui-player-grim-flagged: "<yellow>⚑ GrimAC flags"
 gui-detection-mods: "<gray>Mods: <red>{mods}"
 gui-detection-date: "<dark_gray>{date}"
+gui-detection-type: "<gray>[{type}]"
+gui-alert-type: "<gray>[{type}] by {checker}"
+gui-alerts-empty: "<gray>No alerts found"
 gui-brand-undecided: "<yellow>⚠ Undecided"
 gui-brand-allowed: "<green>✔ Allowed"
 gui-brand-blocked: "<red>✘ Blocked"
@@ -293,6 +315,7 @@ gui-brand-last: "<gray>Last: <white>{player}"
 gui-brand-hint: "<dark_gray>Left: Allow  Right: Block  Mid: Reset"
 gui-grim-check: "<gray>Check: <yellow>{check}"
 gui-grim-verbose: "<dark_gray>{verbose}"
+gui-grim-empty: "<gray>No violations recorded yet"
 gui-search-prompt: "<yellow>Type player name in chat (<gray>. <yellow>to cancel):"
 gui-btn-alerts-log: "Alerts Log"
 gui-btn-alerts-log-lore: "<gray>View detected scan history"
@@ -317,21 +340,12 @@ gui-player-btn-scans-lore: "<gray>View this player's scan history"
 gui-player-btn-alerts: "Alerts"
 gui-player-btn-alerts-lore: "<gray>View this player's alerts"
 gui-channel-players: "<gray>Players seen: <white>{count}"
-gui-channel-kick-hint: "<red>Right-click to kick online players"
+gui-channel-online: "<green>Online: {players}"
+gui-channel-kick-hint: "<red>Shift + right-click to kick online players"
 gui-channel-kicked: "{prefix}<green>Kicked {count} player(s) with channels: <white>{channels}"
 gui-channel-none-online: "{prefix}<gray>No online players have channels: <white>{channels}"
-gui-check-dialog-title: "<bold>Check: {player}</bold>"
-gui-check-do-hack: "Hack / Mod Detection"
-gui-check-do-lang: "Language Check"
-gui-check-do-rptrack: "RPTrack Fingerprint"
-gui-check-run-btn: "Run Selected Checks"
-veneer-cmd-players-only: "{prefix}<red>This command can only be used by players."
-veneer-cmd-player: "Open player info page."
-veneer-cmd-find: "Search and open player info."
-veneer-cmd-check: "Open check dialog for a player."
-veneer-cmd-brands: "Open brand filters page."
-veneer-cmd-channels: "Browse plugin channel groups."
-veneer-cmd-alerts: "View alert / detection history."
+gui-channels-empty: "<gray>No channel groups recorded"
+gui-channel-kick-reason: "<red>Kicked by an administrator"
 
 # ======================================================================
 # VENEER  /veneer info <player>
@@ -365,7 +379,7 @@ veneer-rp-linked-none: "none"
 
 # ======================================================================
 # RPTRACK  /rptrack and staff report
-# Placeholders: {label}, {player}, {mask}, {packs}, {linked}, {text}. {text} of rptrack-report is a technical line and stays English.
+# Placeholders: {label}, {player}, {mask}, {packs}, {linked}, {text}. {text} of rptrack-report is one of the rptrack-text-* lines; {players} there lists the linked accounts.
 # ======================================================================
 rptrack-disabled: "{prefix}<red>RPTrack is disabled (rptrack.enabled).</red>"
 rptrack-usage: "{prefix}<red>Usage: /{label} \\<player></red>"
@@ -373,6 +387,9 @@ rptrack-none: "{prefix}<gray>No fingerprint stored for</gray> <white>{player}</w
 rptrack-cache: "{prefix}<white>{player}</white> <gray>cache:</gray> <white>{mask}</white> <gray>({packs} packs)</gray>"
 rptrack-linked: "{prefix}<gray>Linked accounts:</gray> <white>{linked}</white>"
 rptrack-report: "{prefix}<gray>[RPTrack]</gray> <white>{player}</white><gray>:</gray> {text}"
+rptrack-text-liquidbounce: "LiquidBounce local HTTP server (port 15000) reachable"
+rptrack-text-same-cache: "same client cache as: {players}"
+rptrack-text-probably-same: "probably the same client (one pack missing) as: {players}"
 
 # ======================================================================
 # STARTUP BANNER  (console, shown inside the frame)

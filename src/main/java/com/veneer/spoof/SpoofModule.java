@@ -16,6 +16,7 @@ import com.veneer.spoof.utils.DiscordWebhookHandler;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import org.bukkit.entity.Player;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -160,7 +161,7 @@ public class SpoofModule extends VeneerModule {
         if (config.isDiscordWebhookEnabled() && brandConfig.shouldDiscordAlert()) {
             List<String> brandInfo = new ArrayList<>();
             brandInfo.add("Client brand: " + brand);
-            discord.sendAlert(player, "Using client: " + brandKey, brand, null, brandInfo);
+            discord.sendAlert(player, "CLIENT_BRAND", "Using client: " + brandKey, brand, null, brandInfo);
         }
         return true;
     }
@@ -171,7 +172,7 @@ public class SpoofModule extends VeneerModule {
         if (player == null || !config.isPunishSpoofingGeyser()) return false;
         String brand = getClientBrand(player);
         if (brand == null) return false;
-        return brand.toLowerCase().contains("geyser") && !plugin.bedrock().isBedrock(player);
+        return brand.toLowerCase(Locale.ROOT).contains("geyser") && !plugin.bedrock().isBedrock(player);
     }
 
     /** Whether the player currently trips any enabled spoof check (without punishing or alerting). */

@@ -175,7 +175,7 @@ spoof:
   #                 Client Brands Configuration
   # ──────────────────────────────────────────────────────────
   # This section allows for granular control over different client types.
-  # Each brand can have its own detection patterns, alert messages, 
+  # Each brand can have its own detection patterns, alert messages,
   # punishments, and special exemptions.
   client-brands:
     # Master switch for the client brands system
@@ -404,12 +404,17 @@ spoof:
   # ──────────────────────────────────────────────────────────
   #                 Discord Webhook Settings
   # ──────────────────────────────────────────────────────────
+  # embed-title and message placeholders: %player%, %uuid%, %reason%, %brand%, %version%, %violations% and
+  # %channels% (one bullet per line), %alert% (the console line), plus any PlaceholderAPI placeholder
   discord:
     enabled: false
     # Leave empty to use general.discord.webhook
     webhook: ""
-    embed-title: "**Veneer spoof alert**"
+    embed-title: "Veneer spoof alert"
     embed-color: "#2AB7CA"
+    # true = Discord Components V2 (Container + accent_color), false = classic embeds
+    use-components-v2: false
+    message: "**Player**: %player%\n**Violations**:\n%violations%\n**Client Version**: %version%\n**Brand**: `%brand%`\n**Channels**:\n%channels%"
 
   # Whether to send Discord alerts when a player joins with a client brand,
   # even without a violation
@@ -436,9 +441,7 @@ spoof:
     alert: "&8[&cVeneer&8] &e%player% flagged! &c%reason%"
     # Message logged to console (no color codes needed)
     console-alert: "%player% flagged! %reason%"
-    # Message for multiple violations
-    multiple-flags: "&8[&cVeneer&8] &e%player% has multiple violations: &c%reasons%"
-    # Message for console when multiple violations
+    # Console and Discord line when a player has several violations
     console-multiple-flags: "%player% has multiple violations: %reasons%"
 
 hacks:
@@ -454,10 +457,17 @@ hacks:
     # (use a reverse proxy or tunnel); 0.0.0.0 listens on every interface.
     bind: "127.0.0.1"
     port: 8080
+    # Address of an HTTPS reverse proxy in front of the panel (e.g. "https://panel.example.com"); when set, the
+    # /hackeditor link uses it instead of http://host:port, so the token never crosses the network unencrypted.
+    public-url: ""
+    # Minutes a /hackeditor link works (1 to 1440); the rights are taken when it is issued
     token-expire-minutes: 10
     # Account graph: addresses accounts join from are stored to link accounts that share one
     links:
-      # Days to keep an address after the account last used it (0 = forever)
+      # Store the addresses accounts join from (false: no address links, nothing about IPs is kept)
+      store-addresses: true
+      # Days to keep an address, skin, client and resource-pack fingerprint after the account was last seen
+      # (0 = forever). /veneer forget <player> erases one player's data at once.
       retention-days: 90
       # An address shared by more accounts than this is ignored (shared networks, mobile data)
       max-accounts-per-ip: 8
@@ -482,15 +492,19 @@ hacks:
       retention-days: 180
 
   # Discord webhook for mod scan results
-  # Placeholders: &name& = player, &checker& = checker, &reason& = reason, &hacks& = hacks list, &results& = results
+  # title and message placeholders: %player%, %uuid%, %checker%, %reason%, %hacks% (mods checked),
+  # %results% (one "mod: RESULT" per line), %detected% (mods found, or none), %brand%, %channels%, %version%,
+  # plus any PlaceholderAPI placeholder (%luckperms_prefix%, %player_ping%...). The older &name& form still works.
   discord:
     enabled: false
     # Leave empty to use general.discord.webhook
     webhook-url: ""
-    embed-color: 16776960
+    title: "Veneer mod scan"
+    # "#RRGGBB" or a decimal number
+    embed-color: "#FFFF00"
     # true = Discord Components V2 (Container + accent_color), false = classic embeds
     use-components-v2: true
-    message: "**Player:** &name&\n**Checked by:** &checker&\n**Reason:** &reason&\n**Hacks checked:** &hacks&\n**Results:**\n&results&"
+    message: "**Player:** %player%\n**Checked by:** %checker%\n**Reason:** %reason%\n**Hacks checked:** %hacks%\n**Results:**\n%results%"
 
   detection:
 
@@ -500,152 +514,184 @@ hacks:
     #   display-name: shown in alerts / web editor / discord
     #   key: translation or keybind key registered by the mod
     #   mode: METEOR | TRANSLATE | KEYBIND
+    #   level: how serious the mod is, shown as the colour in the web panel (graph heads, mod badges):
+    #          1 = cheat (red), 2 = forbidden mod (yellow), 3 = tolerated (green, like a clean player).
+    #          A mod without a level takes the bundled level when it is one of the mods below, otherwise 1.
     # ──────────────────────────────────────────────
     hacks:
       meteor-client:
         display-name: "Meteor Client"
         key: "key.meteor-client.open-gui"
         mode: METEOR
+        level: 1
 
       liquidbounce:
         display-name: "LiquidBounce"
         key: "liquidbounce.module.killaura.name"
         mode: TRANSLATE
+        level: 1
 
       freecam:
         display-name: "Freecam"
         key: "key.freecam.toggle"
         mode: KEYBIND
+        level: 2
 
       wurst:
         display-name: "Wurst"
         key: "key.wurst.zoom"
         mode: KEYBIND
+        level: 1
 
       xray-fabric:
         display-name: "XRay"
         key: "xray.config.toggle"
         mode: KEYBIND
+        level: 1
 
       chestesp:
         display-name: "ChestESP"
         key: "key.chestesp.toggle"
         mode: KEYBIND
+        level: 1
 
       killaura-fabric:
         display-name: "KillAura"
         key: "key.killaura"
         mode: KEYBIND
+        level: 1
 
       autofish:
         display-name: "AutoFish"
         key: "key.autofish.open_gui"
         mode: KEYBIND
+        level: 2
 
       lumina:
         display-name: "Lumina"
         key: "key.lumina.open_click_gui"
         mode: KEYBIND
+        level: 1
 
       autoswitch:
         display-name: "AutoSwitch"
         key: "key.autoswitch.toggle"
         mode: KEYBIND
+        level: 2
 
       bleachhack:
         display-name: "BleachHack"
         key: "bleachhack.module.killaura"
         mode: TRANSLATE
+        level: 1
 
       aristois:
         display-name: "Aristois"
         key: "emc.module.killaura.name"
         mode: TRANSLATE
+        level: 1
 
       coffee:
         display-name: "Coffee Client"
         key: "coffee.module.killaura.name"
         mode: TRANSLATE
+        level: 1
 
       accurate-block-placement:
         display-name: "Accurate Block Placement"
         key: "net.clayborn.accurateblockplacement.modplacementmodemessage"
         mode: TRANSLATE
+        level: 2
 
       world-downloader:
         display-name: "World Downloader"
         key: "key.wdl.startStop"
         mode: TRANSLATE
+        level: 2
 
       autoclicker-fabric:
         display-name: "AutoClicker"
         key: "autoclicker-fabric.hud.holding"
         mode: TRANSLATE
+        level: 1
 
       antiafk:
         display-name: "AntiAFK"
         key: "key.antiafk.toggle"
         mode: TRANSLATE
+        level: 2
 
       auto-clicker-mc:
         display-name: "Auto Clicker MC"
         key: "key.auto-clicker_.toggle"
         mode: KEYBIND
+        level: 1
 
       trouser-streak:
         display-name: "Trouser Streak"
         key: "addon.trouser-streak.name"
         mode: TRANSLATE
+        level: 1
 
       ui-utils:
         display-name: "UI Utils"
         key: "key.ui-utils.restore_screen"
         mode: TRANSLATE
+        level: 1
 
       seeedcrackerx:
         display-name: "SeedCrackerX"
         key: "cracker.already"
         mode: TRANSLATE
+        level: 1
 
       simple-world-downloader:
         display-name: "Simple World Downloader"
         key: "swd.screen.config.title"
         mode: TRANSLATE
+        level: 2
 
       trouser-streak-newchunks:
         display-name: "Trouser Streak: NewChunks"
         key: "module.trouser-streak.NewerNewChunks.description"
         mode: TRANSLATE
+        level: 1
 
       trouser-streak-anhero:
         display-name: "Trouser Streak: AnHero"
         key: "module.trouser-streak.AnHero.description"
         mode: TRANSLATE
+        level: 1
 
       glazed:
         display-name: "Glazed"
         key: "addon.glazed.name"
         mode: TRANSLATE
+        level: 1
 
       litematica:
         display-name: "Litematica"
         key: "litematica.hotkey.name.openmainmenuscreen"
         mode: TRANSLATE
+        level: 3
 
       itemscroller:
         display-name: "Item Scroller"
         key: "itemscroller.hotkey.name.openconfigscreen"
         mode: TRANSLATE
+        level: 3
 
       xaeros-minimap:
         display-name: "Xaero's Minimap"
         key: "gui.xaero_minimap"
         mode: TRANSLATE
+        level: 3
 
       baritone:
         display-name: "Baritone"
         key: "baritone.setting.allowBreak"
         mode: TRANSLATE
+        level: 2
 
     # Hacks checked with /hackcheck <player> (no args)
     default-check-hacks:
@@ -770,12 +816,15 @@ hacks:
       # Console command on a mismatch. Placeholders: %player%, %real% (e.g. "<=1.21.1"), %claimed% (e.g. "1.21.11")
       command-if-mismatch: ""
 
+    # title and message placeholders: %player%, %uuid%, %checker%, %lang% (detected language), %response% (the raw
+    # answer), %brand%, %version%, plus any PlaceholderAPI placeholder
     discord:
       enabled: false
       webhook-url: ""   # empty = general.discord.webhook
-      embed-color: 5763719
+      title: "Veneer language check"
+      embed-color: "#57F287"
       use-components-v2: true
-      message: "**Player:** &name&\n**Checked by:** &checker&\n**Language:** &lang&"
+      message: "**Player:** %player%\n**Checked by:** %checker%\n**Language:** %lang%"
 
     timeout-ticks: 100
 
@@ -952,3 +1001,12 @@ rptrack:
   timeout-ticks: 100        # max wait for client answers
   liquidbounce-probe: true  # detect LiquidBounce via its 127.0.0.1:15000 server
   alert: true               # notify staff (veneer.alerts) on a match
+  # Discord report on a match (linked accounts, LiquidBounce). Placeholders: %player%, %uuid%, %text% (the finding,
+  # in general.language), %players% (linked accounts), %version%, plus any PlaceholderAPI placeholder.
+  discord:
+    enabled: false
+    webhook-url: ""   # empty = general.discord.webhook
+    title: "Veneer RPTrack"
+    embed-color: "#9B59B6"
+    use-components-v2: true
+    message: "**Player:** %player%\n**Finding:** %text%"
