@@ -11,9 +11,12 @@ public class HackDefinition {
     private final String fallback;
     private final String lowerKey;
     private final String lowerFallback;
+    private final int level;
 
-    public HackDefinition(String id, String displayName, String key, DetectionMode mode) {
+    /** {@code level}: how serious the mod is, 1 = cheat, 2 = forbidden mod, 3 = tolerated (see config.yml). */
+    public HackDefinition(String id, String displayName, String key, DetectionMode mode, int level) {
         this.id            = id;
+        this.level         = level;
         this.displayName   = displayName;
         this.key           = key;
         this.mode          = mode;
@@ -29,4 +32,5 @@ public class HackDefinition {
     public String getFallback()     { return fallback; }
     public String getLowerKey()     { return lowerKey; }
     public String getLowerFallback(){ return lowerFallback; }
+    public int getLevel()           { return level; }
 }

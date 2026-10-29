@@ -74,6 +74,8 @@
         .results-table tr:last-child td{border-bottom:none}
         .badge{display:inline-flex;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600}
         .badge-DETECTED{background:#3d1a1a;border:1px solid #7c2020;color:var(--red)}
+        .badge-DETECTED.lvl-2{background:#3a2c0d;border-color:#7d5a12;color:#e3b341}
+        .badge-DETECTED.lvl-3{background:#12301b;border-color:#1f6f35;color:#56d364}
         .badge-NOT_DETECTED{background:#1a2e1a;border:1px solid #2d5a2d;color:var(--green)}
         .badge-PROTECTED{background:#2e2410;border:1px solid #5a3d10;color:var(--yellow)}
         .badge-SKIPPED{background:var(--surface2);border:1px solid var(--border);color:var(--gray)}
@@ -378,10 +380,17 @@
       return sprite;
     }
 
-    // Frame colour of a head: the most serious state wins (banned, then mods found, then a spoof flag)
-    const nodeColour = n => n.banned ? 0x6e7681 : n.detected ? 0xf85149 : n.spoof ? 0xdb61a2 : 0x4493f8;
-    // Online accounts get a green name
-    const nameColour = n => n.online ? 0x56d364 : 0xc9d1d9;
+    // Frame colour of a head, the most serious state wins: banned, a cheat (level 1), a forbidden mod (level 2),
+    // a spoof flag; scanned with nothing forbidden (or only tolerated mods, level 3) is green, never scanned blue
+    const nodeColour = n => n.banned ? 0x6e7681 : n.level === 1 ? 0xf85149 : n.level === 2 ? 0xe3b341
+      : n.spoof ? 0xdb61a2 : (n.scanned || n.level === 3) ? 0x3fb950 : 0x4493f8;
+    // Online accounts have a white name, offline ones a grey one
+    const nameColour = n => n.online ? 0xffffff : 0x8b949e;
+    // Search matches are cyan: yellow is a level-2 mod
+    const HIT = 0x39c5cf;
+    // Mod badge by level; LiquidBounce from the fingerprint has no level and is a cheat
+    const modBadge = (m, style) => '<span class="badge badge-DETECTED lvl-' + (m.level || 1) + '"' + (style ? ' style="' + style + '"' : '') +
+      ' title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>';
 
     function skinCube(n, size) {
       const edge = size, colour = nodeColour(n);
@@ -446,7 +455,7 @@
       main.innerHTML = '<div class="section-title">' + t('Mods detected ({0})', mods.length) + '</div><div class="scan-cards">' +
         mods.map(m =>
           '<div class="scan-card" style="cursor:default"><div class="scan-card-header">' +
-          '<span class="scan-card-type" style="font-size:13px">' + esc(m.name) + '</span>' +
+          '<span class="scan-card-type" style="font-size:13px;color:' + ['', 'var(--red)', '#e3b341', '#56d364'][m.level || 1] + '" title="' + esc(t(['', 'cheats', 'forbidden mods', 'tolerated mods'][m.level || 1])) + '">' + esc(m.name) + '</span>' +
           '<span class="scan-card-time">' + t(m.count === 1 ? '{0} player' : '{0} players', m.count) + '</span></div>' +
           '<div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px">' +
           m.players.map(p => '<span class="player-item" style="padding:4px 8px" data-player="' + esc(p.name) + '" title="' + esc(timeAgo(p.last_seen)) + '">' +
@@ -600,11 +609,11 @@
             cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint')});
           card.innerHTML =
             '<h3>' + esc(n.name) + '<button title="' + esc(t('Close')) + '">✕</button></h3>' +
-            '<div style="color:var(--text2)">' + [n.online ? '<span style="color:#56d364">● ' + t('online') + '</span>' : '',
+            '<div style="color:var(--text2)">' + [n.online ? '<span style="color:#fff">● ' + t('online') + '</span>' : '',
               n.banned ? '<span style="color:#8b949e">⛔ ' + t('banned') + '</span>' : '',
               n.spoof ? '<span style="color:#db61a2">⚑ ' + t('spoof flag') + '</span>' : '',
-              cheats.length ? '<span style="color:var(--red)">☢ ' + t('mods detected') + '</span>' : t('no mods detected')].filter(Boolean).join(' · ') + '</div>' +
-            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
+              cheats.length ? '<span style="color:' + ['', 'var(--red)', '#e3b341', '#56d364'][n.level || 1] + '">☢ ' + t(['', 'cheats', 'forbidden mods', 'tolerated mods'][n.level || 1]) + '</span>' : t('no mods detected')].filter(Boolean).join(' · ') + '</div>' +
+            (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.slice().sort((a, b) => (a.level || 1) - (b.level || 1)).map(m => modBadge(m)).join('') + '</div>' : '') +
             '<h4>' + t('Addresses') + '</h4>' +
             (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) +
               (r.org !== undefined ? '<small style="display:block;color:var(--text2);font-size:10px">' + esc(provider(r)) + (r.weak ? ' · <span style="color:#d29922">' + t('VPN / hosting') + '</span>' : '') + '</small>' : '') +
@@ -652,9 +661,10 @@
         graph3d.d3Force('pull', pull);
         info.innerHTML = '<span>' + t('{0} accounts, {1} links', nodes.length, links.length) + '</span>' +
           '<span class="legend" title="' + esc(t('Thicker line = higher match. Hover a head or a line for details.')) + '">' +
-          '<span class="sq" style="border-color:#4493f8"></span>' + t('account') + '<span class="sq" style="border-color:#f85149"></span>' + t('mods detected') +
+          '<span class="sq" style="border-color:#f85149"></span>' + t('cheats') + '<span class="sq" style="border-color:#e3b341"></span>' + t('forbidden mods') +
+          '<span class="sq" style="border-color:#3fb950"></span>' + t('clean') + '<span class="sq" style="border-color:#4493f8"></span>' + t('not scanned') +
           '<span class="sq" style="border-color:#db61a2"></span>' + t('spoof flag') + '<span class="sq" style="border-color:#6e7681"></span>' + t('banned') +
-          '<b style="color:#56d364;margin-left:12px;font-weight:600">' + t('name') + '</b> ' + t('online') +
+          '<b style="color:#fff;margin-left:12px;font-weight:600">' + t('name') + '</b> ' + t('online') +
           '<i style="border-color:#8b949e"></i>' + t('same address') + '<i style="border-color:#3fb950"></i>' + t('same fingerprint') +
           '<i style="border-color:#a371f7"></i>' + t('same client') + '</span>' +
           // CC BY 4.0 asks for the source of the country data wherever it is shown
@@ -669,7 +679,7 @@
             if (n.x === undefined) return;
             const hit = hl && matches(n);
             if (n._label) {
-              n._label.material.color.set(hit ? 0xd29922 : nameColour(n));
+              n._label.material.color.set(hit ? HIT : nameColour(n));
               n._label.material.opacity = hl && !hit ? .3 : 1;
             }
             const obj = n.__threeObj;
@@ -687,7 +697,7 @@
             }
             // Dragging with the right button turns only the cube the pointer hit: the frame follows it
             if (n._frame && n._cube) n._frame.quaternion.copy(n._cube.quaternion);
-            if (n._frame) n._frame.material.color.set(hit ? 0xd29922 : nodeColour(n));
+            if (n._frame) n._frame.material.color.set(hit ? HIT : nodeColour(n));
           });
           // Camera moves we did not start (mouse controls) are logged too, at most four times a second
           const cp = graph3d.camera().position;
@@ -934,7 +944,7 @@
             kv(t('First seen'), dateTime(data.first_seen)) + kv(t('Last seen'), data.online ? '<span style="color:var(--green)">' + t('now') + '</span>' : dateTime(data.last_seen)) +
             (data.joins ? kv(t('Joins'), Number(data.joins).toLocaleString()) : '') +
             kv(t('Mods'), mods.length
-              ? mods.map(m => '<span class="badge badge-DETECTED" style="margin:1px" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('')
+              ? mods.slice().sort((a, b) => (a.level || 1) - (b.level || 1)).map(m => modBadge(m, 'margin:1px')).join('')
               : '<span class="muted">' + t('no mods detected') + '</span>') +
             kv(t('Fingerprint'), fp ? '<span class="bits" style="font-family:monospace">' + esc(fp.bits) + '</span> <small>' + t('{0} packs', fp.packs) + '</small>' : '<span class="muted">' + t('not tracked') + '</span>') +
             '</div>';

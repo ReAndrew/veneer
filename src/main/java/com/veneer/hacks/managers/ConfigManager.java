@@ -50,8 +50,31 @@ public class ConfigManager {
         cacheSettings();
     }
 
+    /**
+     * Levels of the bundled mods. The hack list is the admin's and is never filled in from the defaults, so a
+     * config from before levels existed gets them from here; a mod of the admin's own without one is a cheat.
+     */
+    private Map<String, Integer> bundledLevels() {
+        Map<String, Integer> out = new HashMap<>();
+        try (var in = plugin.getResource("config.yml")) {
+            if (in == null) return out;
+            var defaults = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
+                    new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+            ConfigurationSection s = defaults.getConfigurationSection("hacks.detection.hacks");
+            if (s != null) for (String id : s.getKeys(false)) if (s.contains(id + ".level")) out.put(id, s.getInt(id + ".level"));
+        } catch (java.io.IOException ignored) {}
+        return out;
+    }
+
+    /** Level of a mod by id (1 = cheat, 2 = forbidden, 3 = tolerated); an unknown id, removed from the config, is 1. */
+    public int levelOf(String id) {
+        HackDefinition h = hacks.get(id);
+        return h != null ? h.getLevel() : 1;
+    }
+
     private void loadHacks() {
         hacks.clear();
+        Map<String, Integer> defaultLevels = bundledLevels();
         ConfigurationSection section = hacksConfig.getConfigurationSection("hacks");
         if (section == null) return;
         for (String id : section.getKeys(false)) {
@@ -65,7 +88,8 @@ public class ConfigManager {
             } catch (IllegalArgumentException e) {
                 mode = DetectionMode.TRANSLATE;
             }
-            hacks.put(id, new HackDefinition(id, displayName, key, mode));
+            int level = Math.max(1, Math.min(3, section.getInt(id + ".level", defaultLevels.getOrDefault(id, 1))));
+            hacks.put(id, new HackDefinition(id, displayName, key, mode, level));
         }
         plugin.getLogger().info("Loaded " + hacks.size() + " hacks.");
     }

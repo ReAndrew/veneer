@@ -224,7 +224,11 @@ public class WebServerManager {
         }
 
         if (path.equals("/api/mods")) {
-            sendJson(ex, 200, plugin.database().getDetectedMods());
+            List<Map<String, Object>> mods = plugin.database().getDetectedMods();
+            withLevels(mods);
+            // Cheats first, then forbidden, then tolerated mods; most players first within a level (stable sort)
+            mods.sort(Comparator.comparingInt(m -> (Integer) m.get("level")));
+            sendJson(ex, 200, mods);
             return;
         }
 
@@ -236,6 +240,7 @@ public class WebServerManager {
         if (path.startsWith("/api/links/")) {
             // getPath() is already decoded
             Map<String, Object> details = plugin.database().getLinkDetails(path.substring("/api/links/".length()));
+            withLevels((List<?>) details.get("mods"));
             if (!can(playerInfo, "ips")) details.put("ips", List.of());
             for (Object r : (List<?>) details.get("ips")) {
                 @SuppressWarnings("unchecked") Map<String, Object> row = (Map<String, Object>) r;
@@ -361,6 +366,7 @@ public class WebServerManager {
             result.put("client",     online ? liveClient(uuid) : record.get("client"));
             if (!uuid.isEmpty()) {
                 Map<String, Object> details = plugin.database().getLinkDetails(uuid);
+                withLevels((List<?>) details.get("mods"));
                 result.put("mods", details.get("mods"));
                 result.put("fingerprint", details.get("fingerprint"));
                 if (can(playerInfo, "ips")) {
@@ -414,11 +420,18 @@ public class WebServerManager {
                 edge.put("p", ((Number) edge.get("p")).doubleValue() * weakFactor);
             if (!ips) edge.put("label", "(hidden)");
         }
-        if (!ips)
-            for (Object n : (List<?>) graph.get("nodes")) {
-                @SuppressWarnings("unchecked") Map<String, Object> node = (Map<String, Object>) n;
-                node.put("ips", List.of());
+        var hacks = plugin.hacks().config();
+        for (Object n : (List<?>) graph.get("nodes")) {
+            @SuppressWarnings("unchecked") Map<String, Object> node = (Map<String, Object>) n;
+            if (!ips) node.put("ips", List.of());
+            // The most serious mod found decides the colour: 1 = cheat, 2 = forbidden, 3 = tolerated, 0 = none
+            int level = Boolean.TRUE.equals(node.get("liquidbounce")) ? 1 : 0;
+            for (Object id : (List<?>) node.get("mod_ids")) {
+                int l = hacks.levelOf((String) id);
+                if (level == 0 || l < level) level = l;
             }
+            node.put("level", level);
+        }
         return graph;
     }
 
@@ -453,6 +466,14 @@ public class WebServerManager {
         }
         out.sort((a, b) -> Double.compare((Double) b.get("pct"), (Double) a.get("pct")));
         return out;
+    }
+
+    /** Adds {@code level} (1 = cheat, 2 = forbidden, 3 = tolerated, from config.yml) to each mod row by its id. */
+    private void withLevels(List<?> mods) {
+        for (Object o : mods) {
+            @SuppressWarnings("unchecked") Map<String, Object> m = (Map<String, Object>) o;
+            m.put("level", plugin.hacks().config().levelOf((String) m.get("id")));
+        }
     }
 
     /** Brand, channels, loader and version probe of an online player, from the live profile. */

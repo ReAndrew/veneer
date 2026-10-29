@@ -832,9 +832,13 @@ public class DatabaseManager {
      */
     public Map<String, Object> getLinkGraph(int maxPerIp, int minMatch, int maxPerClient, int minChannels) {
         List<String[]> joinRows = new ArrayList<>(), clientRows = new ArrayList<>();
-        Set<String> detected = new HashSet<>();
-        loadLinkRows(joinRows, clientRows, detected);
+        Map<String, List<String>> detected = new HashMap<>();
+        Set<String> scanned = new HashSet<>();
+        loadLinkRows(joinRows, clientRows, detected, scanned);
         List<Map<String, Object>> tracks = getRPTracks();
+        Set<String> liquidbounce = new HashSet<>();
+        for (Map<String, Object> t : tracks)
+            if (t.get("liquidbounce") instanceof Number n && n.intValue() != 0) liquidbounce.add((String) t.get("uuid"));
 
         List<Map<String, Object>> edges = new ArrayList<>();
         Map<String, String> names = new LinkedHashMap<>();
@@ -894,7 +898,11 @@ public class DatabaseManager {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("id", d.getKey());
             n.put("name", names.getOrDefault(d.getKey(), d.getKey()));
-            n.put("detected", detected.contains(d.getKey()));
+            n.put("detected", detected.containsKey(d.getKey()) || liquidbounce.contains(d.getKey()));
+            // Ids of the mods the latest mod scan found, for their levels; the fingerprint's LiquidBounce is a cheat
+            n.put("mod_ids", detected.getOrDefault(d.getKey(), List.of()));
+            n.put("liquidbounce", liquidbounce.contains(d.getKey()));
+            n.put("scanned", scanned.contains(d.getKey()));
             n.put("links", d.getValue());
             n.put("skin", skins.get(d.getKey()));
             n.put("last_seen", lastSeen.get(d.getKey()));
@@ -907,8 +915,9 @@ public class DatabaseManager {
         return out;
     }
 
-    /** Join rows (uuid, name, ip) and the players whose latest mod scan found something. */
-    private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows, Set<String> detected) {
+    /** Join rows (uuid, name, ip), the mods each player's latest mod scan found, and the players ever mod-scanned. */
+    private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows,
+                                           Map<String, List<String>> detected, Set<String> scanned) {
         if (connection == null) return;
         try (Statement st = connection.createStatement()) {
             try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip, last_seen FROM joins ORDER BY last_seen DESC")) {
@@ -918,10 +927,13 @@ public class DatabaseManager {
                 while (rs.next()) clientRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
             }
             try (ResultSet rs = st.executeQuery("""
-                    SELECT target_uuid FROM scans
-                    WHERE id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
-                      AND has_detected = 1""")) {
-                while (rs.next()) detected.add(rs.getString(1));
+                    SELECT s.target_uuid, r.hack_id FROM scans s JOIN hack_results r ON r.scan_id = s.id
+                    WHERE s.id IN (SELECT MAX(id) FROM scans WHERE type = 'hack' GROUP BY target_uuid)
+                      AND r.result = 'DETECTED'""")) {
+                while (rs.next()) detected.computeIfAbsent(rs.getString(1), k -> new ArrayList<>()).add(rs.getString(2));
+            }
+            try (ResultSet rs = st.executeQuery("SELECT DISTINCT target_uuid FROM scans WHERE type = 'hack'")) {
+                while (rs.next()) scanned.add(rs.getString(1));
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("getLinkGraph: " + e.getMessage());
@@ -995,7 +1007,7 @@ public class DatabaseManager {
         out.put("mods", mods);
         if (connection == null) return out;
         try (PreparedStatement ps = connection.prepareStatement("""
-                SELECT r.hack_name, MAX(s.timestamp) AS ts
+                SELECT r.hack_name, MAX(s.timestamp) AS ts, r.hack_id
                 FROM hack_results r JOIN scans s ON s.id = r.scan_id
                 WHERE s.target_uuid = ? AND r.result = 'DETECTED'
                 GROUP BY r.hack_id ORDER BY ts DESC""")) {
@@ -1005,6 +1017,7 @@ public class DatabaseManager {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("name", rs.getString(1));
                     m.put("last_seen", rs.getLong(2));
+                    m.put("id", rs.getString(3));
                     mods.add(m);
                 }
             }

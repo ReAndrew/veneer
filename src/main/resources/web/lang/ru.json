@@ -139,5 +139,10 @@
   "spoof flag": "флаг спуфа",
   "name": "ник",
   "only this group": "только эта группа",
-  "Only the accounts linked to the selected one, directly or through others": "Только аккаунты, связанные с выбранным напрямую или через других"
+  "Only the accounts linked to the selected one, directly or through others": "Только аккаунты, связанные с выбранным напрямую или через других",
+  "cheats": "читы",
+  "forbidden mods": "запрещённые моды",
+  "tolerated mods": "разрешённые моды",
+  "clean": "чистый",
+  "not scanned": "не проверен"
 }
