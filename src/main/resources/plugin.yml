@@ -27,7 +27,7 @@ commands:
     permission: veneer.hacks.lang
   hackeditor:
     description: Open the web panel (scan history and manual scans)
-    usage: /hackeditor
+    usage: /hackeditor [revoke]
     permission: veneer.hacks.editor
   rptrack:
     description: Show a player's resource-pack cache fingerprint and linked accounts
@@ -82,6 +82,9 @@ permissions:
   veneer.hacks.editor:
     description: Use /hackeditor
     default: op
+  veneer.admin.forget:
+    description: Erase everything stored about a player (/veneer forget)
+    default: op
   veneer.web.use:
     description: Open the web panel (/hackeditor); same as veneer.hacks.editor
     default: op
@@ -129,6 +132,7 @@ permissions:
     default: false
     children:
       veneer.admin: true
+      veneer.admin.forget: true
       veneer.alerts: true
       veneer.lang: true
       veneer.rptrack: true

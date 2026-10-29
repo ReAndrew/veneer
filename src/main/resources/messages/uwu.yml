@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Automatic wanguage checky fow <yellow>{player}<g
 editor-url: "{prefix}<white>Editow: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Da web editow is disabled in config.yml, sowwy."
 editor-players-only: "{prefix}<red>Onwy pwayews can open da editow.</red>"
+editor-failed: "{prefix}<red>Couwd not cweate a panew wink, see the sewvew wog, sowwy.</red>"
+editor-revoked: "{prefix}<green>Youw web panew winks no wongew wowk.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -226,6 +228,7 @@ veneer-cmd-alerts: "awewt and detection histowy; toggwe tuwns youw staff awewts 
 veneer-cmd-info: "cwient, mod scan, RPTrack and bypasses of a pwayew"
 veneer-cmd-reload: "wewoad config.yml and da messages"
 veneer-cmd-version: "wunnying and watest wewease"
+veneer-cmd-forget: "ewase evewything stowed about a pwayew"
 veneer-cmd-spoof-brand: "a pwayew's cwient bwand"
 veneer-cmd-spoof-channels: "a pwayew's pwugin channyews"
 veneer-cmd-spoof-runcheck: "wun da spoof checks again"
@@ -243,6 +246,9 @@ veneer-cmd-check: "check diawog fow a pwayew"
 veneer-cmd-brands: "bwand fiwtews page"
 veneer-cmd-channels: "pwugin channyew gwoups"
 veneer-cmd-players-only: "{prefix}<red>This command can onwy be used by players."
+veneer-forget-usage: "{prefix}<red>Usage: /veneer forget \\<pwayew|uuid></red>"
+veneer-forget-done: "{prefix}<green>Ewased evewything stowed about</green> <white>{player}</white> <gray>({rows} wows: addwesses, scans, fingewpwint, cwient, skin).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Nothing is stowed about</gray> <white>{player}</white><gray>.</gray>"
 veneer-lang-players-only: "{prefix}<red>Onwy pwayews can choose a wanguage; da consowe uses general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Youw language:</gray> <white>{lang}</white> <gray>(da server's). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Youw language:</gray> <white>{lang}</white> <gray>(fowwows youw game language). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"

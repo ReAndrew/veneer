@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Автоматическая проверка я
 editor-url: "{prefix}<white>Редактор: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Веб-редактор отключён в config.yml."
 editor-players-only: "{prefix}<red>Открывать редактор могут только игроки.</red>"
+editor-failed: "{prefix}<red>Не удалось создать ссылку на панель, подробности в логе сервера.</red>"
+editor-revoked: "{prefix}<green>Твои ссылки на веб-панель больше не работают.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -226,6 +228,7 @@ veneer-cmd-alerts: "история оповещений и детектов; tog
 veneer-cmd-info: "клиент, проверки модов, RPTrack и обходы игрока"
 veneer-cmd-reload: "перезагрузить config.yml и сообщения"
 veneer-cmd-version: "текущая и последняя версия"
+veneer-cmd-forget: "стереть всё, что хранится об игроке"
 veneer-cmd-spoof-brand: "бренд клиента игрока"
 veneer-cmd-spoof-channels: "каналы плагинов игрока"
 veneer-cmd-spoof-runcheck: "заново запустить проверки клиента"
@@ -243,6 +246,9 @@ veneer-cmd-check: "окно проверки игрока"
 veneer-cmd-brands: "страница фильтров брендов"
 veneer-cmd-channels: "группы каналов плагинов"
 veneer-cmd-players-only: "{prefix}<red>Эту команду могут использовать только игроки."
+veneer-forget-usage: "{prefix}<red>Использование: /veneer forget \\<игрок|uuid></red>"
+veneer-forget-done: "{prefix}<green>Стёрто всё, что хранилось об</green> <white>{player}</white> <gray>(строк: {rows}; адреса, сканы, отпечаток, клиент, скин).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Об</gray> <white>{player}</white> <gray>ничего не хранится.</gray>"
 veneer-lang-players-only: "{prefix}<red>Язык выбирают только игроки; консоль использует general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Ваш язык:</gray> <white>{lang}</white> <gray>(как на сервере). Доступны:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Ваш язык:</gray> <white>{lang}</white> <gray>(по языку игры). Доступны:</gray> <white>{available}</white><gray>, auto, reset</gray>"

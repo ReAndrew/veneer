@@ -18,6 +18,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -29,7 +31,7 @@ import java.util.stream.Collectors;
 public final class VeneerCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
-            "help", "info", "player", "find", "check", "brands", "channels", "alerts", "lang", "reload", "version");
+            "help", "info", "player", "find", "check", "brands", "channels", "alerts", "lang", "reload", "version", "forget");
     /** {@code /veneer <name> ...} runs the plugin.yml command it maps to, with its own permission check. */
     private static final Map<String, String> PASSTHROUGH = Map.of(
             "spoof", "spoof", "hackcheck", "hackcheck", "scan", "hackcheck", "hacklang", "hacklang",
@@ -53,6 +55,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             new HelpEntry(null,      "/veneer info <{player}>",                  "info",                  "veneer.admin"),
             new HelpEntry(null,      "/veneer reload",                           "reload",                "veneer.admin"),
             new HelpEntry(null,      "/veneer version",                          "version",               "veneer.admin"),
+            new HelpEntry(null,      "/veneer forget <{player}>",                "forget",                "veneer.admin.forget"),
             new HelpEntry("spoof",   "/spoof brand <{player}>",                  "spoof-brand",           "veneer.spoof.use"),
             new HelpEntry("spoof",   "/spoof channels <{player}>",               "spoof-channels",        "veneer.spoof.use"),
             new HelpEntry("spoof",   "/spoof runcheck [{player}|*]",             "spoof-runcheck",        "veneer.spoof.use"),
@@ -87,6 +90,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
+            case "forget" -> forget(sender, args);
             case "gui" -> { if (sender instanceof Player p && !denied(sender, "veneer.admin")) plugin.gui().openPage(p, args); }
             case "player", "p" -> playerPage(sender, args, false);
             case "find" -> playerPage(sender, args, true);
@@ -107,6 +111,33 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             }
         }
         return true;
+    }
+
+    /**
+     * {@code /veneer forget <player|uuid>}: erases everything stored about the account (an erasure request). A name
+     * covers every account that used it. An online player is recorded again on the next join.
+     */
+    private void forget(CommandSender sender, String[] args) {
+        if (denied(sender, "veneer.admin.forget")) return;
+        if (args.length < 2) { plugin.messages().send(sender, "veneer-forget-usage"); return; }
+        String who = args[1];
+        FoliaScheduler.runAsync(plugin, () -> {
+            Set<String> uuids;
+            try {
+                uuids = Set.of(UUID.fromString(who).toString());
+            } catch (IllegalArgumentException notUuid) {
+                uuids = plugin.database().uuidsByName(who);
+            }
+            int rows = plugin.database().deletePlayers(uuids);
+            if (rows > 0) plugin.getLogger().info(sender.getName() + " erased the stored data of " + who + " (" + uuids + ", " + rows + " rows)");
+            int removed = rows;
+            Runnable reply = () -> {
+                if (removed > 0) plugin.messages().send(sender, "veneer-forget-done", "player", who, "rows", String.valueOf(removed));
+                else plugin.messages().send(sender, "veneer-forget-nothing", "player", who);
+            };
+            if (sender instanceof Player p) FoliaScheduler.runAtEntity(plugin, p, reply);
+            else FoliaScheduler.runGlobal(plugin, reply);
+        });
     }
 
     private boolean denied(CommandSender sender, String permission) {
@@ -371,7 +402,7 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             return options.stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2 && (sub.equals("info") || sub.equals("player") || sub.equals("p")
-                || sub.equals("find") || sub.equals("check")))
+                || sub.equals("find") || sub.equals("check") || sub.equals("forget")))
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (args.length == 2 && sub.equals("alerts"))

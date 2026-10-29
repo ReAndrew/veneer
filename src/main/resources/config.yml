@@ -457,10 +457,17 @@ hacks:
     # (use a reverse proxy or tunnel); 0.0.0.0 listens on every interface.
     bind: "127.0.0.1"
     port: 8080
+    # Address of an HTTPS reverse proxy in front of the panel (e.g. "https://panel.example.com"); when set, the
+    # /hackeditor link uses it instead of http://host:port, so the token never crosses the network unencrypted.
+    public-url: ""
+    # Minutes a /hackeditor link works (1 to 1440); the rights are taken when it is issued
     token-expire-minutes: 10
     # Account graph: addresses accounts join from are stored to link accounts that share one
     links:
-      # Days to keep an address after the account last used it (0 = forever)
+      # Store the addresses accounts join from (false: no address links, nothing about IPs is kept)
+      store-addresses: true
+      # Days to keep an address, skin, client and resource-pack fingerprint after the account was last seen
+      # (0 = forever). /veneer forget <player> erases one player's data at once.
       retention-days: 90
       # An address shared by more accounts than this is ignored (shared networks, mobile data)
       max-accounts-per-ip: 8
@@ -509,7 +516,7 @@ hacks:
     #   mode: METEOR | TRANSLATE | KEYBIND
     #   level: how serious the mod is, shown as the colour in the web panel (graph heads, mod badges):
     #          1 = cheat (red), 2 = forbidden mod (yellow), 3 = tolerated (green, like a clean player).
-    #          A mod without a level counts as 1.
+    #          A mod without a level takes the bundled level when it is one of the mods below, otherwise 1.
     # ──────────────────────────────────────────────
     hacks:
       meteor-client:

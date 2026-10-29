@@ -79,6 +79,7 @@ public class VeneerPlugin extends JavaPlugin {
         hooks = new HooksModule(this);
         modules = List.of(spoof, hacks, rptrack, hooks);
         getServer().getPluginManager().registerEvents(new PlayerEvents(this), this);
+        purgeOldData();
         gui = new VeneerGui(this);
         getServer().getPluginManager().registerEvents(gui, this);
 
@@ -190,6 +191,20 @@ public class VeneerPlugin extends JavaPlugin {
     public Bedrock bedrock() { return bedrock; }
     public Webhook webhook() { return webhook; }
     public DatabaseManager database() { return database; }
+
+    /**
+     * Deletes data past its retention (config hacks.web-editor.*.retention-days) now and then every hour, off the
+     * main thread; also on a server nobody joins (maintenance, closed whitelist).
+     */
+    private void purgeOldData() {
+        com.veneer.core.FoliaScheduler.runAsyncLater(this, () -> {
+            if (!isEnabled()) return;
+            var hacks = config.section("hacks");
+            database.purge(hacks.getInt("web-editor.links.retention-days", 90),
+                    hacks.getInt("web-editor.history.retention-days", 180));
+            purgeOldData();
+        }, database.purgedOnce() ? 72_000L : 200L);
+    }
     public UpdateChecker updates() { return updates; }
 
     public SpoofModule spoof() { return spoof; }

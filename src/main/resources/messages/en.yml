@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Auto-checking language of <yellow>{player}<gray>
 editor-url: "{prefix}<white>Editor: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Web editor is disabled in config.yml."
 editor-players-only: "{prefix}<red>Only players can open the editor.</red>"
+editor-failed: "{prefix}<red>Could not create a panel link, see the server log.</red>"
+editor-revoked: "{prefix}<green>Your web panel links no longer work.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -226,6 +228,7 @@ veneer-cmd-alerts: "alert and detection history; toggle turns your staff alerts 
 veneer-cmd-info: "client, mod scan, RPTrack and bypasses of a player"
 veneer-cmd-reload: "reload config.yml and the messages"
 veneer-cmd-version: "running and latest release"
+veneer-cmd-forget: "erase everything stored about a player"
 veneer-cmd-spoof-brand: "a player's client brand"
 veneer-cmd-spoof-channels: "a player's plugin channels"
 veneer-cmd-spoof-runcheck: "run the spoof checks again"
@@ -243,6 +246,9 @@ veneer-cmd-check: "check dialog for a player"
 veneer-cmd-brands: "brand filters page"
 veneer-cmd-channels: "plugin channel groups"
 veneer-cmd-players-only: "{prefix}<red>This command can only be used by players."
+veneer-forget-usage: "{prefix}<red>Usage: /veneer forget \\<player|uuid></red>"
+veneer-forget-done: "{prefix}<green>Erased everything stored about</green> <white>{player}</white> <gray>({rows} rows: addresses, scans, fingerprint, client, skin).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Nothing is stored about</gray> <white>{player}</white><gray>.</gray>"
 veneer-lang-players-only: "{prefix}<red>Only players can choose a language; the console uses general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Your language:</gray> <white>{lang}</white> <gray>(the server's). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Your language:</gray> <white>{lang}</white> <gray>(follows your game language). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"

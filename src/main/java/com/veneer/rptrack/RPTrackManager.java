@@ -512,6 +512,20 @@ public class RPTrackManager extends VeneerModule implements Listener {
         }
     }
 
+    /**
+     * Whether two stored fingerprints come from one installation, by the rule the join check uses: at least
+     * {@code match} shared packs, or in unique mode one set inside the other (all packs or all but one, sets of 3+).
+     */
+    public boolean linked(long a, long b) {
+        int common = Long.bitCount(a & b);
+        if (!unique) return common >= minMatch;
+        int size = Math.min(Long.bitCount(a), Long.bitCount(b));
+        return size >= 3 && common >= size - 1;
+    }
+
+    /** Shared packs a link needs (clamped to send); in unique mode the smaller set less one. */
+    public int minMatch() { return minMatch; }
+
     /** Unique mode: stored sets fully (direct) or all but one pack (indirect) in a client's cache. */
     private record Links(long own, List<String> direct, List<String> indirect) { }
 
@@ -552,7 +566,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
             results.put(player.getUniqueId(), new Result(Long.bitCount(l.own() != 0 ? l.own() : cache), l.direct().size(), lb));
             // A known account keeps its own set (anything else in the cache is another account's); a new one on
             // a known machine is stored with that machine's packs
-            plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, false);
+            plugin.database().saveRPTrack(uuid, player.getName(), l.own() != 0 ? l.own() : cache, lb, lbProbe, false);
             if (!l.direct().isEmpty() && alert)
                 report(player, "rptrack-text-same-cache", l.direct());
             if (!l.indirect().isEmpty() && alert)
@@ -577,7 +591,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
         // Unique mode replaces: an account whose cache was wiped gets a new set, and two merged sets would break the rule.
         // The reservation is dropped once the set is in the database, so no pick in between misses it.
         FoliaScheduler.runAsync(plugin, () -> {
-            plugin.database().saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit, unique);
+            plugin.database().saveRPTrack(player.getUniqueId().toString(), player.getName(), mask, s.lbHit, lbProbe, unique);
             reserved.remove(held);
         });
     }
@@ -604,7 +618,7 @@ public class RPTrackManager extends VeneerModule implements Listener {
                         + Long.bitCount(own) + " packs still cached, " + Long.bitCount(mask & ~own) + " extra");
             debug(player.getName() + ": linked accounts " + linked);
             results.put(player.getUniqueId(), new Result(Long.bitCount(mask | own), linked.size(), lb));
-            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, false);
+            plugin.database().saveRPTrack(uuid, player.getName(), mask | own, lb, lbProbe, false);
             if (!linked.isEmpty() && alert)
                 report(player, "rptrack-text-same-cache", linked);
         });

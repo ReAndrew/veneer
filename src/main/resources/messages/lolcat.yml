@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Auto language checkin for <yellow>{player}<gray>
 editor-url: "{prefix}<white>Editur: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Web editur iz disabled in config.yml."
 editor-players-only: "{prefix}<red>Only playrz can open teh editur.</red>"
+editor-failed: "{prefix}<red>Cud not maek panel link, look at teh server log.</red>"
+editor-revoked: "{prefix}<green>Ur web panel linkz no werk nao.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -226,6 +228,7 @@ veneer-cmd-alerts: "alert an detection history; toggle turnz ur staff alertz on 
 veneer-cmd-info: "client, mod scan, RPTrack an bypassez ov a playr"
 veneer-cmd-reload: "reload config.yml an teh messagez"
 veneer-cmd-version: "runnin an latest release"
+veneer-cmd-forget: "forgetz evrythin bout a playr"
 veneer-cmd-spoof-brand: "a playr's client brand"
 veneer-cmd-spoof-channels: "a playr's plugin channelz"
 veneer-cmd-spoof-runcheck: "run teh spoof checkz again"
@@ -243,6 +246,9 @@ veneer-cmd-check: "check dialog 4 a playr"
 veneer-cmd-brands: "brand filterz page"
 veneer-cmd-channels: "plugin channel groupz"
 veneer-cmd-players-only: "{prefix}<red>Dis command cn onli be used by players."
+veneer-forget-usage: "{prefix}<red>Usage: /veneer forget \\<playr|uuid></red>"
+veneer-forget-done: "{prefix}<green>Forgotted evrythin bout</green> <white>{player}</white> <gray>({rows} rowz: addrezzez, scanz, fingrprint, client, skin).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Nothin iz stored bout</gray> <white>{player}</white><gray>.</gray>"
 veneer-lang-players-only: "{prefix}<red>Onli playerz cn choose a language; teh console usez general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>Ur language:</gray> <white>{lang}</white> <gray>(teh server's). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>Ur language:</gray> <white>{lang}</white> <gray>(followz ur game language). Available:</gray> <white>{available}</white><gray>, auto, reset</gray>"

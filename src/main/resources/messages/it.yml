@@ -66,6 +66,8 @@ lang-join-check: "{prefix}<gray>Controllo lingua automatico di <yellow>{player}<
 editor-url: "{prefix}<white>Editor: <aqua><click:open_url:'{url}'>{url}</click>"
 editor-disabled: "{prefix}<red>Il web editor è disabilitato nel config.yml."
 editor-players-only: "{prefix}<red>Solo i giocatori possono aprire l'editor.</red>"
+editor-failed: "{prefix}<red>Impossibile creare il link al pannello, vedi il log del server.</red>"
+editor-revoked: "{prefix}<green>I tuoi link al pannello web non funzionano più.</green>"
 
 # ======================================================================
 # SPOOF  /spoof - general
@@ -226,6 +228,7 @@ veneer-cmd-alerts: "cronologia di avvisi e rilevamenti; toggle attiva o disattiv
 veneer-cmd-info: "client, scansione mod, RPTrack ed esenzioni di un giocatore"
 veneer-cmd-reload: "ricaricare config.yml e i messaggi"
 veneer-cmd-version: "versione in uso e ultima pubblicata"
+veneer-cmd-forget: "cancellare tutto ciò che è salvato su un giocatore"
 veneer-cmd-spoof-brand: "il brand del client di un giocatore"
 veneer-cmd-spoof-channels: "i canali dei plugin di un giocatore"
 veneer-cmd-spoof-runcheck: "ripetere i controlli spoof"
@@ -243,6 +246,9 @@ veneer-cmd-check: "finestra di controllo di un giocatore"
 veneer-cmd-brands: "pagina dei filtri dei brand"
 veneer-cmd-channels: "gruppi di canali dei plugin"
 veneer-cmd-players-only: "{prefix}<red>Solo i giocatori possono usare questo comando."
+veneer-forget-usage: "{prefix}<red>Uso: /veneer forget \\<giocatore|uuid></red>"
+veneer-forget-done: "{prefix}<green>Cancellato tutto ciò che era salvato su</green> <white>{player}</white> <gray>({rows} righe: indirizzi, scansioni, impronta, client, skin).</gray>"
+veneer-forget-nothing: "{prefix}<gray>Non c'è niente salvato su</gray> <white>{player}</white><gray>.</gray>"
 veneer-lang-players-only: "{prefix}<red>Solo i giocatori possono scegliere una lingua; la console usa general.language.</red>"
 veneer-lang-current-server: "{prefix}<gray>La tua lingua:</gray> <white>{lang}</white> <gray>(quella del server). Disponibili:</gray> <white>{available}</white><gray>, auto, reset</gray>"
 veneer-lang-current-auto: "{prefix}<gray>La tua lingua:</gray> <white>{lang}</white> <gray>(segue la lingua del gioco). Disponibili:</gray> <white>{available}</white><gray>, auto, reset</gray>"

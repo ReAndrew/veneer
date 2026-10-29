@@ -12,12 +12,15 @@ import java.util.*;
 public class ConfigManager {
 
     private final VeneerPlugin plugin;
-    private ConfigurationSection masterConfig;
-    private ConfigurationSection hacksConfig;
-    private ConfigurationSection langConfig;
-    private final Map<String, HackDefinition> hacks = new LinkedHashMap<>();
-    private final Map<String, CommandRule> commandRules = new LinkedHashMap<>();
-    private final Map<String, List<CommandRule>> rulesByHack = new HashMap<>();
+    // Read by the web panel's threads and by scans while /veneer reload runs: each reload builds new maps and
+    // swaps them in, so a reader sees the old set or the new one, never a half-filled map
+    private volatile ConfigurationSection masterConfig;
+    private volatile ConfigurationSection hacksConfig;
+    private volatile ConfigurationSection langConfig;
+    private volatile Map<String, HackDefinition> hacks = Map.of();
+    private volatile Map<String, List<CommandRule>> rulesByHack = Map.of();
+    /** Levels of the bundled mods, read once from the jar. */
+    private Map<String, Integer> bundledLevels;
 
     private long timeoutTicks;
     private long betweenSignTicks;
@@ -66,17 +69,28 @@ public class ConfigManager {
         return out;
     }
 
-    /** Level of a mod by id (1 = cheat, 2 = forbidden, 3 = tolerated); an unknown id, removed from the config, is 1. */
+    /**
+     * Level of a mod by id (1 = cheat, 2 = forbidden, 3 = tolerated). Old scan results keep the id of a mod the admin
+     * has since removed or renamed: such an id takes its bundled level, or 2 when it was the admin's own.
+     */
     public int levelOf(String id) {
         HackDefinition h = hacks.get(id);
-        return h != null ? h.getLevel() : 1;
+        return h != null ? h.getLevel() : bundledLevels.getOrDefault(id, 2);
+    }
+
+    /** Ids of the mods set to level 3 (tolerated): a player with only these is not counted as having mods. */
+    public Set<String> toleratedIds() {
+        Set<String> out = new HashSet<>();
+        for (HackDefinition h : hacks.values()) if (h.getLevel() >= 3) out.add(h.getId());
+        return out;
     }
 
     private void loadHacks() {
-        hacks.clear();
-        Map<String, Integer> defaultLevels = bundledLevels();
+        if (bundledLevels == null) bundledLevels = bundledLevels();
+        Map<String, Integer> defaultLevels = bundledLevels;
+        Map<String, HackDefinition> hacks = new LinkedHashMap<>();
         ConfigurationSection section = hacksConfig.getConfigurationSection("hacks");
-        if (section == null) return;
+        if (section == null) { this.hacks = Map.of(); return; }
         for (String id : section.getKeys(false)) {
             String displayName = section.getString(id + ".display-name", id);
             String key = section.getString(id + ".key", "");
@@ -91,11 +105,12 @@ public class ConfigManager {
             int level = Math.max(1, Math.min(3, section.getInt(id + ".level", defaultLevels.getOrDefault(id, 1))));
             hacks.put(id, new HackDefinition(id, displayName, key, mode, level));
         }
+        this.hacks = Collections.unmodifiableMap(hacks);
         plugin.getLogger().info("Loaded " + hacks.size() + " hacks.");
     }
 
     private void loadCommandRules() {
-        commandRules.clear();
+        Map<String, CommandRule> commandRules = new LinkedHashMap<>();
         ConfigurationSection section = hacksConfig.getConfigurationSection("command-rules");
         if (section != null) {
             for (String name : section.getKeys(false)) {
@@ -113,7 +128,7 @@ public class ConfigManager {
                 commandRules.put(name, new CommandRule(name, mod.trim(), result, cmd));
             }
         }
-        rulesByHack.clear();
+        Map<String, List<CommandRule>> rulesByHack = new HashMap<>();
         for (HackDefinition hack : hacks.values()) {
             String idNorm = normalize(hack.getId());
             String dnNorm = normalize(hack.getDisplayName());
@@ -122,8 +137,9 @@ public class ConfigManager {
                 String modNorm = normalize(rule.getMod());
                 if (modNorm.equals(idNorm) || modNorm.equals(dnNorm)) list.add(rule);
             }
-            rulesByHack.put(hack.getId(), list);
+            rulesByHack.put(hack.getId(), List.copyOf(list));
         }
+        this.rulesByHack = rulesByHack;
     }
 
     private static String normalize(String s) {
@@ -175,7 +191,10 @@ public class ConfigManager {
     public int     getWebPort()         { return masterConfig.getInt("web-editor.port", 8080); }
     public String  getWebHost()         { return masterConfig.getString("web-editor.host", "localhost"); }
     public String  getWebBind()         { return masterConfig.getString("web-editor.bind", "127.0.0.1"); }
-    public int     getTokenExpireMinutes() { return masterConfig.getInt("web-editor.token-expire-minutes", 10); }
+    /** Rights are fixed when a token is issued, so a token lives at most a day. */
+    public int     getTokenExpireMinutes() { return Math.max(1, Math.min(1440, masterConfig.getInt("web-editor.token-expire-minutes", 10))); }
+    /** Address of an HTTPS reverse proxy in front of the panel, without a trailing slash; empty = http://host:port. */
+    public String  getPublicUrl()       { return masterConfig.getString("web-editor.public-url", "").trim().replaceAll("/+$", ""); }
 
     public boolean isCommandIfPositiveEnabled() { return commandIfPositiveEnabled; }
     public String  getPositiveCommand()         { return positiveCommand; }

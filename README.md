@@ -63,16 +63,17 @@ Veneer places a sign next to the player with a translation or keybind key from e
 | `/veneer alerts` | `veneer.alerts` | Toggle your own staff alerts (spoof, mod scan and RPTrack share one switch) |
 | `/veneer reload` | `veneer.admin` | Reload `config.yml` and the language files for every module |
 | `/veneer version` | `veneer.admin` | Running and latest release |
+| `/veneer forget <player\|uuid>` | `veneer.admin.forget` | Erase everything stored about a player (addresses, scans, fingerprint, client, skin), e.g. for an erasure request |
 | `/veneer <spoof\|hackcheck\|hacklang\|hackeditor\|rptrack> ...` | that command's | The module commands also run under `/veneer` (`scan` = `hackcheck`, `editor` = `hackeditor`), with the same permissions |
 | `/spoof` | `veneer.spoof.use` | Inspect client brand and channels, re-run spoof checks (`check`, `runcheck`, `channels`, `brand`); `brands` (needs `veneer.spoof.admin`) lists unknown brands and allows or blocks them |
 | `/hackcheck <player> [hacks]` | `veneer.hacks.check` | Scan a player for mods |
 | `/hacklang <player>` | `veneer.hacks.lang` | Check a player's client language |
-| `/hackeditor` | `veneer.hacks.editor` or `veneer.web.use` | Link to the web panel: scan history and manual scans |
+| `/hackeditor [revoke]` | `veneer.hacks.editor` or `veneer.web.use` | Link to the web panel: scan history and manual scans; `revoke` ends every link issued to you |
 | `/rptrack <player>` | `veneer.rptrack` | Show a player's cache fingerprint and linked accounts |
 
 Other permissions: `veneer.spoof.admin`. Bypass (all default `false`, not in `veneer.*`): `veneer.bypass` (everything), `veneer.bypass.<spoof|hacks|rptrack>` (that module, join and later), `veneer.bypass.<type>.join` (join-time check only). The most specific bypass that is set wins, so `veneer.bypass` true with `veneer.bypass.hacks` false still scans mods, and nodes set on the player come before group ones (a player's own `veneer.bypass` beats a group's `veneer.bypass.hacks` false); `/veneer info <player>` shows the bypasses in effect and the node that grants each; `veneer.*`, `*` and other wildcards above `veneer.bypass` never grant a bypass, also with LuckPerms (read through its API when installed). Manual scans (`/hackcheck`, `/hacklang`, web panel) ignore bypasses. Wildcards: `veneer.spoof.*`, `veneer.hacks.*`, `veneer.web.*`, `veneer.*`.
 
-Web panel rights (default op) are taken from the player when `/hackeditor` issues the token: `veneer.web.use` (open the panel, grants `veneer.hacks.editor`), `veneer.web.scan` (run scans), `veneer.web.delete` (delete scans), `veneer.web.links` (account graph), `veneer.web.ips` (see IP addresses; without it the graph hides them). Without any of them the token still shows the scan history.
+Web panel rights (default op) are taken from the player when `/hackeditor` issues the token: `veneer.web.use` (open the panel, grants `veneer.hacks.editor`), `veneer.web.scan` (run scans), `veneer.web.delete` (delete scans), `veneer.web.links` (account graph), `veneer.web.ips` (see IP addresses; without it the graph hides them). `veneer.web.use` (or `veneer.hacks.editor`) is needed to get a link at all; a link with none of the others shows the scan history, the mod list and player pages (join times, client, fingerprint), without the graph or addresses.
 
 ## Configuration
 
@@ -134,7 +135,7 @@ Produces two jars (Java 21 or newer):
 
 ## Notes
 
-- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` (and put it behind HTTPS) to reach it from elsewhere. Access needs the short-lived token from the command (10 minutes by default; anyone with the link can use it until then, so don't share it). Scan starts and deletions from the panel are logged in the server console. Join addresses and skins are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180).
+- The web panel (`/hackeditor`) listens on `127.0.0.1` by default; set `hacks.web-editor.bind` to `0.0.0.0` and put it behind an HTTPS reverse proxy to reach it from elsewhere, with `hacks.web-editor.public-url` set to the proxy's address so `/hackeditor` links use it (the plugin warns at start when the panel listens on the network over plain HTTP). Access needs the short-lived token from the command (10 minutes by default, at most a day; anyone with the link can use it until then, so don't share it, and `/hackeditor revoke` ends it). Scan starts and deletions from the panel are logged in the server console. Join addresses, skins, clients and resource-pack fingerprints are kept for `hacks.web-editor.links.retention-days` (90) after the player was last seen, scans for `hacks.web-editor.history.retention-days` (180); old data is deleted at start and then hourly. `hacks.web-editor.links.store-addresses: false` stops recording addresses (nothing is recorded either while the web panel is off), and `/veneer forget <player>` erases one player's data at once.
 - The provider and country data (about 50 MB) is downloaded to `plugins/Veneer/geo/` through jsDelivr and refreshed weekly (`hacks.web-editor.links.ip-database`, on by default; the plugin works without it). The country is where the network is registered, not a precise location. Which providers count as weak is set by `weak-provider-asns` and `weak-provider-keywords`, the weight factor by `weak-provider-factor` (0.3). Client links need the spoof module and are recorded when a player leaves.
 - To translate the panel, add `src/main/resources/web/lang/<language>.json` (English text as keys, see `ru.json`).
 - Version `0.9.7` is independent of the originals (AntiSpoof 1.2.7, CheckHacks 1.3.1).

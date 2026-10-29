@@ -27,35 +27,56 @@ public class WebServerManager {
     private static final int MAX_BODY = 4096;
     private final Gson gson = new Gson();
     private volatile List<Map<String, Object>> cachedPlayers = new ArrayList<>();
-    private final IpDatabase ipdb;
+    private IpDatabase ipdb;
+    private com.veneer.core.WrappedTask cacheTimer;
+    /** Ticks of the online-player cache timer (every 5 s); the ban list is read every 12th run (once a minute). */
+    private static final long CACHE_TICKS = 100L;
+    private int cacheRuns;
 
     public WebServerManager(VeneerPlugin plugin) {
         this.plugin = plugin;
+        // Nothing else runs when the port cannot be bound: no timer, no 50 MB IP database
+        if (!start()) return;
         var links = links();
         if (links.getBoolean("ip-database", true)) {
             ipdb = new IpDatabase(plugin, links.getInt("ip-database-refresh-days", 7),
                     links.getIntegerList("weak-provider-asns"), links.getStringList("weak-provider-keywords"));
             ipdb.start();
-        } else {
-            ipdb = null;
         }
-        start();
-        FoliaScheduler.runGlobalTimer(plugin, this::updatePlayerCache, 1L, 100L);
+        cacheTimer = FoliaScheduler.runGlobalTimer(plugin, this::updatePlayerCache, 1L, CACHE_TICKS);
     }
 
-    private void start() {
+    private boolean start() {
         int port = plugin.hacks().config().getWebPort();
         try {
             String bind = plugin.hacks().config().getWebBind();
+            // The JDK server reads the request on a worker thread with no time limit by default: a few connections
+            // that send their headers byte by byte would hold every worker. Read once per JVM, so set it only
+            // when nobody (another plugin, the start script) has.
+            if (System.getProperty("sun.net.httpserver.maxReqTime") == null)
+                System.setProperty("sun.net.httpserver.maxReqTime", "20");
+            if (System.getProperty("sun.net.httpserver.maxRspTime") == null)
+                System.setProperty("sun.net.httpserver.maxRspTime", "60");
             server = HttpServer.create(new InetSocketAddress(java.net.InetAddress.getByName(bind), port), 0);
             server.createContext("/", this::handle);
-            executor = Executors.newFixedThreadPool(4);
+            executor = Executors.newFixedThreadPool(8);
             server.setExecutor(executor);
             server.start();
             plugin.getLogger().info("Web panel listening on " + bind + ":" + port);
+            if (!java.net.InetAddress.getByName(bind).isLoopbackAddress())
+                plugin.getLogger().warning("The web panel listens on " + bind + " over plain HTTP: tokens and IP addresses "
+                        + "cross the network unencrypted. Put it behind an HTTPS reverse proxy (see hacks.web-editor.public-url).");
+            return true;
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to start the web panel: " + e.getMessage());
+            if (executor != null) executor.shutdownNow();
+            return false;
         }
+    }
+
+    /** Drops the cached account graph: levels or link settings changed (/veneer reload). */
+    public void clearCache() {
+        graphCache.clear();
     }
 
     private org.bukkit.configuration.ConfigurationSection links() {
@@ -87,12 +108,26 @@ public class WebServerManager {
                     || (profile != null && (profile.isAlreadyPunished() || profile.isVersionMismatch())))
                 flagged.add(p.getUniqueId().toString());
         }
-        // The server's own ban list: bans kept by a ban plugin (LiteBans, AdvancedBan) are not in it
-        Set<String> banned = new HashSet<>();
-        for (org.bukkit.OfflinePlayer p : Bukkit.getBannedPlayers()) banned.add(p.getUniqueId().toString());
         cachedPlayers = list;
         cachedFlagged = flagged;
-        cachedBanned = banned;
+        // The server's own ban list, once a minute: it can hold tens of thousands of entries. Bans kept by a ban
+        // plugin (LiteBans, AdvancedBan) are not in it.
+        if (cacheRuns++ % 12 == 0) cachedBanned = bannedIds();
+    }
+
+    @SuppressWarnings({"deprecation", "rawtypes"})
+    private static Set<String> bannedIds() {
+        Set<String> banned = new HashSet<>();
+        try {
+            for (Object e : Bukkit.getBanList(org.bukkit.BanList.Type.PROFILE).getEntries()) {
+                Object target = ((org.bukkit.BanEntry) e).getBanTarget();
+                if (target instanceof org.bukkit.profile.PlayerProfile p && p.getUniqueId() != null)
+                    banned.add(p.getUniqueId().toString());
+            }
+        } catch (RuntimeException ignored) {
+            // A server without profile bans: no banned accounts shown
+        }
+        return banned;
     }
 
     private volatile Set<String> cachedFlagged = Set.of(), cachedBanned = Set.of();
@@ -158,7 +193,7 @@ public class WebServerManager {
 
     private void serveEditor(HttpExchange ex, Map<String, String> params) throws IOException {
         String token = params.get("token");
-        if (token == null || plugin.database().validateToken(token) == null) {
+        if (!isTokenShaped(token) || plugin.database().validateToken(token) == null) {
             sendHtml(ex, 403, "<html><body style='font-family:monospace;background:#0d1117;color:#e6edf3;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'><div>Invalid or expired token.<br>Run <b>/hackeditor</b> in Minecraft.</div></body></html>");
             return;
         }
@@ -191,7 +226,8 @@ public class WebServerManager {
 
     private void handleApi(HttpExchange ex, String path, Map<String, String> params) throws IOException {
         String token = params.get("token");
-        Map<String, String> playerInfo = token != null ? plugin.database().validateToken(token) : null;
+        // Anything that is not a token /hackeditor could have issued is refused without taking the database lock
+        Map<String, String> playerInfo = isTokenShaped(token) ? plugin.database().validateToken(token) : null;
 
         if (playerInfo == null) {
             sendJson(ex, 401, Map.of("error", "unauthorized"));
@@ -201,7 +237,12 @@ public class WebServerManager {
         String method = ex.getRequestMethod();
 
         if (path.equals("/api/validate")) {
-            sendJson(ex, 200, playerInfo);
+            Map<String, Object> info = new LinkedHashMap<>(playerInfo);
+            // Level of every configured mod, for colouring scan results that carry only the mod id
+            Map<String, Integer> levels = new LinkedHashMap<>();
+            for (HackDefinition h : plugin.hacks().config().getHacks().values()) levels.put(h.getId(), h.getLevel());
+            info.put("levels", levels);
+            sendJson(ex, 200, info);
             return;
         }
 
@@ -211,7 +252,7 @@ public class WebServerManager {
         }
 
         if (path.equals("/api/stats")) {
-            Map<String, Object> stats = plugin.database().getStats();
+            Map<String, Object> stats = plugin.database().getStats(plugin.hacks().config().toleratedIds());
             stats.put("online", cachedPlayers.size());
             sendJson(ex, 200, stats);
             return;
@@ -258,7 +299,7 @@ public class WebServerManager {
         if (path.equals("/api/scans")) {
             String type  = params.get("type");
             // Clamped: limit=-1 means "no limit" to SQLite and would read the whole history under the DB lock
-            int    limit = Math.max(1, Math.min(500, parseInt(params.get("limit"), 50)));
+            int    limit = Math.max(1, Math.min(100, parseInt(params.get("limit"), 50)));
             String validType = ("hack".equals(type) || "lang".equals(type)) ? type : null;
             sendJson(ex, 200, plugin.database().getRecentScans(validType, limit,
                     Math.max(0, parseInt(params.get("offset"), 0)), "1".equals(params.get("detected")) ? true : null, null));
@@ -280,6 +321,11 @@ public class WebServerManager {
             Map<?, ?> req = gson.fromJson(body, Map.class);
             String targetName = req != null ? (String) req.get("player") : null;
             String type       = req != null && req.get("type") != null ? (String) req.get("type") : "hack";
+            // Only the two kinds of scan; anything else would also end up in the console log as written
+            if (!"hack".equals(type) && !"lang".equals(type)) {
+                sendJson(ex, 400, Map.of("error", "type must be hack or lang"));
+                return;
+            }
 
             if (targetName == null || targetName.isBlank()) {
                 sendJson(ex, 400, Map.of("error", "player is required"));
@@ -395,20 +441,27 @@ public class WebServerManager {
         // The player page asks for it on every refresh (every 2.5 s while a scan runs): build it at most every 15 s
         CachedGraph cached = graphCache.get(ips);
         if (cached != null && System.currentTimeMillis() - cached.built() < GRAPH_TTL_MS) return cached.graph();
-        Map<String, Object> graph = buildLinkGraph(ips);
-        graphCache.put(ips, new CachedGraph(graph, System.currentTimeMillis()));
-        return graph;
+        // One build at a time: requests that miss together wait for it instead of each comparing every fingerprint
+        synchronized (graphLock) {
+            cached = graphCache.get(ips);
+            if (cached != null && System.currentTimeMillis() - cached.built() < GRAPH_TTL_MS) return cached.graph();
+            Map<String, Object> graph = buildLinkGraph(ips);
+            graphCache.put(ips, new CachedGraph(graph, System.currentTimeMillis()));
+            return graph;
+        }
     }
 
     private record CachedGraph(Map<String, Object> graph, long built) {}
+    private final Object graphLock = new Object();
     private static final long GRAPH_TTL_MS = 15_000;
     private final Map<Boolean, CachedGraph> graphCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     private Map<String, Object> buildLinkGraph(boolean ips) {
         var links = links();
-        var rp = plugin.config().section("rptrack");
-        int match = rp != null ? rp.getInt("match", 5) : 5;
-        Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), match,
+        // The same rule as RPTrack's own join check (match clamped to send, unique mode), so the graph shows
+        // exactly the links RPTrack reports
+        var rp = plugin.rptrack();
+        Map<String, Object> graph = plugin.database().getLinkGraph(links.getInt("max-accounts-per-ip", 8), rp::linked, rp.minMatch(),
                 links.getInt("max-accounts-per-client", 5), links.getInt("client-min-channels", 3));
         double weakFactor = Math.max(0, Math.min(1, links.getDouble("weak-provider-factor", 0.3)));
         for (Object e : (List<?>) graph.get("edges")) {
@@ -431,6 +484,8 @@ public class WebServerManager {
                 if (level == 0 || l < level) level = l;
             }
             node.put("level", level);
+            // Tolerated mods (level 3) do not make an account one with mods
+            node.put("detected", level == 1 || level == 2);
         }
         return graph;
     }
@@ -445,27 +500,41 @@ public class WebServerManager {
             Map<?, ?> node = (Map<?, ?>) n;
             names.put((String) node.get("id"), (String) node.get("name"));
         }
-        Map<String, double[]> miss = new LinkedHashMap<>();
+        // Per other account: [miss of non-address reasons, best address p, addresses shared]
+        Map<String, double[]> acc = new LinkedHashMap<>();
         Map<String, Set<String>> types = new HashMap<>();
         for (Object e : (List<?>) graph.get("edges")) {
             Map<?, ?> edge = (Map<?, ?>) e;
             String other = uuid.equals(edge.get("source")) ? (String) edge.get("target")
                     : uuid.equals(edge.get("target")) ? (String) edge.get("source") : null;
             if (other == null) continue;
-            miss.computeIfAbsent(other, k -> new double[]{1})[0] *= 1 - ((Number) edge.get("p")).doubleValue();
+            double p = ((Number) edge.get("p")).doubleValue();
+            double[] a = acc.computeIfAbsent(other, k -> new double[]{1, 0, 0});
+            if ("ip".equals(edge.get("type"))) { a[1] = Math.max(a[1], p); a[2]++; }
+            else a[0] *= 1 - p;
             types.computeIfAbsent(other, k -> new TreeSet<>()).add((String) edge.get("type"));
         }
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Map.Entry<String, double[]> m : miss.entrySet()) {
+        for (Map.Entry<String, double[]> m : acc.entrySet()) {
+            double[] a = m.getValue();
             Map<String, Object> alt = new LinkedHashMap<>();
             alt.put("uuid", m.getKey());
             alt.put("name", names.getOrDefault(m.getKey(), m.getKey()));
-            alt.put("pct", 1 - m.getValue()[0]);
+            alt.put("pct", 1 - a[0] * (1 - addressP(a[1], (int) a[2])));
             alt.put("types", types.get(m.getKey()));
             out.add(alt);
         }
         out.sort((a, b) -> Double.compare((Double) b.get("pct"), (Double) a.get("pct")));
         return out;
+    }
+
+    /**
+     * The address part of a pair's match: the best shared address plus 5 % per extra one, at most 70 %. Addresses
+     * of one household or one provider's pool are not independent signs, so they are not multiplied like the other
+     * reasons (four shared addresses of a dynamic line would otherwise read as 96 %). editor.html does the same.
+     */
+    static double addressP(double best, int count) {
+        return count == 0 ? 0 : Math.min(0.7, best + 0.05 * (count - 1));
     }
 
     /** Adds {@code level} (1 = cheat, 2 = forbidden, 3 = tolerated, from config.yml) to each mod row by its id. */
@@ -533,7 +602,25 @@ public class WebServerManager {
     }
 
     public void stop() {
+        if (cacheTimer != null) cacheTimer.cancel();
+        if (ipdb != null) ipdb.stop();
         if (server != null) server.stop(0);
-        if (executor != null) executor.shutdownNow();
+        if (executor != null) {
+            // Requests still running get a moment to finish before the database closes under them
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS)) executor.shutdownNow();
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /** 32 hex digits, the form {@link com.veneer.core.DatabaseManager#saveToken} issues. */
+    private static boolean isTokenShaped(String token) {
+        if (token == null || token.length() != 32) return false;
+        for (int i = 0; i < 32; i++) if (Character.digit(token.charAt(i), 16) < 0) return false;
+        return true;
     }
 }
