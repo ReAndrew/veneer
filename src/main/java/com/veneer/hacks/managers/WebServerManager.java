@@ -75,13 +75,48 @@ public class WebServerManager {
 
     private void updatePlayerCache() {
         List<Map<String, Object>> list = new ArrayList<>();
+        Set<String> flagged = new HashSet<>();
+        boolean spoof = plugin.spoof() != null && plugin.spoof().running() && plugin.spoof().detection() != null;
         for (Player p : Bukkit.getOnlinePlayers()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", p.getName());
             m.put("uuid", p.getUniqueId().toString());
             list.add(m);
+            PlayerProfile profile = plugin.profileOf(p.getUniqueId());
+            if ((spoof && plugin.spoof().detection().isFlagged(p.getUniqueId()))
+                    || (profile != null && (profile.isAlreadyPunished() || profile.isVersionMismatch())))
+                flagged.add(p.getUniqueId().toString());
         }
+        // The server's own ban list: bans kept by a ban plugin (LiteBans, AdvancedBan) are not in it
+        Set<String> banned = new HashSet<>();
+        for (org.bukkit.OfflinePlayer p : Bukkit.getBannedPlayers()) banned.add(p.getUniqueId().toString());
         cachedPlayers = list;
+        cachedFlagged = flagged;
+        cachedBanned = banned;
+    }
+
+    private volatile Set<String> cachedFlagged = Set.of(), cachedBanned = Set.of();
+
+    /**
+     * The graph with the live state of each account: online, flagged by the spoof module this session, banned.
+     * New node maps, the cached graph is shared and outlives the state.
+     */
+    private Map<String, Object> withStatus(Map<String, Object> graph) {
+        Set<String> online = new HashSet<>();
+        for (Map<String, Object> p : cachedPlayers) online.add((String) p.get("uuid"));
+        Set<String> flagged = cachedFlagged, banned = cachedBanned;
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (Object n : (List<?>) graph.get("nodes")) {
+            @SuppressWarnings("unchecked") Map<String, Object> node = new LinkedHashMap<>((Map<String, Object>) n);
+            String id = (String) node.get("id");
+            node.put("online", online.contains(id));
+            node.put("spoof", flagged.contains(id));
+            node.put("banned", banned.contains(id));
+            nodes.add(node);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(graph);
+        out.put("nodes", nodes);
+        return out;
     }
 
     private void handle(HttpExchange ex) {
@@ -211,7 +246,7 @@ public class WebServerManager {
         }
 
         if (path.equals("/api/links")) {
-            sendJson(ex, 200, linkGraph(playerInfo));
+            sendJson(ex, 200, withStatus(linkGraph(playerInfo)));
             return;
         }
 

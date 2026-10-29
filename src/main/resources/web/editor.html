@@ -378,8 +378,13 @@
       return sprite;
     }
 
+    // Frame colour of a head: the most serious state wins (banned, then mods found, then a spoof flag)
+    const nodeColour = n => n.banned ? 0x6e7681 : n.detected ? 0xf85149 : n.spoof ? 0xdb61a2 : 0x4493f8;
+    // Online accounts get a green name
+    const nameColour = n => n.online ? 0x56d364 : 0xc9d1d9;
+
     function skinCube(n, size) {
-      const edge = size, colour = n.detected ? 0xf85149 : 0x4493f8;
+      const edge = size, colour = nodeColour(n);
       const group = new THREE.Group();
       const canvases = FACES.map(() => { const c = document.createElement('canvas'); c.width = c.height = 8; return c; });
       const mats = canvases.map(c => {
@@ -419,7 +424,7 @@
       group.add(frame);
       // The name hangs under the head on screen: the sprite sits at the head's centre and its anchor is moved
       // up by the head's half-diagonal, which works from any camera angle
-      const label = textSprite(n.name, Math.max(7, edge * .75), 0xc9d1d9);
+      const label = textSprite(n.name, Math.max(7, edge * .75), nameColour(n));
       label.center.set(.5, 1 + edge * 1.05 / label.scale.y);
       group.add(label);
       n._label = label;
@@ -480,6 +485,7 @@
         '<label>' + t('at least') + ' <input type="range" id="g-min" min="0" max="90" step="5" value="0" style="width:90px;padding:0"> <span id="g-min-v">0%</span></label>' +
         '<label>' + t('seen') + ' <select id="g-days">' + [[0, 'any time'], [1, 'last 24 h'], [7, 'last 7 days'], [30, 'last 30 days'], [90, 'last 90 days']]
           .map(([v, n]) => '<option value="' + v + '">' + t(n) + '</option>').join('') + '</select></label>' +
+        '<label title="' + esc(t('Only the accounts linked to the selected one, directly or through others')) + '"><input type="checkbox" id="g-group"' + (focus ? ' checked' : '') + '> ' + t('only this group') + '</label>' +
         '<label><input type="checkbox" id="g-2d"> ' + t('flat') + '</label>' +
         // The debug log is for diagnosing camera problems: shown only when the page is opened with &debug
         (new URLSearchParams(location.search).has('debug') ? '<label><input type="checkbox" id="g-dbg"> debug</label>' : '<input type="checkbox" id="g-dbg" hidden>') +
@@ -490,6 +496,8 @@
       // A search matches a name, or the start of an address the account joined from (when IPs may be seen)
       const matches = n => n.name.toLowerCase().includes(hl) || (n.ips || []).some(ip => ip.startsWith(hl));
       let hl = '', searchScale = 1, hover = null, selected = null, fitted = false, ownMoveUntil = 0, lastCam = null, lastLog = 0;
+      // The account whose group "only this group" keeps: the one the page was opened for, then the last one selected
+      let groupRoot = focus || null;
       const dbgBox = document.createElement('pre'); dbgBox.className = 'dbg-log'; dbgBox.style.display = 'none';
       const dbgOn = () => document.getElementById('g-dbg').checked;
       const dbg = msg => {
@@ -522,7 +530,16 @@
           l.why.push(describeEdge(e));
           pairs.set(key, l);
         });
-        const links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss})).filter(l => l.pct >= minPct);
+        let links = [...pairs.values()].map(l => ({...l, pct: 1 - l.miss})).filter(l => l.pct >= minPct);
+        // Only this group: the accounts reachable from the root over the links left after the filters
+        if (document.getElementById('g-group').checked && groupRoot) {
+          const near = {};
+          links.forEach(l => { (near[l.source] = near[l.source] || []).push(l.target); (near[l.target] = near[l.target] || []).push(l.source); });
+          const group = new Set([groupRoot]), queue = [groupRoot];
+          while (queue.length) (near[queue.shift()] || []).forEach(o => { if (!group.has(o)) { group.add(o); queue.push(o); } });
+          // A root with no link left would empty the graph: then the whole graph stays
+          if (group.size > 1) links = links.filter(l => group.has(l.source));
+        }
         const deg = {}; links.forEach(l => { deg[l.source] = (deg[l.source]||0) + 1; deg[l.target] = (deg[l.target]||0) + 1; });
         const nodes = data.nodes.filter(n => deg[n.id]).map(n => ({...n, links: deg[n.id]}));
         stopGraph();
@@ -564,6 +581,7 @@
         const select = async n => {
           if (n && n === selected) n = null;
           selected = n;
+          if (n) groupRoot = n.id;
           if (!n) { card.style.display = 'none'; fit(700, 'back to overview'); return; }
           const d = n.x === undefined ? null : n;
           if (d) moveCamera({x: n.x + 50, y: n.y + 30, z: (n.z || 0) + 75}, {x: n.x, y: n.y, z: n.z || 0}, 700, 'zoom to ' + n.name);
@@ -582,7 +600,10 @@
             cheats.push({name: 'LiquidBounce', last_seen: fp.last_seen, via: t('resource-pack fingerprint')});
           card.innerHTML =
             '<h3>' + esc(n.name) + '<button title="' + esc(t('Close')) + '">✕</button></h3>' +
-            '<div style="color:var(--text2)">' + (cheats.length ? '<span style="color:var(--red)">☢ ' + t('mods detected') + '</span>' : t('no mods detected')) + '</div>' +
+            '<div style="color:var(--text2)">' + [n.online ? '<span style="color:#56d364">● ' + t('online') + '</span>' : '',
+              n.banned ? '<span style="color:#8b949e">⛔ ' + t('banned') + '</span>' : '',
+              n.spoof ? '<span style="color:#db61a2">⚑ ' + t('spoof flag') + '</span>' : '',
+              cheats.length ? '<span style="color:var(--red)">☢ ' + t('mods detected') + '</span>' : t('no mods detected')].filter(Boolean).join(' · ') + '</div>' +
             (cheats.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + cheats.map(m => '<span class="badge badge-DETECTED" title="' + esc(t('Last detected: {0}', new Date(Number(m.last_seen)).toLocaleString()) + (m.via ? ' (' + m.via + ')' : '')) + '">' + esc(m.name) + '</span>').join('') + '</div>' : '') +
             '<h4>' + t('Addresses') + '</h4>' +
             (det.ips.length ? det.ips.map(r => '<div class="row"><span>' + esc(r.ip) +
@@ -632,6 +653,8 @@
         info.innerHTML = '<span>' + t('{0} accounts, {1} links', nodes.length, links.length) + '</span>' +
           '<span class="legend" title="' + esc(t('Thicker line = higher match. Hover a head or a line for details.')) + '">' +
           '<span class="sq" style="border-color:#4493f8"></span>' + t('account') + '<span class="sq" style="border-color:#f85149"></span>' + t('mods detected') +
+          '<span class="sq" style="border-color:#db61a2"></span>' + t('spoof flag') + '<span class="sq" style="border-color:#6e7681"></span>' + t('banned') +
+          '<b style="color:#56d364;margin-left:12px;font-weight:600">' + t('name') + '</b> ' + t('online') +
           '<i style="border-color:#8b949e"></i>' + t('same address') + '<i style="border-color:#3fb950"></i>' + t('same fingerprint') +
           '<i style="border-color:#a371f7"></i>' + t('same client') + '</span>' +
           // CC BY 4.0 asks for the source of the country data wherever it is shown
@@ -646,7 +669,7 @@
             if (n.x === undefined) return;
             const hit = hl && matches(n);
             if (n._label) {
-              n._label.material.color.set(hit ? 0xd29922 : 0xc9d1d9);
+              n._label.material.color.set(hit ? 0xd29922 : nameColour(n));
               n._label.material.opacity = hl && !hit ? .3 : 1;
             }
             const obj = n.__threeObj;
@@ -664,7 +687,7 @@
             }
             // Dragging with the right button turns only the cube the pointer hit: the frame follows it
             if (n._frame && n._cube) n._frame.quaternion.copy(n._cube.quaternion);
-            if (n._frame) n._frame.material.color.set(hit ? 0xd29922 : (n.detected ? 0xf85149 : 0x4493f8));
+            if (n._frame) n._frame.material.color.set(hit ? 0xd29922 : nodeColour(n));
           });
           // Camera moves we did not start (mouse controls) are logged too, at most four times a second
           const cp = graph3d.camera().position;
@@ -680,6 +703,8 @@
         fit(0, 'initial');
       };
       ['g-ip', 'g-rp', 'g-cl', 'g-days', 'g-2d'].forEach(id => { document.getElementById(id).onchange = build; });
+      // Switching the group view keeps the selected account in focus after the new layout
+      document.getElementById('g-group').onchange = () => { focus = (selected && selected.id) || groupRoot; build(); };
       const minInput = document.getElementById('g-min');
       minInput.oninput = () => { document.getElementById('g-min-v').textContent = minInput.value + '%'; };
       minInput.onchange = build;

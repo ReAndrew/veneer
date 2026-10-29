@@ -517,6 +517,12 @@ public class DetectionManager {
      * @param detectedViolations Map of violation types to reasons
      * @param brand The player's client brand
      */
+    /** Whether the player was flagged for anything since joining (a cleared flag does not count). */
+    public boolean isFlagged(UUID uuid) {
+        Map<String, Boolean> violations = playerViolations.get(uuid);
+        return violations != null && violations.containsValue(true);
+    }
+
     public void processViolations(Player player, Map<String, String> detectedViolations, String brand) {
         if (!player.isOnline()) return;
 
