@@ -16,7 +16,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <packetevents.version>2.14.0</packetevents.version>
-        <paper.version>1.21.4-R0.1-SNAPSHOT</paper.version>
+        <paper.version>26.1.2.build.74-stable</paper.version>
         <placeholderapi.version>2.11.6</placeholderapi.version>
     </properties>
 
@@ -81,12 +81,12 @@
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-minimessage</artifactId>
-            <version>4.21.0</version>
+            <version>5.2.0</version>
         </dependency>
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-serializer-legacy</artifactId>
-            <version>4.21.0</version>
+            <version>5.2.0</version>
         </dependency>
         <dependency>
             <groupId>com.github.retrooper</groupId>
