@@ -181,7 +181,10 @@ public class SignUtil {
         if (!now) {
             FoliaScheduler.runAtLocation(plugin, signLoc, () -> {
                 try { if (original != null) original.update(true, false); }
-                catch (Exception e) { plugin.getLogger().warning("[Hacks] Restore: " + e.getMessage()); }
+                catch (Exception e) {
+                    plugin.getLogger().warning("[Hacks] Restore: " + e.getMessage());
+                    LEFTOVERS.add(signLoc.clone());
+                }
             });
             return;
         }
@@ -189,7 +192,8 @@ public class SignUtil {
         catch (Exception e) { LEFTOVERS.add(signLoc.clone()); }
     }
 
-    private static final List<Location> LEFTOVERS = new ArrayList<>();
+    // Appended from region threads (delayed restore) and the shutdown thread
+    private static final List<Location> LEFTOVERS = java.util.Collections.synchronizedList(new ArrayList<>());
     private static final String LEFTOVER_FILE = "probe-signs.txt";
 
     /** Writes the probe signs shutdown could not remove. */
@@ -209,8 +213,14 @@ public class SignUtil {
     public static void clearLeftovers(Plugin plugin) {
         File file = new File(plugin.getDataFolder(), LEFTOVER_FILE);
         if (!file.isFile()) return;
-        try {
-            for (String line : Files.readAllLines(file.toPath())) {
+        List<String> lines;
+        try { lines = Files.readAllLines(file.toPath()); }
+        catch (Exception e) {
+            plugin.getLogger().warning("[Hacks] Could not read probe sign positions: " + e.getMessage());
+            return; // the file stays: a failed read lost every entry, unlike one bad line below
+        }
+        for (String line : lines) {
+            try {
                 String[] p = line.trim().split(" ");
                 World world = p.length == 4 ? Bukkit.getWorld(p[0]) : null;
                 if (world == null) continue;
@@ -218,11 +228,11 @@ public class SignUtil {
                 FoliaScheduler.runAtLocation(plugin, loc, () -> {
                     if (loc.getBlock().getType() == Material.OAK_SIGN) loc.getBlock().setType(Material.AIR, false);
                 });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Hacks] Bad probe sign line: " + line);
             }
-            plugin.getLogger().info("[Hacks] Removed probe signs left by the last shutdown.");
-        } catch (Exception e) {
-            plugin.getLogger().warning("[Hacks] Could not read probe sign positions: " + e.getMessage());
         }
+        plugin.getLogger().info("[Hacks] Removed probe signs left by the last shutdown.");
         file.delete();
     }
 

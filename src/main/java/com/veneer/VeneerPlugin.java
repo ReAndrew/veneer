@@ -12,6 +12,7 @@ import com.veneer.core.VeneerCommand;
 import com.veneer.core.VeneerConfig;
 import com.veneer.core.VeneerModule;
 import com.veneer.core.Webhook;
+import com.veneer.core.gui.VeneerGui;
 import com.veneer.hacks.HacksModule;
 import com.veneer.hooks.HooksModule;
 import com.veneer.rptrack.RPTrackManager;
@@ -51,6 +52,7 @@ public class VeneerPlugin extends JavaPlugin {
     private RPTrackManager rptrack;
     private HooksModule hooks;
     private List<VeneerModule> modules = List.of();
+    private VeneerGui gui;
 
     @Override
     public void onEnable() {
@@ -77,6 +79,9 @@ public class VeneerPlugin extends JavaPlugin {
         hooks = new HooksModule(this);
         modules = List.of(spoof, hacks, rptrack, hooks);
         getServer().getPluginManager().registerEvents(new PlayerEvents(this), this);
+
+        gui = new VeneerGui(this);
+        getServer().getPluginManager().registerEvents(gui, this);
 
         PluginCommand veneer = getCommand("veneer");
         if (veneer != null) {
@@ -194,6 +199,7 @@ public class VeneerPlugin extends JavaPlugin {
     public RPTrackManager rptrack() { return rptrack; }
     public HooksModule hooks() { return hooks; }
     public List<VeneerModule> modules() { return modules; }
+    public VeneerGui gui() { return gui; }
 
     // ---------------------------------------------------------------- profiles
 
@@ -229,12 +235,13 @@ public class VeneerPlugin extends JavaPlugin {
 
     /**
      * Whether the player skips the automatic {@code module} check ("spoof", "hacks" or "rptrack"); {@code join}
-     * for the check on joining, which {@code veneer.bypass.<module>.join} skips too. The most specific of
-     * {@code veneer.bypass.<module>.join}, {@code veneer.bypass.<module>} and {@code veneer.bypass} that is set
-     * decides, so a false below a true wins (veneer.bypass true and veneer.bypass.hacks false: mods are still
-     * scanned). Nodes set on the player come before group ones (group veneer.bypass.hacks false and the player's
-     * own veneer.bypass: no scan). Unset everywhere means no bypass; {@code veneer.*} and {@code *} never grant one.
-     * Resolved here rather than through plugin.yml children: a child granted by its parent hides a false set on it.
+     * for the check on joining, which {@code veneer.bypass.<module>.join} skips too. A denial wins over any grant:
+     * one explicit false anywhere on {@code veneer.bypass.<module>.join}, {@code veneer.bypass.<module>} or
+     * {@code veneer.bypass} - on the player or in any of their groups - skips nothing, even with a true set above
+     * or below it (veneer.bypass true and veneer.bypass.hacks false: mods are still scanned). Among grants the
+     * most specific node set on the player decides, then the ones inherited from groups. Unset everywhere means no
+     * bypass; {@code veneer.*} and {@code *} never grant one. Resolved here rather than through plugin.yml
+     * children: a child granted by its parent hides a false set on it.
      */
     public boolean bypasses(Player player, String module, boolean join) {
         return bypass(player, module, join).value();
@@ -248,13 +255,18 @@ public class VeneerPlugin extends JavaPlugin {
         String base = "veneer.bypass." + module;
         List<String> chain = join ? List.of(base + ".join", base, "veneer.bypass") : List.of(base, "veneer.bypass");
         List<HooksModule.SetNode> set = hooks.setNodes(player, "veneer.bypass");
-        // The player's own nodes beat group ones, as in LuckPerms; within one of them the most specific node wins.
+        // Any explicit false decides at once; the first grant found stays only if no denial is set anywhere.
+        HooksModule.SetNode grant = null;
+        // Own nodes are looked at before group ones; within them the most specific node wins.
         for (boolean own : new boolean[]{true, false})
             for (String node : chain)
                 for (String key : List.of(node, node + ".*"))
                     for (HooksModule.SetNode n : set)
-                        if (n.node().equals(key) && (n.group() == null) == own) return new Bypass(n.value(), key, n.group());
-        return new Bypass(false, null, null);
+                        if (n.node().equals(key) && (n.group() == null) == own) {
+                            if (!n.value()) return new Bypass(false, key, n.group());
+                            if (grant == null) grant = n;
+                        }
+        return grant == null ? new Bypass(false, null, null) : new Bypass(true, grant.node(), grant.group());
     }
 
     // ----------------------------------------------------------------- logging

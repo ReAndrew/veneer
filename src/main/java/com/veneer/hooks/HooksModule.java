@@ -2,8 +2,9 @@ package com.veneer.hooks;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.core.VeneerModule;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.permissions.PermissionAttachmentInfo;
+import org.bukkit.permissions.Permission;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,13 +53,18 @@ public class HooksModule extends VeneerModule {
 
     /**
      * Nodes under {@code prefix} set on the player: from LuckPerms (own nodes first, then groups; no wildcards above
-     * the prefix) when it is installed, else what Bukkit reports as set (a group is not known there).
+     * the prefix) when it is installed, else the ones Bukkit reports as explicitly set on the player. Without
+     * LuckPerms a group is not known there, and an operator's {@code *} is not an explicit setting: it must not
+     * show up as a granted node, or operators would bypass every check by being operators.
      */
     public List<SetNode> setNodes(Player player, String prefix) {
         if (luckPerms != null) return luckPerms.nodes(player, prefix);
         List<SetNode> nodes = new ArrayList<>();
-        for (PermissionAttachmentInfo info : player.getEffectivePermissions())
-            if (info.getPermission().startsWith(prefix)) nodes.add(new SetNode(info.getPermission(), info.getValue(), null));
+        for (Permission permission : Bukkit.getPluginManager().getPermissions()) {
+            String name = permission.getName();
+            if (name.startsWith(prefix) && player.isPermissionSet(name))
+                nodes.add(new SetNode(name, player.hasPermission(name), null));
+        }
         return nodes;
     }
 

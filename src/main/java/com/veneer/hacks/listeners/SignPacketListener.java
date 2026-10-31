@@ -26,7 +26,9 @@ public class SignPacketListener extends PacketListenerAbstract {
         var langChecks = plugin.hacks().langChecks();
         if (langChecks == null || !langChecks.isChecking(event.getUser().getUUID())) return;
         WrapperPlayClientUpdateSign packet = new WrapperPlayClientUpdateSign(event);
+        var user = event.getUser();
         Vector3i at = packet.getBlockPosition();
-        langChecks.rawAnswer(event.getUser().getUUID(), at.getX(), at.getY(), at.getZ(), packet.getTextLines().clone());
+        langChecks.rawAnswer(user.getUUID(), user.getWorldName(user.getDimension()),
+                at.getX(), at.getY(), at.getZ(), packet.getTextLines().clone());
     }
 }

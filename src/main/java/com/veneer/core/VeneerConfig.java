@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -34,7 +36,10 @@ public final class VeneerConfig {
 
     private final VeneerPlugin plugin;
     private final File file;
-    private YamlConfiguration cfg;
+    /** Replaced by {@link #reload()}; read from async threads, hence volatile. */
+    private volatile YamlConfiguration cfg;
+    /** Sections already warned about as missing, so {@link #section(String)} logs once per key. */
+    private final Set<String> warnedSections = ConcurrentHashMap.newKeySet();
 
     public VeneerConfig(VeneerPlugin plugin) {
         this.plugin = plugin;
@@ -45,14 +50,16 @@ public final class VeneerConfig {
     public void reload() {
         if (!file.exists()) plugin.saveResource("config.yml", false);
         cfg = YamlConfiguration.loadConfiguration(file);
+        warnedSections.clear();
         sync();
     }
 
-    /** A top-level or nested section; an empty one (with a warning) when missing. */
+    /** A top-level or nested section; an empty one (with a one-time warning) when missing. */
     public ConfigurationSection section(String path) {
         ConfigurationSection s = cfg.getConfigurationSection(path);
         if (s == null) {
-            plugin.getLogger().warning("config.yml: missing section '" + path + "', using defaults.");
+            if (warnedSections.add(path))
+                plugin.getLogger().warning("config.yml: missing section '" + path + "', using defaults.");
             s = new YamlConfiguration();
         }
         return s;
@@ -64,7 +71,7 @@ public final class VeneerConfig {
 
     public boolean debug()          { return cfg.getBoolean("general.debug", false); }
     public String language()        { return cfg.getString("general.language", "en"); }
-    public String prefix()          { return cfg.getString("general.prefix", "<gold>[Veneer]</gold> <gray>"); }
+    public String prefix()          { return cfg.getString("general.prefix", "<gradient:#FFBA00:#03E700>[Veneer]</gradient> <gray>"); }
     public boolean alertsDefault()  { return cfg.getBoolean("general.alerts.default-enabled", true); }
 
     public boolean bedrockPrefixCheck()     { return cfg.getBoolean("general.bedrock.prefix-check", true); }

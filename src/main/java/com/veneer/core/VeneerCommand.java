@@ -87,7 +87,11 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
             case "lang", "language" -> lang(sender, args);
             case "info" -> info(sender, label, args);
             case "version" -> version(sender);
-            case "gui" -> { if (sender instanceof Player p) plugin.gui().openPage(p, args); }
+            case "gui" -> {
+                // openPage returns false only without veneer.admin: say so instead of doing nothing
+                if (sender instanceof Player p && !plugin.gui().openPage(p, args))
+                    sender.sendMessage(plugin.messages().in(sender).get("no-permission"));
+            }
             case "player", "p" -> playerPage(sender, args, false);
             case "find" -> playerPage(sender, args, true);
             case "check" -> checkPage(sender, args);
@@ -112,6 +116,13 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     private boolean denied(CommandSender sender, String permission) {
         if (sender.hasPermission(permission)) return false;
         sender.sendMessage(plugin.messages().in(sender).get("no-permission"));
+        return true;
+    }
+
+    /** Tab completion lists a subcommand only when its help entry's permission is held (or there is none). */
+    private static boolean subAllowed(CommandSender sender, String sub) {
+        for (HelpEntry e : HELP)
+            if (e.key().equals(sub)) return e.permission() == null || sender.hasPermission(e.permission());
         return true;
     }
 
@@ -349,7 +360,8 @@ public final class VeneerCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         String sub = args[0].toLowerCase(Locale.ROOT);
         if (args.length == 1) {
-            List<String> options = new ArrayList<>(SUBCOMMANDS);
+            List<String> options = SUBCOMMANDS.stream().filter(s -> subAllowed(sender, s))
+                    .collect(Collectors.toCollection(ArrayList::new));
             PASSTHROUGH.forEach((name, target) -> {
                 PluginCommand c = plugin.getCommand(target);
                 if (c != null && c.testPermissionSilent(sender)) options.add(name);

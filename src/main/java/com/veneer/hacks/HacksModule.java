@@ -52,6 +52,7 @@ public class HacksModule extends VeneerModule {
     public void playerQuit(UUID uuid) {
         if (checks != null) checks.abort(uuid);
         if (langChecks != null) langChecks.abort(uuid);
+        if (joinChecks != null) joinChecks.onQuit(uuid);
     }
 
     @Override
@@ -92,6 +93,8 @@ public class HacksModule extends VeneerModule {
     @Override
     protected void reload() {
         config.reload();
+        if (web != null)
+            plugin.getLogger().info("Web panel port, bind address and session-days are read only at startup: restart the server to change them.");
         if (config.isWebEditorEnabled() != (web != null))
             plugin.getLogger().info("hacks.web-editor.enabled changed: restart the server to apply it.");
     }

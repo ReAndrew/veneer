@@ -19,6 +19,7 @@ public class DatabaseManager {
 
     private synchronized void connect() {
         try {
+            if (connection != null) { try { connection.close(); } catch (SQLException ignored) {} }
             Class.forName("org.sqlite.JDBC");
             File db = new File(plugin.getDataFolder(), "data.db");
             db.getParentFile().mkdirs();
@@ -32,6 +33,16 @@ public class DatabaseManager {
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to connect to SQLite: " + e.getMessage());
         }
+    }
+
+    /** The connection, reconnecting once when it is missing or was closed; false when it stays unusable. */
+    private synchronized boolean ensureConnection() {
+        if (connection != null) {
+            try { if (!connection.isClosed()) return true; } catch (SQLException ignored) {}
+            plugin.getLogger().warning("SQLite connection was lost, reconnecting.");
+        }
+        connect();
+        return connection != null;
     }
 
     private synchronized void createTables() {
@@ -151,7 +162,7 @@ public class DatabaseManager {
 
     public synchronized long saveScan(String type, String targetName, String targetUUID,
                                       String checkerName, String reason, boolean hasDetected) {
-        if (connection == null) return -1;
+        if (!ensureConnection()) return -1;
         try {
             return insertScanInternal(type, targetName, targetUUID, checkerName, reason, hasDetected);
         } catch (SQLException e) {
@@ -163,7 +174,7 @@ public class DatabaseManager {
     public synchronized long saveScanWithResults(String type, String targetName, String targetUUID,
                                                  String checkerName, String reason, boolean hasDetected,
                                                  List<Object[]> hackResults) {
-        if (connection == null) return -1;
+        if (!ensureConnection()) return -1;
         boolean prevAuto = true;
         try {
             prevAuto = connection.getAutoCommit();
@@ -214,7 +225,7 @@ public class DatabaseManager {
     }
 
     public synchronized void saveHackResult(long scanId, String hackId, String hackName, String result) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO hack_results (scan_id,hack_id,hack_name,result) VALUES (?,?,?,?)")) {
             ps.setLong(1, scanId);
@@ -228,7 +239,7 @@ public class DatabaseManager {
     }
 
     public synchronized void saveLangResult(long scanId, String language, String response) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO lang_results (scan_id,language,response) VALUES (?,?,?)")) {
             ps.setLong(1, scanId);
@@ -247,7 +258,7 @@ public class DatabaseManager {
     /** A page of the scan history, newest first: {@code type} "hack", "lang" or null for both, {@code detected} true keeps scans that found a mod, false the clean ones, null all, {@code player} (uuid or name) keeps one account's scans. */
     public synchronized List<Map<String, Object>> getRecentScans(String type, int limit, int offset, Boolean detected, String player) {
         List<Map<String, Object>> list = new ArrayList<>();
-        if (connection == null) return list;
+        if (!ensureConnection()) return list;
 
         List<Long> ids = new ArrayList<>();
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -285,7 +296,7 @@ public class DatabaseManager {
     }
 
     public synchronized Map<String, Object> getScan(long id) {
-        if (connection == null) return null;
+        if (!ensureConnection()) return null;
         Map<String, Object> row = null;
         try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM scans WHERE id=?")) {
             ps.setLong(1, id);
@@ -344,7 +355,7 @@ public class DatabaseManager {
     public synchronized List<Map<String, Object>> getPlayerScans(String uuid, String playerName) {
         boolean byUuid = uuid != null && !uuid.isEmpty();
         List<Map<String, Object>> list = new ArrayList<>();
-        if (connection == null) return list;
+        if (!ensureConnection()) return list;
 
         List<Long> ids = new ArrayList<>();
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -378,7 +389,7 @@ public class DatabaseManager {
     /** Counts for the panel's overview: scans by type, players whose latest mod scan found something, known accounts. */
     public synchronized Map<String, Object> getStats() {
         Map<String, Object> out = new LinkedHashMap<>();
-        if (connection == null) return out;
+        if (!ensureConnection()) return out;
         try (Statement st = connection.createStatement()) {
             out.put("hack_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'hack'"));
             out.put("lang_scans", count(st, "SELECT COUNT(*) FROM scans WHERE type = 'lang'"));
@@ -405,7 +416,7 @@ public class DatabaseManager {
      */
     public synchronized List<Map<String, Object>> searchPlayers(String prefix, int limit) {
         List<Map<String, Object>> out = new ArrayList<>();
-        if (connection == null) return out;
+        if (!ensureConnection()) return out;
         String like = prefix.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT name, uuid, MAX(ts) AS last_seen FROM (
@@ -431,7 +442,7 @@ public class DatabaseManager {
      */
     public synchronized Map<String, Object> getPlayerRecord(String name) {
         Map<String, Object> out = new LinkedHashMap<>();
-        if (connection == null) return out;
+        if (!ensureConnection()) return out;
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT uuid FROM (
                     SELECT uuid, last_seen AS ts, name FROM joins
@@ -475,7 +486,7 @@ public class DatabaseManager {
     }
 
     public synchronized boolean deleteScan(long id) {
-        if (connection == null) return false;
+        if (!ensureConnection()) return false;
         try (PreparedStatement ps = connection.prepareStatement("DELETE FROM scans WHERE id=?")) {
             ps.setLong(1, id);
             int affected = ps.executeUpdate();
@@ -489,7 +500,7 @@ public class DatabaseManager {
     /** Known accounts, most recently active first: uuid, name (the latest one) and last activity. */
     public synchronized List<Map<String, Object>> listPlayers(int limit, int offset) {
         List<Map<String, Object>> list = new ArrayList<>();
-        if (connection == null) return list;
+        if (!ensureConnection()) return list;
         // SQLite returns the other columns of the row that holds MAX(ts), so name is the latest one
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT uuid, name, MAX(ts) FROM (
@@ -517,7 +528,7 @@ public class DatabaseManager {
 
     /** Removes everything stored about the given accounts (addresses, skin, client, fingerprint, scans with their results, language). */
     public synchronized int deletePlayers(Collection<String> uuids) {
-        if (connection == null || uuids.isEmpty()) return 0;
+        if (!ensureConnection() || uuids.isEmpty()) return 0;
         String marks = String.join(",", Collections.nCopies(uuids.size(), "?"));
         String[] statements = {
                 "DELETE FROM hack_results WHERE scan_id IN (SELECT id FROM scans WHERE target_uuid IN (" + marks + "))",
@@ -551,7 +562,7 @@ public class DatabaseManager {
     }
 
     public synchronized String saveToken(String playerUUID, String playerName, int expireMinutes, String perms) {
-        if (connection == null) return null;
+        if (!ensureConnection()) return null;
         String token = UUID.randomUUID().toString().replace("-", "");
         long now     = System.currentTimeMillis();
         long expires = now + (expireMinutes * 60_000L);
@@ -610,33 +621,44 @@ public class DatabaseManager {
         String secret = java.util.HexFormat.of().formatHex(raw);
         long now = System.currentTimeMillis();
         long expires = now + days * 86_400_000L;
-        try (PreparedStatement link = connection.prepareStatement("DELETE FROM editor_tokens WHERE token=?");
-             PreparedStatement old = connection.prepareStatement("DELETE FROM web_devices WHERE player_uuid=? OR expires_at<?");
-             PreparedStatement ins = connection.prepareStatement(
-                     "INSERT INTO web_devices (secret_hash,player_uuid,player_name,perms,bind_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)")) {
-            link.setString(1, linkToken);
-            link.executeUpdate();
-            old.setString(1, info.get("player_uuid"));
-            old.setLong(2, now);
-            old.executeUpdate();
-            ins.setString(1, sha256(secret));
-            ins.setString(2, info.get("player_uuid"));
-            ins.setString(3, info.get("player_name"));
-            ins.setString(4, info.get("perms"));
-            ins.setString(5, bindHash(info.get("player_name"), bindIp ? ip : null, userAgent));
-            ins.setLong(6, now);
-            ins.setLong(7, expires);
-            ins.executeUpdate();
-            return Map.of("secret", secret, "expires_at", String.valueOf(expires));
+        // The link spend, the old devices and the new row go in one transaction: a failure between the
+        // DELETEs and the INSERT would otherwise leave the account with no binding and no token
+        boolean prevAuto = true;
+        try {
+            prevAuto = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement link = connection.prepareStatement("DELETE FROM editor_tokens WHERE token=?");
+                 PreparedStatement old = connection.prepareStatement("DELETE FROM web_devices WHERE player_uuid=? OR expires_at<?");
+                 PreparedStatement ins = connection.prepareStatement(
+                         "INSERT INTO web_devices (secret_hash,player_uuid,player_name,perms,bind_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)")) {
+                link.setString(1, linkToken);
+                link.executeUpdate();
+                old.setString(1, info.get("player_uuid"));
+                old.setLong(2, now);
+                old.executeUpdate();
+                ins.setString(1, sha256(secret));
+                ins.setString(2, info.get("player_uuid"));
+                ins.setString(3, info.get("player_name"));
+                ins.setString(4, info.get("perms"));
+                ins.setString(5, bindHash(info.get("player_name"), bindIp ? ip : null, userAgent));
+                ins.setLong(6, now);
+                ins.setLong(7, expires);
+                ins.executeUpdate();
+                connection.commit();
+                return Map.of("secret", secret, "expires_at", String.valueOf(expires));
+            }
         } catch (SQLException e) {
             plugin.getLogger().warning("registerDevice: " + e.getMessage());
-            return null;
+            try { connection.rollback(); } catch (SQLException ignored) {}
+        } finally {
+            try { connection.setAutoCommit(prevAuto); } catch (SQLException ignored) {}
         }
+        return null;
     }
 
     /** The account a browser secret belongs to, if the secret is known, unexpired and comes from the client it was bound to. */
     public synchronized Map<String, String> validateDevice(String secret, String ip, String userAgent, boolean bindIp) {
-        if (connection == null || secret == null) return null;
+        if (!ensureConnection() || secret == null) return null;
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT player_uuid, player_name, perms, bind_hash, expires_at FROM web_devices WHERE secret_hash=? AND expires_at>?")) {
             ps.setString(1, sha256(secret));
@@ -664,7 +686,7 @@ public class DatabaseManager {
     }
 
     public synchronized Map<String, String> validateToken(String token) {
-        if (connection == null || token == null) return null;
+        if (!ensureConnection() || token == null) return null;
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT player_uuid, player_name, perms, expires_at FROM editor_tokens WHERE token=? AND expires_at>?")) {
             ps.setString(1, token);
@@ -698,7 +720,7 @@ public class DatabaseManager {
      * is replaced by {@code mask} ({@code replace} true).
      */
     public synchronized void saveRPTrack(String uuid, String name, long mask, boolean liquidBounce, boolean replace) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         long now = System.currentTimeMillis();
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO rptrack (uuid, name, mask, liquidbounce, first_seen, last_seen)
@@ -722,7 +744,7 @@ public class DatabaseManager {
     /** All stored rptrack as rows with uuid, name, mask, liquidbounce, last_seen. */
     public synchronized List<Map<String, Object>> getRPTracks() {
         List<Map<String, Object>> out = new ArrayList<>();
-        if (connection == null) return out;
+        if (!ensureConnection()) return out;
         try (Statement st = connection.createStatement();
              ResultSet rs = st.executeQuery("SELECT uuid, name, mask, liquidbounce, last_seen FROM rptrack")) {
             while (rs.next()) out.add(rowToMap(rs));
@@ -734,7 +756,7 @@ public class DatabaseManager {
 
     /** Notes that this account joined from this address (one row per account and address). */
     public synchronized void recordJoin(String uuid, String name, String ip) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         long now = System.currentTimeMillis();
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO joins (uuid, name, ip, first_seen, last_seen, count) VALUES (?,?,?,?,?,1)
@@ -754,7 +776,7 @@ public class DatabaseManager {
     /** All rows of {@code brand_verdicts}, oldest first. */
     public synchronized List<Map<String, Object>> getBrandVerdicts() {
         List<Map<String, Object>> list = new ArrayList<>();
-        if (connection == null) return list;
+        if (!ensureConnection()) return list;
         try (Statement s = connection.createStatement();
              ResultSet rs = s.executeQuery("SELECT * FROM brand_verdicts ORDER BY id")) {
             while (rs.next()) list.add(rowToMap(rs));
@@ -766,7 +788,7 @@ public class DatabaseManager {
 
     public synchronized void saveBrandVerdict(int id, String brand, String verdict, String decidedBy, long decidedAt,
                                               long firstSeen, String lastPlayer) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO brand_verdicts (id, brand, verdict, decided_by, decided_at, first_seen, last_player)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -788,7 +810,7 @@ public class DatabaseManager {
     /** {@code /veneer lang} choices: uuid to language code or {@code auto}. */
     public synchronized Map<String, String> getLanguageChoices() {
         Map<String, String> map = new HashMap<>();
-        if (connection == null) return map;
+        if (!ensureConnection()) return map;
         try (Statement s = connection.createStatement();
              ResultSet rs = s.executeQuery("SELECT uuid, language FROM player_language")) {
             while (rs.next()) map.put(rs.getString(1), rs.getString(2));
@@ -800,7 +822,7 @@ public class DatabaseManager {
 
     /** Stores a player's language choice; null deletes it. */
     public synchronized void saveLanguageChoice(String uuid, String language) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement(language == null
                 ? "DELETE FROM player_language WHERE uuid = ?"
                 : "INSERT INTO player_language (uuid, language) VALUES (?, ?) ON CONFLICT(uuid) DO UPDATE SET language = excluded.language")) {
@@ -813,7 +835,7 @@ public class DatabaseManager {
     }
 
     public synchronized boolean hasFreshSkin(String uuid, long maxAgeMs) {
-        if (connection == null) return true;
+        if (!ensureConnection()) return true;
         try (PreparedStatement ps = connection.prepareStatement("SELECT 1 FROM skins WHERE uuid = ? AND updated > ?")) {
             ps.setString(1, uuid);
             ps.setLong(2, System.currentTimeMillis() - maxAgeMs);
@@ -825,7 +847,7 @@ public class DatabaseManager {
     }
 
     public synchronized void saveSkin(String uuid, String pngBase64) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO skins (uuid, png, updated) VALUES (?,?,?)
                 ON CONFLICT(uuid) DO UPDATE SET png = excluded.png, updated = excluded.updated""")) {
@@ -841,7 +863,7 @@ public class DatabaseManager {
     /** Distinct channel groups seen across all clients, ordered by player count. */
     public synchronized List<Map<String, Object>> getChannelGroups(int limit, int offset) {
         List<Map<String, Object>> list = new ArrayList<>();
-        if (connection == null) return list;
+        if (!ensureConnection()) return list;
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT channels, COUNT(DISTINCT uuid) AS player_count, MAX(updated) AS last_seen
                 FROM clients WHERE channels != ''
@@ -866,7 +888,7 @@ public class DatabaseManager {
 
     /** Stores the client brand and plugin channels an account last played with (for client links). */
     public synchronized void recordClient(String uuid, String name, String brand, Collection<String> channels) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (PreparedStatement ps = connection.prepareStatement("""
                 INSERT INTO clients (uuid, name, brand, channels, updated) VALUES (?,?,?,?,?)
                 ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, brand = excluded.brand,
@@ -888,7 +910,7 @@ public class DatabaseManager {
      * scans with their results after {@code scanDays}.
      */
     public synchronized void purge(int linkDays, int scanDays) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         long now = System.currentTimeMillis();
         try {
             if (linkDays > 0) {
@@ -1001,7 +1023,7 @@ public class DatabaseManager {
 
     /** Join rows (uuid, name, ip) and the players whose latest mod scan found something. */
     private synchronized void loadLinkRows(List<String[]> joinRows, List<String[]> clientRows, Set<String> detected) {
-        if (connection == null) return;
+        if (!ensureConnection()) return;
         try (Statement st = connection.createStatement()) {
             try (ResultSet rs = st.executeQuery("SELECT uuid, name, ip, last_seen FROM joins ORDER BY last_seen DESC")) {
                 while (rs.next()) joinRows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
@@ -1023,7 +1045,7 @@ public class DatabaseManager {
     /** Stored skins of the given accounts only; loading every skin ever saved would grow with the whole player base. */
     private synchronized Map<String, String> getSkins(Collection<String> uuids) {
         Map<String, String> out = new HashMap<>();
-        if (connection == null || uuids.isEmpty()) return out;
+        if (!ensureConnection() || uuids.isEmpty()) return out;
         List<String> ids = new ArrayList<>(uuids);
         for (int from = 0; from < ids.size(); from += 500) {
             List<String> chunk = ids.subList(from, Math.min(from + 500, ids.size()));
@@ -1043,7 +1065,7 @@ public class DatabaseManager {
     /** Mods found by each player's latest mod scan (a later clean scan clears the player): one entry per mod, most players first. */
     public synchronized List<Map<String, Object>> getDetectedMods() {
         Map<String, Map<String, Object>> byMod = new LinkedHashMap<>();
-        if (connection == null) return new ArrayList<>();
+        if (!ensureConnection()) return new ArrayList<>();
         try (Statement st = connection.createStatement();
              ResultSet rs = st.executeQuery("""
                 SELECT r.hack_id, r.hack_name, s.target_name, s.target_uuid, MAX(s.timestamp) AS ts
@@ -1085,7 +1107,7 @@ public class DatabaseManager {
         out.put("fingerprint", null);
         List<Map<String, Object>> mods = new ArrayList<>();
         out.put("mods", mods);
-        if (connection == null) return out;
+        if (!ensureConnection()) return out;
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT r.hack_name, MAX(s.timestamp) AS ts
                 FROM hack_results r JOIN scans s ON s.id = r.scan_id

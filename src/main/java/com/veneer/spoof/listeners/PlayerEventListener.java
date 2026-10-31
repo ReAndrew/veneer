@@ -1,6 +1,7 @@
 package com.veneer.spoof.listeners;
 
 import com.veneer.VeneerPlugin;
+import com.veneer.spoof.SpoofModule;
 import com.veneer.spoof.managers.ConfigManager;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
@@ -118,8 +119,10 @@ public class PlayerEventListener extends PacketListenerAbstract {
         // Special handling for no-brand detection
         if (config.isNoBrandCheckEnabled()) {
             com.veneer.core.FoliaScheduler.runAtEntityLater(plugin, player, () -> {
-                // Only process if still null after 1 second (allows time for brand packet)
-                if (player.isOnline() && plugin.spoof().getClientBrand(player) == null) {
+                // Only process if still no real brand after 1 second (allows time for brand packet);
+                // an announced-but-empty brand is just as suspicious: a real client always announces one
+                String brand = player.isOnline() ? plugin.spoof().getClientBrand(player) : null;
+                if (player.isOnline() && (brand == null || SpoofModule.BRAND_NONE.equals(brand))) {
                     if (config.isDebugMode()) {
                         plugin.getLogger().info("[Debug] Processing no-brand alert for " + player.getName());
                     }

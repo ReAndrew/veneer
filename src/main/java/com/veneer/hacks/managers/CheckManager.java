@@ -68,6 +68,7 @@ public class CheckManager {
 
     /** The player left: drop the scan without results or punishments and put the blocks back. */
     public void abort(UUID uuid) {
+        lastAutoCheck.remove(uuid); // players who left must not leave cooldown entries behind
         CheckPlayerData data = activeChecks.remove(uuid);
         if (data == null) return;
         if (data.getSignTimeoutTask() != null) data.getSignTimeoutTask().cancel();

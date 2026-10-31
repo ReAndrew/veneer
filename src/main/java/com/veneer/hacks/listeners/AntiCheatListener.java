@@ -13,12 +13,19 @@ import org.bukkit.event.Listener;
 
 import java.util.function.Function;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class AntiCheatListener implements Listener {
 
     private final VeneerPlugin plugin;
+
+    // Flags arrive many times a second: resolve each event class's methods once, keep the fallback for unknown ones
+    private final Map<Class<?>, Map<String, Optional<Method>>> methodCache = new ConcurrentHashMap<>();
+    private final Map<Class<?>, List<Method>> playerGetterCache = new ConcurrentHashMap<>();
 
     private static final String[] GRIM_CLASSES = {
             "ac.grim.grimac.api.events.FlagEvent",
@@ -133,13 +140,16 @@ public class AntiCheatListener implements Listener {
                 if (p != null) return p;
             }
 
-            for (Method m : raw.getClass().getMethods()) {
-                if (m.getParameterCount() == 0 && m.getReturnType() == Player.class) {
-                    try {
-                        Object result = m.invoke(raw);
-                        if (result instanceof Player p) return p;
-                    } catch (Exception ignored) {}
-                }
+            for (Method m : playerGetterCache.computeIfAbsent(raw.getClass(), cls -> {
+                    List<Method> found = new ArrayList<>();
+                    for (Method gm : cls.getMethods())
+                        if (gm.getParameterCount() == 0 && gm.getReturnType() == Player.class) found.add(gm);
+                    return found;
+                })) {
+                try {
+                    Object result = m.invoke(raw);
+                    if (result instanceof Player p) return p;
+                } catch (Exception ignored) {}
             }
         }
 
@@ -163,8 +173,16 @@ public class AntiCheatListener implements Listener {
     }
 
     private Object invokeNoArgs(Object target, String methodName) {
+        Method m = methodCache
+                .computeIfAbsent(target.getClass(), k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(methodName, n -> {
+                    try { return Optional.of(target.getClass().getMethod(n)); }
+                    catch (Exception e) { return Optional.empty(); }
+                })
+                .orElse(null);
+        if (m == null) return null;
         try {
-            return target.getClass().getMethod(methodName).invoke(target);
+            return m.invoke(target);
         } catch (Exception ignored) {
             return null;
         }

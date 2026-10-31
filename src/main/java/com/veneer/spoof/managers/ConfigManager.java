@@ -5,6 +5,7 @@ import com.veneer.VeneerPlugin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -18,14 +19,15 @@ public class ConfigManager {
     private final VeneerPlugin plugin;
     private ConfigurationSection config;
     
-    // Cache for compiled regex patterns
-    private final Map<String, Pattern> channelPatterns = new HashMap<>();
+    // Cache for compiled regex patterns; replaced wholesale on reload (read from netty threads)
+    private volatile Map<String, Pattern> channelPatterns = new HashMap<>();
     
     // Client brand configurations
     private boolean clientBrandsEnabled;
-    // Insertion order: when two patterns match, the brand listed first in the config wins
-    private final Map<String, ClientBrandConfig> clientBrands = new java.util.LinkedHashMap<>();
-    private ClientBrandConfig defaultBrandConfig;
+    // Insertion order: when two patterns match, the brand listed first in the config wins. Replaced
+    // wholesale on reload; readers on packet/netty threads must never see a half-cleared map.
+    private volatile Map<String, ClientBrandConfig> clientBrands = new LinkedHashMap<>();
+    private volatile ClientBrandConfig defaultBrandConfig = new ClientBrandConfig();
 
     // Class to hold client brand configuration
     public static class ClientBrandConfig {
@@ -72,18 +74,19 @@ public class ConfigManager {
     public void reload() {
         config = plugin.config().section("spoof");
 
-        // Clear and recompile regex patterns
-        channelPatterns.clear();
+        // Recompile regex patterns into a fresh map and publish it (copy-on-write, readers run on netty threads)
+        Map<String, Pattern> newPatterns = new HashMap<>();
         
         // Compile channel patterns
         List<String> channelRegexes = getBlockedChannels();
         for (String regex : channelRegexes) {
             try {
-                channelPatterns.put(regex, Pattern.compile(regex));
+                newPatterns.put(regex, Pattern.compile(regex));
             } catch (PatternSyntaxException e) {
                 plugin.getLogger().warning("Invalid channel regex pattern: " + regex + " - " + e.getMessage());
             }
         }
+        channelPatterns = newPatterns;
         
         // Load client brand configurations
         loadClientBrandConfigs();
@@ -93,45 +96,46 @@ public class ConfigManager {
      * Load all client brand configurations from config
      */
     private void loadClientBrandConfigs() {
-        // Clear existing configurations
-        clientBrands.clear();
+        // Build a fresh map and publish it at the end (copy-on-write, see the field comment)
+        Map<String, ClientBrandConfig> newBrands = new LinkedHashMap<>();
         
         // Check if client brands system is enabled
         clientBrandsEnabled = config.getBoolean("client-brands.enabled", true);
         
         // Load default brand config
         ConfigurationSection defaultSection = config.getConfigurationSection("client-brands.default");
-        defaultBrandConfig = new ClientBrandConfig();
+        ClientBrandConfig defaultConfig = new ClientBrandConfig();
         
         if (defaultSection != null) {
-            defaultBrandConfig.enabled = true;
-            defaultBrandConfig.flag = defaultSection.getBoolean("flag", true);
-            defaultBrandConfig.alert = defaultSection.getBoolean("alert", true);
-            defaultBrandConfig.discordAlert = defaultSection.getBoolean("discord-alert", false);
-            defaultBrandConfig.alertMessage = defaultSection.getString("alert-message", 
+            defaultConfig.enabled = true;
+            defaultConfig.flag = defaultSection.getBoolean("flag", true);
+            defaultConfig.alert = defaultSection.getBoolean("alert", true);
+            defaultConfig.discordAlert = defaultSection.getBoolean("discord-alert", false);
+            defaultConfig.alertMessage = defaultSection.getString("alert-message", 
                 "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%");
-            defaultBrandConfig.consoleAlertMessage = defaultSection.getString("console-alert-message", 
+            defaultConfig.consoleAlertMessage = defaultSection.getString("console-alert-message", 
                 "%player% using unknown client: %brand%");
-            defaultBrandConfig.punish = defaultSection.getBoolean("punish", false);
-            defaultBrandConfig.punishments = defaultSection.getStringList("punishments");
+            defaultConfig.punish = defaultSection.getBoolean("punish", false);
+            defaultConfig.punishments = defaultSection.getStringList("punishments");
         } else {
             // Set up default values if section is missing
-            defaultBrandConfig.enabled = true;
-            defaultBrandConfig.flag = true;
-            defaultBrandConfig.alert = true;
-            defaultBrandConfig.discordAlert = false;
-            defaultBrandConfig.alertMessage = "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%";
-            defaultBrandConfig.consoleAlertMessage = "%player% using unknown client: %brand%";
-            defaultBrandConfig.punish = false;
-            defaultBrandConfig.punishments = new ArrayList<>();
+            defaultConfig.enabled = true;
+            defaultConfig.flag = true;
+            defaultConfig.alert = true;
+            defaultConfig.discordAlert = false;
+            defaultConfig.alertMessage = "&8[&cVeneer&8] &7%player% using unknown client: &e%brand%";
+            defaultConfig.consoleAlertMessage = "%player% using unknown client: %brand%";
+            defaultConfig.punish = false;
+            defaultConfig.punishments = new ArrayList<>();
         }
+        defaultBrandConfig = defaultConfig;
         
         // Brands staff decided on: allowed ones are a known clean client, blocked ones flag like a cheat client
         ClientBrandConfig allowed = new ClientBrandConfig();
         allowed.enabled = true;
-        allowed.alertMessage = defaultBrandConfig.alertMessage;
-        allowed.consoleAlertMessage = defaultBrandConfig.consoleAlertMessage;
-        clientBrands.put(STAFF_ALLOWED, allowed);
+        allowed.alertMessage = defaultConfig.alertMessage;
+        allowed.consoleAlertMessage = defaultConfig.consoleAlertMessage;
+        newBrands.put(STAFF_ALLOWED, allowed);
         ConfigurationSection blockedSection = config.getConfigurationSection("client-brands.staff-verdicts.blocked");
         ClientBrandConfig blocked = new ClientBrandConfig();
         blocked.enabled = true;
@@ -144,7 +148,7 @@ public class ConfigManager {
         blocked.discordAlert = blockedSection != null && blockedSection.getBoolean("discord-alert", true);
         blocked.punish = blockedSection != null && blockedSection.getBoolean("punish", false);
         blocked.punishments = blockedSection != null ? blockedSection.getStringList("punishments") : new ArrayList<>();
-        clientBrands.put(STAFF_BLOCKED, blocked);
+        newBrands.put(STAFF_BLOCKED, blocked);
 
         // Load individual brand configurations
         ConfigurationSection brandsSection = config.getConfigurationSection("client-brands.brands");
@@ -152,8 +156,8 @@ public class ConfigManager {
             for (String brandKey : brandsSection.getKeys(false)) {
                 ConfigurationSection brandSection = brandsSection.getConfigurationSection(brandKey);
                 if (brandSection != null && !brandKey.equals(STAFF_ALLOWED) && !brandKey.equals(STAFF_BLOCKED)) {
-                    ClientBrandConfig brandConfig = loadBrandConfig(brandSection);
-                    clientBrands.put(brandKey, brandConfig);
+                    ClientBrandConfig brandConfig = loadBrandConfig(brandSection, defaultConfig);
+                    newBrands.put(brandKey, brandConfig);
                     
                     if (isDebugMode()) {
                         plugin.getLogger().info("[Debug] Loaded client brand config: " + brandKey + 
@@ -162,19 +166,20 @@ public class ConfigManager {
                 }
             }
         }
+        clientBrands = newBrands;
     }
     
     /**
      * Load a specific brand configuration from a config section
      */
-    private ClientBrandConfig loadBrandConfig(ConfigurationSection section) {
+    private ClientBrandConfig loadBrandConfig(ConfigurationSection section, ClientBrandConfig defaults) {
         ClientBrandConfig brandConfig = new ClientBrandConfig();
         brandConfig.enabled = section.getBoolean("enabled", true);
         brandConfig.flag = section.getBoolean("flag", false);
         brandConfig.alert = section.getBoolean("alert", true);
         brandConfig.discordAlert = section.getBoolean("discord-alert", false);
-        brandConfig.alertMessage = section.getString("alert-message", defaultBrandConfig.alertMessage);
-        brandConfig.consoleAlertMessage = section.getString("console-alert-message", defaultBrandConfig.consoleAlertMessage);
+        brandConfig.alertMessage = section.getString("alert-message", defaults.alertMessage);
+        brandConfig.consoleAlertMessage = section.getString("console-alert-message", defaults.consoleAlertMessage);
         brandConfig.punish = section.getBoolean("punish", false);
         brandConfig.punishments = section.getStringList("punishments");
         brandConfig.strictCheck = section.getBoolean("strict-check", false);

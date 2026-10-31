@@ -3,6 +3,7 @@ package com.veneer.spoof.managers;
 import net.kyori.adventure.text.Component;
 import com.veneer.core.Messages;
 import com.veneer.VeneerPlugin;
+import com.veneer.spoof.SpoofModule;
 import org.bukkit.entity.Player;
 import com.veneer.core.Text;
 
@@ -34,24 +35,46 @@ public class AlertManager {
     }
     
     /**
+     * Client-supplied brand or channel text for console commands and the log: a conservative allowlist of
+     * characters a real namespaced id can contain, length-capped; anything else (quotes, semicolons, newlines,
+     * MiniMessage tags) is dropped so it cannot forge a log line or command argument.
+     */
+    public static String safeToken(String value) {
+        if (value == null) return "unknown";
+        if (SpoofModule.BRAND_NONE.equals(value)) return value; // our own constant, not client text
+        String cleaned = value.replaceAll("[^A-Za-z0-9_.:\\-/]", "");
+        if (cleaned.length() > 64) cleaned = cleaned.substring(0, 64);
+        return cleaned.isEmpty() ? "unknown" : cleaned;
+    }
+
+    /** Free text (violation reasons) going into a console command or the log: no command metacharacters or
+     *  newlines, whitespace collapsed, length-capped. */
+    public static String safeText(String value) {
+        if (value == null) return "unknown";
+        String cleaned = value.replaceAll("[;&|<>`$'\"\\\\\\r\\n\\t\\u0000]", " ").replaceAll("\\s+", " ").trim();
+        if (cleaned.length() > 128) cleaned = cleaned.substring(0, 128);
+        return cleaned.isEmpty() ? "unknown" : cleaned;
+    }
+
+    /**
      * Checks if an alert can be sent for a player
      * @param playerUUID The UUID of the player
      * @param alertType The type of alert
      * @return True if an alert can be sent, false otherwise
      */
     public boolean canSendAlert(UUID playerUUID, String alertType) {
-        Map<String, Long> playerAlerts = lastAlerts.computeIfAbsent(playerUUID, k -> new ConcurrentHashMap<>());
-        
         long now = System.currentTimeMillis();
-        Long lastAlert = playerAlerts.get(alertType);
-        
-        // Allow alert if no previous alert or if cooldown passed
-        if (lastAlert == null || now - lastAlert > ALERT_COOLDOWN) {
-            playerAlerts.put(alertType, now);
-            return true;
-        }
-        
-        return false;
+        boolean[] allowed = new boolean[1];
+        // compute is atomic per key: two racing callers can never both get "true"
+        lastAlerts.computeIfAbsent(playerUUID, k -> new ConcurrentHashMap<>())
+                .compute(alertType, (type, last) -> {
+                    if (last == null || now - last > ALERT_COOLDOWN) {
+                        allowed[0] = true;
+                        return now;
+                    }
+                    return last;
+                });
+        return allowed[0];
     }
     
     /**
@@ -84,10 +107,10 @@ public class AlertManager {
                 .replace("%player%", player.getName())
                 .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
         
-        // Format the console alert message with placeholders
+        // Format the console alert message with placeholders (sanitized: the brand is client-supplied)
         String consoleAlert = config.getBlockedBrandsConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
+                .replace("%brand%", safeToken(brand));
         
         // Log to console
         plugin.getLogger().info(consoleAlert);
@@ -146,8 +169,8 @@ public class AlertManager {
         // Format the console alert message for multiple violations
         String consoleAlert = config.getConsoleMultipleFlagsMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                .replace("%reasons%", reasonsList);
+                .replace("%brand%", safeToken(brand))
+                .replace("%reasons%", safeText(reasonsList));
         
         // Log to console
         plugin.getLogger().info(consoleAlert);
@@ -184,12 +207,12 @@ public class AlertManager {
         // Get console message from brand config
         String consoleMessage = brandConfig.getConsoleAlertMessage()
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                .replace("%reason%", Text.inert(reason));
+                .replace("%brand%", safeToken(brand != null ? brand : "unknown"))
+                .replace("%reason%", safeText(reason));
         
         if (violatedChannel != null) {
             alertMessage = alertMessage.replace("%channel%", Text.inert(violatedChannel));
-            consoleMessage = consoleMessage.replace("%channel%", Text.inert(violatedChannel));
+            consoleMessage = consoleMessage.replace("%channel%", safeToken(violatedChannel));
         }
         
         // Log to console
@@ -297,12 +320,12 @@ public class AlertManager {
         // Format the console alert message with placeholders
         String consoleAlert = consoleAlertTemplate
                 .replace("%player%", player.getName())
-                .replace("%brand%", Text.inert(brand != null ? brand : "unknown"))
-                .replace("%reason%", Text.inert(reason));
+                .replace("%brand%", safeToken(brand != null ? brand : "unknown"))
+                .replace("%reason%", safeText(reason));
         
         if (violatedChannel != null && violationType.equals("BLOCKED_CHANNEL")) {
             playerAlert = playerAlert.replace("%channel%", Text.inert(violatedChannel));
-            consoleAlert = consoleAlert.replace("%channel%", Text.inert(violatedChannel));
+            consoleAlert = consoleAlert.replace("%channel%", safeToken(violatedChannel));
         }
         
         // Log to console
@@ -341,12 +364,13 @@ public class AlertManager {
         
         // Execute the punishments
         for (String command : punishments) {
+            // Values come from the client: sanitize them before they reach the console command
             String formatted = command.replace("%player%", player.getName())
-                                     .replace("%reason%", Text.inert(reason))
-                                     .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
+                                     .replace("%reason%", safeText(reason))
+                                     .replace("%brand%", safeToken(brand));
             
             if (violatedChannel != null) {
-                formatted = formatted.replace("%channel%", Text.inert(violatedChannel));
+                formatted = formatted.replace("%channel%", safeToken(violatedChannel));
             }
             
             // Execute command on the main thread
@@ -445,12 +469,13 @@ public class AlertManager {
         
         // Execute the punishments
         for (String command : punishments) {
+            // Values come from the client: sanitize them before they reach the console command
             String formatted = command.replace("%player%", player.getName())
-                                     .replace("%reason%", Text.inert(reason))
-                                     .replace("%brand%", Text.inert(brand != null ? brand : "unknown"));
+                                     .replace("%reason%", safeText(reason))
+                                     .replace("%brand%", safeToken(brand));
             
             if (violatedChannel != null && violationType.equals("BLOCKED_CHANNEL")) {
-                formatted = formatted.replace("%channel%", Text.inert(violatedChannel));
+                formatted = formatted.replace("%channel%", safeToken(violatedChannel));
             }
             
             // Execute command on the main thread

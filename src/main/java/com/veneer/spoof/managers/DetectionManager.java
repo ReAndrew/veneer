@@ -2,6 +2,7 @@ package com.veneer.spoof.managers;
 
 import com.veneer.VeneerPlugin;
 import com.veneer.core.PlayerProfile;
+import com.veneer.spoof.SpoofModule;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -16,6 +17,9 @@ public class DetectionManager {
     // MC|Brand is case sensitive on legacy versions
     private static final String MODERN_BRAND_CHANNEL = "minecraft:brand";
     private static final String LEGACY_BRAND_CHANNEL = "MC|Brand";
+
+    // What a real client registers at most; more is an attack trying to grow the per-player set
+    private static final int MAX_CHANNELS_PER_PLAYER = 64;
     
     // Track which players have been checked recently to prevent duplicate checks
     private final Set<UUID> recentlyCheckedPlayers = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -75,11 +79,19 @@ public class DetectionManager {
         
         boolean channelAdded = false;
         if (!data.getChannels().contains(channel)) {
+            // Memory DoS guard: a client can register unlimited made-up channels, real ones stay far below 64
+            if (data.getChannels().size() >= MAX_CHANNELS_PER_PLAYER) {
+                if (plugin.spoof().config().isDebugMode()) {
+                    plugin.getLogger().info("[Debug] Ignoring channel for " + player.getName()
+                            + " over the per-player cap: " + AlertManager.safeToken(channel));
+                }
+                return false;
+            }
             data.addChannel(channel);
             channelAdded = true;
             
             if (plugin.spoof().config().isDebugMode()) {
-                plugin.getLogger().info("[Debug] Channel added for " + player.getName() + ": " + channel);
+                plugin.getLogger().info("[Debug] Channel added for " + player.getName() + ": " + AlertManager.safeToken(channel));
             }
         }
         
@@ -128,7 +140,7 @@ public class DetectionManager {
             data.removeChannel(channel);
             
             if (plugin.spoof().config().isDebugMode()) {
-                plugin.getLogger().info("[Debug] Channel removed for " + player.getName() + ": " + channel);
+                plugin.getLogger().info("[Debug] Channel removed for " + player.getName() + ": " + AlertManager.safeToken(channel));
             }
         }
     }
@@ -158,22 +170,28 @@ public class DetectionManager {
      * @param isJoinCheck Whether this is an initial join check
      */
     public void checkPlayerAsync(Player player, boolean isJoinCheck, boolean checkRequiredChannels) {
-        if (!player.isOnline() || plugin.bypasses(player, "spoof", isJoinCheck)) {
-            return;
-        }
-        
-        // If this is a required channels check, mark the player as having had this check
-        if (checkRequiredChannels) {
-            requiredChannelCheckedPlayers.add(player.getUniqueId());
-            
-            if (plugin.spoof().config().isDebugMode()) {
-                plugin.getLogger().info("[Debug] Running FULL check with required channels for " + player.getName());
+        // May be called from a netty/packet thread; permission and bedrock reads must run on the global thread
+        com.veneer.core.FoliaScheduler.runGlobal(plugin, () -> {
+            if (!player.isOnline() || plugin.bypasses(player, "spoof", isJoinCheck)) {
+                return;
             }
-        }
-        
-        // Run check asynchronously to avoid lag
-        com.veneer.core.FoliaScheduler.runAsync(plugin, () -> {
-            checkPlayer(player, isJoinCheck, checkRequiredChannels);
+            
+            // If this is a required channels check, mark the player as having had this check
+            if (checkRequiredChannels) {
+                requiredChannelCheckedPlayers.add(player.getUniqueId());
+                
+                if (plugin.spoof().config().isDebugMode()) {
+                    plugin.getLogger().info("[Debug] Running FULL check with required channels for " + player.getName());
+                }
+            }
+            
+            // Capture Bukkit-state reads here, before going async
+            boolean isBedrockPlayer = plugin.bedrock().isBedrock(player);
+            
+            // Run check asynchronously to avoid lag
+            com.veneer.core.FoliaScheduler.runAsync(plugin, () -> {
+                checkPlayer(player, isJoinCheck, checkRequiredChannels, isBedrockPlayer);
+            });
         });
     }
 
@@ -187,8 +205,9 @@ public class DetectionManager {
      * @param player The player to check
      * @param isJoinCheck Whether this is an initial join check
      * @param checkRequiredChannels Whether to check for required channels
+     * @param isBedrockPlayer Whether the player is a Bedrock player, captured on the global thread
      */
-    private void checkPlayer(Player player, boolean isJoinCheck, boolean checkRequiredChannels) {
+    private void checkPlayer(Player player, boolean isJoinCheck, boolean checkRequiredChannels, boolean isBedrockPlayer) {
         UUID uuid = player.getUniqueId();
         
         // Skip if player is offline or has been punished
@@ -201,8 +220,8 @@ public class DetectionManager {
         // Get player's client brand
         String brand = plugin.spoof().getClientBrand(player);
         
-        // Check for missing brand first
-        if (brand == null) {
+        // Check for missing brand first; an announced-but-empty brand is just as suspicious
+        if (brand == null || SpoofModule.BRAND_NONE.equals(brand)) {
             if (config.isDebugMode()) {
                 plugin.getLogger().info("[Debug] No brand detected for " + player.getName());
             }
@@ -234,10 +253,7 @@ public class DetectionManager {
             return; // Skip other checks if no brand
         }
         
-        // Check if player is a Bedrock player
-        boolean isBedrockPlayer = plugin.bedrock().isBedrock(player);
-        
-        // If player is a Bedrock player and we're set to ignore them, return immediately
+        // Player is a Bedrock player (read captured on the global thread). If we're set to ignore them, return immediately
         if (isBedrockPlayer && config.getBedrockHandlingMode().equals("IGNORE")) {
             if (config.isDebugMode()) {
                 plugin.getLogger().info("[Debug] Ignoring Bedrock player: " + player.getName());
@@ -266,7 +282,7 @@ public class DetectionManager {
         Map<String, String> detectedViolations = new HashMap<>();
         
         // Check for Geyser spoofing
-        if (config.isPunishSpoofingGeyser() && isSpoofingGeyser(player, brand)) {
+        if (config.isPunishSpoofingGeyser() && isSpoofingGeyser(brand, isBedrockPlayer)) {
             detectedViolations.put("GEYSER_SPOOF", "Spoofing Geyser client");
         }
         
@@ -758,18 +774,18 @@ public class DetectionManager {
     
     /**
      * Checks if a player is spoofing Geyser client
-     * @param player The player to check
      * @param brand The player's client brand
+     * @param isBedrock Whether the player is a Bedrock player, captured on the global thread
      * @return True if the player is spoofing Geyser, false otherwise
      */
-    private boolean isSpoofingGeyser(Player player, String brand) {
+    private boolean isSpoofingGeyser(String brand, boolean isBedrock) {
         if (brand == null) return false;
         
         // Check if brand contains "geyser" (case insensitive)
         boolean claimsGeyser = brand.toLowerCase().contains("geyser");
         
         // If player claims to be using Geyser but isn't detected as a Bedrock player
-        return claimsGeyser && !plugin.bedrock().isBedrock(player);
+        return claimsGeyser && !isBedrock;
     }
     
     /**

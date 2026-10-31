@@ -29,14 +29,12 @@ public class LangCheckManager {
 
     private final VeneerPlugin plugin;
     private final Map<UUID, LangCheckData> activeChecks     = new ConcurrentHashMap<>();
-    private final Set<UUID>                firstJoinChecked = ConcurrentHashMap.newKeySet();
 
     public LangCheckManager(VeneerPlugin plugin) {
         this.plugin = plugin;
     }
 
     public boolean isChecking(UUID uuid)   { return activeChecks.containsKey(uuid); }
-    public Set<UUID> getFirstJoinChecked() { return firstJoinChecked; }
 
     /** True when the edited sign at {@code loc} is this player's language probe sign. */
     public boolean ownsSign(UUID uuid, Location loc) {
@@ -45,10 +43,13 @@ public class LangCheckManager {
     }
 
     /** The raw lines of a sign update packet (network thread): kept when they answer this player's probe sign. */
-    public void rawAnswer(UUID uuid, int x, int y, int z, String[] lines) {
+    public void rawAnswer(UUID uuid, String worldName, int x, int y, int z, String[] lines) {
         LangCheckData data = activeChecks.get(uuid);
         Location at = data == null ? null : data.getSignLocation();
-        if (at != null && at.getBlockX() == x && at.getBlockY() == y && at.getBlockZ() == z) data.setRawLines(lines);
+        // Same as SignUtil.sameBlock but by world name: on the network thread no Bukkit World references exist,
+        // and without the world a same-coordinate sign in another dimension would be accepted
+        if (at == null || at.getWorld() == null || !at.getWorld().getName().equals(worldName)) return;
+        if (at.getBlockX() == x && at.getBlockY() == y && at.getBlockZ() == z) data.setRawLines(lines);
     }
 
     /** True when {@code loc} is any running check's probe sign. */

@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +43,8 @@ public class DiscordWebhookHandler {
      * @param playerUuid The UUID of the player
      */
     public void registerPlayerJoin(UUID playerUuid) {
-        pendingViolations.put(playerUuid, new ArrayList<>());
+        // Mutated from the main thread and async webhook tasks alike, so a synchronized list it is
+        pendingViolations.put(playerUuid, Collections.synchronizedList(new ArrayList<>()));
         
         if (config.isDebugMode()) {
             plugin.getLogger().info("[Discord] Registered join time for player with UUID: " + playerUuid);
@@ -86,10 +88,13 @@ public class DiscordWebhookHandler {
         }
         
         // Add this violation to the pending list
-        List<String> pendingList = pendingViolations.computeIfAbsent(playerUuid, k -> new ArrayList<>());
+        List<String> pendingList = pendingViolations.computeIfAbsent(playerUuid, k -> Collections.synchronizedList(new ArrayList<>()));
         if (!pendingList.contains(reason)) {
             pendingList.add(reason);
         }
+
+        // Resolve PlaceholderAPI/Bukkit reads now (this runs on the main thread); the delayed webhook below is async
+        String clientVersion = getClientVersionFromPlaceholders(player);
         
         // Skip if player has already been alerted for spoofing in this session
         if (alertedPlayers.getOrDefault(playerUuid, false)) {
@@ -118,8 +123,8 @@ public class DiscordWebhookHandler {
                 // The player may have left during the delay
                 PlayerProfile updatedData = plugin.profiles().get(playerUuid);
                 if (updatedData != null && player.isOnline()) {
-                    // Get all collected violations
-                    List<String> allViolations = pendingViolations.getOrDefault(playerUuid, new ArrayList<>());
+                    // Snapshot the (thread-safe but concurrently growing) list before it is iterated
+                    List<String> allViolations = new ArrayList<>(pendingViolations.getOrDefault(playerUuid, Collections.emptyList()));
                     String playerBrand = playerBrands.getOrDefault(playerUuid, brand);
                     String blockedChannel = blockedChannels.get(playerUuid);
                     
@@ -129,7 +134,7 @@ public class DiscordWebhookHandler {
                     }
                     
                     // Send the full webhook with all violations
-                    sendFullWebhook(player, reason, playerBrand, blockedChannel, allViolations);
+                    sendFullWebhook(player, reason, playerBrand, blockedChannel, allViolations, clientVersion);
                 }
             }, delaySeconds * 20L); // Convert seconds to ticks (20 ticks = 1 second)
         } else {
@@ -139,11 +144,11 @@ public class DiscordWebhookHandler {
                                        player.getName());
             }
             
-            // Get all collected violations
-            List<String> allViolations = pendingViolations.getOrDefault(playerUuid, new ArrayList<>());
+            // Get all collected violations (snapshot copy: the list may grow from other threads)
+            List<String> allViolations = new ArrayList<>(pendingViolations.getOrDefault(playerUuid, Collections.emptyList()));
             
             // Send the full webhook with all violations
-            sendFullWebhook(player, reason, brand, channel, allViolations.isEmpty() ? violations : allViolations);
+            sendFullWebhook(player, reason, brand, channel, allViolations.isEmpty() ? violations : allViolations, clientVersion);
         }
     }
     
@@ -164,14 +169,14 @@ public class DiscordWebhookHandler {
     }
     
     /**
-     * Sends a full webhook with all player information
+     * Sends a full webhook with all player information; clientVersion was resolved on the main thread.
      */
-    private void sendFullWebhook(Player player, String reason, String brand, String channel, List<String> violations) {
+    private void sendFullWebhook(Player player, String reason, String brand, String channel, List<String> violations, String clientVersion) {
         // Get the appropriate console alert message
         String consoleAlert = determineConsoleAlert(player, reason, brand, channel, violations);
         
         // Send the full webhook
-        sendWebhookDirectly(player, reason, brand, channel, violations, consoleAlert);
+        sendWebhookDirectly(player, reason, brand, channel, violations, consoleAlert, clientVersion);
     }
     
     /**
@@ -277,23 +282,24 @@ public class DiscordWebhookHandler {
      * Directly sends a webhook
      */
     private void sendWebhookDirectly(Player player, String reason, String brand, String channel,
-                                    List<String> violations, String consoleAlert) {
+                                    List<String> violations, String consoleAlert, String clientVersion) {
         String webhookUrl = config.getDiscordWebhookUrl();
-        if (webhookUrl.isEmpty()) {
+        if (webhookUrl == null || webhookUrl.isEmpty()) {
             plugin.getLogger().warning("[Discord] No valid webhook URL (spoof.discord.webhook or general.discord.webhook).");
             return;
         }
 
         plugin.debug("[Discord] Sending webhook for player: " + player.getName());
-        String json = createFullWebhookJson(player, reason, brand, channel, violations, consoleAlert);
+        String json = createFullWebhookJson(player, reason, brand, channel, violations, consoleAlert, clientVersion);
         plugin.webhook().post(webhookUrl, json);
     }
 
     /**
-     * Creates the JSON payload for the full Discord webhook
+     * Creates the JSON payload for the full Discord webhook; clientVersion was resolved on the main thread
+     * (PlaceholderAPI must not be touched from this async path).
      */
     private String createFullWebhookJson(Player player, String reason, String brand, String channel, 
-                                        List<String> violations, String consoleAlert) {
+                                        List<String> violations, String consoleAlert, String clientVersion) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"embeds\":[{");
         
@@ -391,7 +397,7 @@ public class DiscordWebhookHandler {
         }
         
         // Add other standard information
-        sb.append("**Client Version**: ").append(getClientVersionFromPlaceholders(player)).append("\\n");
+        sb.append("**Client Version**: ").append(escapeJson(clientVersion)).append("\\n");
         
         // Wrap brand in backticks for Discord
         sb.append("**Brand**: `").append(escapeJson(Text.inert(brand != null ? brand : "unknown"))).append("`\\n");
