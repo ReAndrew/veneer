@@ -45,34 +45,35 @@ public final class VeneerGui implements Listener {
 
     private static final int PAGE_SIZE = 45;
     /** Covers every slot without a button, so no menu has a hole. */
-    private static final Material FILLER = Material.LIGHT_GRAY_STAINED_GLASS_PANE;
+    private static final Material FILLER = Material.GRAY_STAINED_GLASS_PANE;
+    /** The top and bottom rows of a menu made of categories. */
+    private static final Material FRAME = Material.BLACK_STAINED_GLASS_PANE;
+    /** One colour per category: its row in a category menu, and the bottom row of the lists that belong to it. */
+    private static final Material ACCENT_PLAYERS = Material.LIGHT_BLUE_STAINED_GLASS_PANE,
+            ACCENT_DETECTIONS = Material.RED_STAINED_GLASS_PANE,
+            ACCENT_WEB = Material.PURPLE_STAINED_GLASS_PANE,
+            ACCENT_SETTINGS = Material.YELLOW_STAINED_GLASS_PANE,
+            ACCENT_ACTIONS = Material.LIME_STAINED_GLASS_PANE;
     /** Where a list page says that it is empty. */
     private static final int EMPTY_SLOT = 22;
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd.MM HH:mm").withZone(ZoneId.systemDefault());
 
-    // Main chest menu slot layout (4 rows = 36 slots)
-    private static final int SLOT_SPOOF = 1, SLOT_HACKS = 3, SLOT_RPTRACK = 5;
-    private static final int SLOT_PLAYERS = 10, SLOT_DETECTIONS = 11, SLOT_BRANDS = 12,
-            SLOT_GRIM = 13, SLOT_ALERTS = 14, SLOT_EDITOR = 15, SLOT_CHANNELS = 16;
-    private static final int SLOT_RELOAD = 19, SLOT_VERSION = 21, SLOT_ALERTS_TOGGLE = 23, SLOT_LANG = 25, SLOT_BROWSERS = 31;
-    private static final int SLOT_CLOSE = 35;
+    // Category menus (main menu, player page): a frame row, one row per category, a frame row with the navigation.
+    // Their buttons carry the action they stand for, so a row can hold whatever the viewer may use, without holes.
+    /** Buttons of a category start here in its row; the first slot is its header. */
+    private static final int CAT_FIRST_COLUMN = 2, CAT_MAX_BUTTONS = 6;
+    private static final int CAT_BACK_COLUMN = 4, CAT_CLOSE_COLUMN = 8;
+    /** How many scans the player page counts before it writes "N+". */
+    private static final int SCAN_COUNT_LIMIT = 50;
 
     // Sub-page nav row (row 6, slots 45–53)
     private static final int NAV_PREV = 45, NAV_SEARCH = 46, NAV_BACK = 49, NAV_NEXT = 52, NAV_CLOSE2 = 53;
 
-    // Player info page slots (4 rows = 36 slots)
-    private static final int PI_HEAD = 4;
-    private static final int PI_BRAND = 10, PI_STATUS = 11, PI_CHANNELS = 12, PI_SCANS = 13,
-            PI_GRIM = 14, PI_SENSITIVITY = 15;
-    private static final int PI_CHECK = 19, PI_DETECTIONS = 22, PI_ALERTS = 25;
-    private static final int PI_BROWSERS = 30, PI_DELETE = 32;
-    private static final int PI_BACK = 27, PI_CLOSE = 35;
-
     // Delete confirmation (3 rows)
     private static final int CONFIRM_YES = 11, CONFIRM_NO = 15;
 
-    public enum Page { MAIN, PLAYERS, DETECTIONS, BRANDS, GRIM, PLAYER_INFO, CHANNELS, ALERTS, BROWSERS, CONFIRM_DELETE }
+    public enum Page { MAIN, PLAYERS, DETECTIONS, BRANDS, GRIM, PLAYER_INFO, CHANNELS, BROWSERS, CONFIRM_DELETE }
 
     /** What an open menu is: its page, the page number, the player or search it is about, and whether a next page exists. */
     static final class VeneerMenuHolder implements InventoryHolder {
@@ -101,7 +102,7 @@ public final class VeneerGui implements Listener {
         VeneerMenuHolder holder = new VeneerMenuHolder(page, pageNum, query);
         Inventory inv = plugin.getServer().createInventory(holder, size, title);
         holder.inventory = inv;
-        fillGlass(inv, 0, size);
+        fill(inv, 0, size, FILLER);
         return inv;
     }
 
@@ -117,6 +118,8 @@ public final class VeneerGui implements Listener {
     private final NamespacedKey brandKey;
     /** The player an item of a list page stands for. The display name is not asked: fillers and markers have one too. */
     private final NamespacedKey targetKey;
+    /** What a button of a category menu does. */
+    private final NamespacedKey actionKey;
     private final GrimViolationTracker grimTracker;
 
     /** How long the chat line after "search" is taken as the query. */
@@ -141,6 +144,7 @@ public final class VeneerGui implements Listener {
         browserKey = new NamespacedKey(plugin, "browser");
         brandKey = new NamespacedKey(plugin, "brand");
         targetKey = new NamespacedKey(plugin, "target");
+        actionKey = new NamespacedKey(plugin, "action");
     }
 
     /** The brands page lists and changes verdicts, as {@code /spoof brands} does: the same right. */
@@ -163,11 +167,11 @@ public final class VeneerGui implements Listener {
         String query = args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : null;
         switch (sub) {
             case "players"    -> openPlayers(player, pageNum, query);
-            case "detections" -> openDetections(player, pageNum, null);
+            // The alerts history was a second copy of the detections list: both names open the one page
+            case "detections", "alerts" -> openDetections(player, pageNum, query);
             case "brands"     -> openBrands(player, pageNum);
             case "grim"       -> { if (grimTracker != null) openGrim(player, pageNum); else open(player); }
             case "channels"   -> openChannels(player, pageNum);
-            case "alerts"     -> openAlerts(player, pageNum, query);
             default           -> open(player);
         }
         return true;
@@ -180,7 +184,7 @@ public final class VeneerGui implements Listener {
             Map<String, Object> record = plugin.database().players().getPlayerRecord(targetName);
             String uuid = (String) record.get("uuid");
             List<Map<String, Object>> scans = uuid == null ? List.of()
-                    : plugin.database().scans().getRecentScans(null, 3, 0, null, uuid);
+                    : plugin.database().scans().getRecentScans(null, SCAN_COUNT_LIMIT, 0, null, uuid);
             return new PlayerInfo(record, scans);
         }, info -> showPlayerInfo(admin, targetName, info.record(), info.scans()));
     }
@@ -211,100 +215,79 @@ public final class VeneerGui implements Listener {
         long lastSeen  = record.get("last_seen")  instanceof Number n ? n.longValue() : 0;
         long joins     = record.get("joins")       instanceof Number n ? n.longValue() : 0;
 
-        Inventory inv = menu(Page.PLAYER_INFO, 0, targetName, 36, Component.text(targetName).color(isOnline ? NamedTextColor.GREEN : NamedTextColor.WHITE)
-                        .decoration(TextDecoration.ITALIC, false));
+        Component title = Component.text(targetName).color(isOnline ? NamedTextColor.GREEN : NamedTextColor.WHITE)
+                .decoration(TextDecoration.ITALIC, false);
 
-        // Head
+        // Head: who it is and when they were here
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta sm = (SkullMeta) skull.getItemMeta();
         try { sm.setOwningPlayer(plugin.getServer().getOfflinePlayer(UUID.fromString(uuid))); } catch (Exception ignored) {}
-        sm.displayName(Component.text(targetName).color(isOnline ? NamedTextColor.GREEN : NamedTextColor.WHITE)
-                .decoration(TextDecoration.ITALIC, false));
+        sm.displayName(title);
         List<Component> headLore = new ArrayList<>();
-        headLore.add((isOnline ? m.get("gui-player-online") : m.get("gui-player-offline"))
-                .decoration(TextDecoration.ITALIC, false));
-        if (firstSeen > 0) headLore.add(m.get("gui-player-first-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(firstSeen))))
-                .decoration(TextDecoration.ITALIC, false));
-        if (joins > 0) headLore.add(m.get("gui-player-joins", Map.of("count", String.valueOf(joins)))
-                .decoration(TextDecoration.ITALIC, false));
+        headLore.add(upright(isOnline ? m.get("gui-player-online") : m.get("gui-player-offline")));
+        if (firstSeen > 0) headLore.add(upright(m.get("gui-player-first-seen", Map.of("date", date(firstSeen)))));
+        if (lastSeen > 0) headLore.add(upright(m.get("gui-player-last-seen", Map.of("date", date(lastSeen)))));
+        if (joins > 0) headLore.add(upright(m.get("gui-player-joins", Map.of("count", String.valueOf(joins)))));
         sm.lore(headLore);
         skull.setItemMeta(sm);
-        inv.setItem(PI_HEAD, skull);
 
-        // Brand
-        if (brand != null) {
-            inv.setItem(PI_BRAND, infoItem(Material.NAME_TAG,
-                    m.get("gui-player-brand", Map.of("brand", brand)), null));
-        }
-
-        // Online / last seen status
-        inv.setItem(PI_STATUS, infoItem(
-                isOnline ? Material.LIME_CONCRETE : Material.GRAY_CONCRETE,
-                isOnline ? m.get("gui-player-online") : m.get("gui-player-offline"),
-                lastSeen > 0 ? m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen)))) : null));
-
-        // Channels
-        if (!channels.isEmpty()) {
+        // Client: what the player connects with
+        List<ItemStack> clientRow = new ArrayList<>();
+        if (brand != null)
+            clientRow.add(infoItem(Material.NAME_TAG, m.get("gui-player-brand", Map.of("brand", brand)), null));
+        if (channels != null && !channels.isEmpty()) {
             String chanStr = channels.size() > 5
                     ? String.join(", ", channels.subList(0, 5)) + "  +" + (channels.size() - 5)
                     : String.join(", ", channels);
-            inv.setItem(PI_CHANNELS, infoItem(Material.COMPARATOR,
+            clientRow.add(infoItem(channelIcon(channels),
                     m.get("gui-player-channels", Map.of("count", String.valueOf(channels.size()))),
-                    Component.text(chanStr).color(NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)));
+                    Component.text(chanStr).color(NamedTextColor.DARK_GRAY)));
+        }
+        UUID uid = uuid == null ? null : safeUuid(uuid);
+        GrimViolationTracker.SensitivitySnapshot sens = grimTracker != null && uid != null ? grimTracker.getSensitivity(uid) : null;
+        if (sens != null) {
+            boolean nonDefault = !sens.isDefault();
+            boolean nonVanilla = !sens.vanillaMath();
+            clientRow.add(infoItem(
+                    nonVanilla ? Material.MAGENTA_DYE : nonDefault ? Material.YELLOW_DYE : Material.LIME_DYE,
+                    m.get("gui-player-sensitivity", Map.of("h", String.valueOf(sens.hPct()), "v", String.valueOf(sens.vPct()))),
+                    m.get(nonVanilla ? "gui-player-sensitivity-nonvanilla"
+                            : nonDefault ? "gui-player-sensitivity-nondefault" : "gui-player-sensitivity-default")));
         }
 
-        // Recent scan summary (loaded with the record, off the main thread)
+        // History: what was found on them. The scans (loaded with the record, off the main thread) sit on their button
+        List<ItemStack> historyRow = new ArrayList<>();
+        List<Component> scanLore = new ArrayList<>();
+        scanLore.add(m.get("gui-player-btn-scans-lore"));
         if (!scans.isEmpty()) {
-            inv.setItem(PI_SCANS, infoItem(Material.PAPER,
-                    m.get("gui-player-scans", Map.of("count", String.valueOf(scans.size()))),
-                    Component.text(DATE_FMT.format(Instant.ofEpochMilli(
-                            ((Number) scans.get(0).getOrDefault("timestamp", 0L)).longValue())))
-                            .color(NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)));
+            String count = scans.size() >= SCAN_COUNT_LIMIT ? SCAN_COUNT_LIMIT + "+" : String.valueOf(scans.size());
+            scanLore.add(m.get("gui-player-scans", Map.of("count", count)));
+            scanLore.add(Component.text(date(((Number) scans.get(0).getOrDefault("timestamp", 0L)).longValue()))
+                    .color(NamedTextColor.DARK_GRAY));
         }
-
-        // GrimAC flags + mouse sensitivity
-        if (GRIM_API && grimTracker != null && uuid != null) {
-            UUID uid = safeUuid(uuid);
+        historyRow.add(button("detections", scans.isEmpty() ? Material.BOOK : Material.WRITTEN_BOOK,
+                m.get("gui-player-btn-scans"), scanLore.toArray(Component[]::new)));
+        if (grimTracker != null && uid != null) {
             List<GrimViolationTracker.Violation> grimFlags = grimTracker.getByPlayer(uid, 99);
             if (!grimFlags.isEmpty()) {
-                inv.setItem(PI_GRIM, infoItem(Material.SHIELD,
-                        m.get("gui-grim-flags-count", Map.of("count", String.valueOf(grimFlags.size()))), null));
-            }
-            GrimViolationTracker.SensitivitySnapshot sens = grimTracker.getSensitivity(uid);
-            if (sens != null) {
-                boolean nonDefault = !sens.isDefault();
-                boolean nonVanilla = !sens.vanillaMath();
-                Component sensTitle = m.get("gui-player-sensitivity",
-                        Map.of("h", String.valueOf(sens.hPct()), "v", String.valueOf(sens.vPct())));
-                Component sensLore = nonVanilla
-                        ? m.get("gui-player-sensitivity-nonvanilla").decoration(TextDecoration.ITALIC, false)
-                        : nonDefault
-                        ? m.get("gui-player-sensitivity-nondefault").decoration(TextDecoration.ITALIC, false)
-                        : m.get("gui-player-sensitivity-default").decoration(TextDecoration.ITALIC, false);
-                Material sensMat = nonVanilla ? Material.MAGENTA_STAINED_GLASS_PANE
-                        : nonDefault ? Material.YELLOW_STAINED_GLASS_PANE
-                        : Material.GREEN_STAINED_GLASS_PANE;
-                inv.setItem(PI_SENSITIVITY, infoItem(sensMat, sensTitle, sensLore));
+                GrimViolationTracker.Violation last = grimFlags.get(0);
+                historyRow.add(infoItem(grimIcon(last.check()),
+                        m.get("gui-grim-flags-count", Map.of("count", String.valueOf(grimFlags.size()))),
+                        m.get("gui-grim-check", Map.of("check", last.check()))));
             }
         }
 
-        // Action buttons
-        inv.setItem(PI_CHECK, navItem(Material.BLAZE_POWDER,
-                m.get("gui-player-btn-check"), m.get("gui-player-btn-check-lore")));
-        inv.setItem(PI_DETECTIONS, navItem(Material.WRITTEN_BOOK,
-                m.get("gui-player-btn-scans"), m.get("gui-player-btn-scans-lore")));
-        inv.setItem(PI_ALERTS, navItem(Material.BELL,
-                m.get("gui-player-btn-alerts"), m.get("gui-player-btn-alerts-lore")));
-
+        // Actions
+        List<ItemStack> actionRow = new ArrayList<>();
+        actionRow.add(button("check", Material.BLAZE_POWDER, m.get("gui-player-btn-check"), m.get("gui-player-btn-check-lore")));
         if (plugin.hacks().running() && admin.hasPermission("veneer.hacks.editor.admin"))
-            inv.setItem(PI_BROWSERS, navItem(Material.SPYGLASS, m.get("gui-btn-browsers"), m.get("gui-btn-browsers-player-lore")));
-        inv.setItem(PI_DELETE, navItem(Material.LAVA_BUCKET, m.get("gui-btn-delete-player"), m.get("gui-btn-delete-player-lore")));
+            actionRow.add(button("browsers", Material.SPYGLASS, m.get("gui-btn-browsers"), m.get("gui-btn-browsers-player-lore")));
+        actionRow.add(button("delete", Material.LAVA_BUCKET, m.get("gui-btn-delete-player"), m.get("gui-btn-delete-player-lore")));
 
-        // Nav
-        inv.setItem(PI_BACK,  barItem(Material.RED_STAINED_GLASS_PANE, m.get("gui-nav-back")));
-        inv.setItem(PI_CLOSE, barItem(Material.BARRIER, m.get("gui-nav-close")));
-
-        admin.openInventory(inv);
+        admin.openInventory(categoryMenu(Page.PLAYER_INFO, targetName, title, List.of(skull), List.of(
+                new Category(ACCENT_PLAYERS, m.get("gui-cat-client"), clientRow),
+                new Category(ACCENT_DETECTIONS, m.get("gui-cat-history"), historyRow),
+                new Category(ACCENT_ACTIONS, m.get("gui-cat-actions"), actionRow)), true, m));
     }
 
     /**
@@ -342,40 +325,81 @@ public final class VeneerGui implements Listener {
 
     private void openMainChest(Player player) {
         Messages m = plugin.messages().in(player);
-        Inventory inv = menu(Page.MAIN, 0, null, 36, m.get("gui-chest-title"));
+        boolean editor = plugin.hacks().running() && player.hasPermission("veneer.hacks.editor");
 
-        inv.setItem(SLOT_SPOOF,   moduleItem(plugin.spoof().running(),   m.get("gui-module-spoof"),   m));
-        inv.setItem(SLOT_HACKS,   moduleItem(plugin.hacks().running(),   m.get("gui-module-hacks"),   m));
-        inv.setItem(SLOT_RPTRACK, moduleItem(plugin.rptrack().running(), m.get("gui-module-rptrack"), m));
+        List<ItemStack> modules = List.of(
+                moduleItem(Material.CARVED_PUMPKIN, plugin.spoof().running(),   m.get("gui-module-spoof"),   m),
+                moduleItem(Material.ENDER_EYE,      plugin.hacks().running(),   m.get("gui-module-hacks"),   m),
+                moduleItem(Material.PAINTING,       plugin.rptrack().running(), m.get("gui-module-rptrack"), m));
 
-        inv.setItem(SLOT_PLAYERS,    navItem(Material.PLAYER_HEAD,  m.get("gui-btn-players"),    m.get("gui-btn-players-lore")));
-        inv.setItem(SLOT_DETECTIONS, navItem(Material.WRITTEN_BOOK, m.get("gui-btn-detections"), m.get("gui-btn-detections-lore")));
+        List<ItemStack> players = new ArrayList<>();
+        players.add(button("players", Material.PLAYER_HEAD, m.get("gui-btn-players"), m.get("gui-btn-players-lore")));
+        players.add(button("channels", Material.COMPARATOR, m.get("gui-btn-channels"), m.get("gui-btn-channels-lore")));
         if (mayBrands(player))
-            inv.setItem(SLOT_BRANDS, navItem(Material.NAME_TAG,     m.get("gui-btn-brands"),     m.get("gui-btn-brands-lore")));
-        if (GRIM_API && grimTracker != null)
-            inv.setItem(SLOT_GRIM,   navItem(Material.SHIELD,       m.get("gui-btn-grim"),       m.get("gui-btn-grim-lore")));
-        if (player.hasPermission(Alerts.PERMISSION))
-            inv.setItem(SLOT_ALERTS, navItem(Material.BELL,         m.get("gui-btn-alerts-log"), m.get("gui-btn-alerts-log-lore")));
-        if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
-            inv.setItem(SLOT_EDITOR, navItem(Material.WRITABLE_BOOK, m.get("gui-btn-editor"),    m.get("gui-btn-editor-lore")));
-        inv.setItem(SLOT_CHANNELS, navItem(Material.COMPARATOR, m.get("gui-btn-channels"), m.get("gui-btn-channels-lore")));
+            players.add(button("brands", Material.NAME_TAG, m.get("gui-btn-brands"), m.get("gui-btn-brands-lore")));
 
-        inv.setItem(SLOT_RELOAD,  navItem(Material.COMPARATOR,    m.get("gui-btn-reload"),   m.get("gui-btn-reload-lore")));
-        inv.setItem(SLOT_VERSION, navItem(Material.KNOWLEDGE_BOOK, m.get("gui-btn-version"), m.get("gui-btn-version-lore")));
-        if (player.hasPermission(Alerts.PERMISSION))
-            inv.setItem(SLOT_ALERTS_TOGGLE, alertsToggleItem(player, m));
+        List<ItemStack> detections = new ArrayList<>();
+        detections.add(button("detections", Material.WRITTEN_BOOK, m.get("gui-btn-detections"), m.get("gui-btn-detections-lore")));
+        if (grimTracker != null)
+            detections.add(button("grim", Material.SHIELD, m.get("gui-btn-grim"), m.get("gui-btn-grim-lore")));
+
+        List<ItemStack> web = new ArrayList<>();
+        if (editor) {
+            web.add(button("editor", Material.WRITABLE_BOOK, m.get("gui-btn-editor"), m.get("gui-btn-editor-lore")));
+            web.add(button("browsers", Material.SPYGLASS, m.get("gui-btn-browsers"), m.get("gui-btn-browsers-lore")));
+        }
+
+        List<ItemStack> settings = new ArrayList<>();
+        if (player.hasPermission(Alerts.PERMISSION)) settings.add(alertsToggleItem(player, m));
         if (player.hasPermission("veneer.lang"))
-            inv.setItem(SLOT_LANG, navItem(Material.BOOK, m.get("gui-btn-lang", Map.of("lang", m.language())), m.get("gui-btn-lang-lore")));
-        if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor"))
-            inv.setItem(SLOT_BROWSERS, navItem(Material.SPYGLASS, m.get("gui-btn-browsers"), m.get("gui-btn-browsers-lore")));
-        inv.setItem(SLOT_CLOSE,   barItem(Material.BARRIER, m.get("gui-nav-close")));
+            settings.add(button("lang", Material.BOOK, m.get("gui-btn-lang", Map.of("lang", m.language())), m.get("gui-btn-lang-lore")));
+        settings.add(button("reload", Material.REDSTONE_TORCH, m.get("gui-btn-reload"), m.get("gui-btn-reload-lore")));
+        settings.add(button("version", Material.KNOWLEDGE_BOOK, m.get("gui-btn-version"), m.get("gui-btn-version-lore")));
 
-        player.openInventory(inv);
+        player.openInventory(categoryMenu(Page.MAIN, null, m.get("gui-chest-title"), modules, List.of(
+                new Category(ACCENT_PLAYERS, m.get("gui-cat-players"), players),
+                new Category(ACCENT_DETECTIONS, m.get("gui-cat-detections"), detections),
+                new Category(ACCENT_WEB, m.get("gui-cat-web"), web),
+                new Category(ACCENT_SETTINGS, m.get("gui-cat-settings"), settings)), false, m));
+    }
+
+    /** One row of a category menu: its colour, its name and the buttons the viewer gets. */
+    private record Category(Material accent, Component title, List<ItemStack> buttons) {}
+
+    /**
+     * A menu of categories: {@code top} centred in the frame row, then one row per category that has buttons
+     * (its header, the buttons from the third column, its colour again at the end), then the navigation.
+     * A category without buttons takes no row, so the menu is as tall as what the viewer may use.
+     */
+    private Inventory categoryMenu(Page page, String query, Component title, List<ItemStack> top,
+                                   List<Category> categories, boolean back, Messages m) {
+        List<Category> rows = categories.stream().filter(c -> !c.buttons().isEmpty()).limit(4).toList();
+        int size = (rows.size() + 2) * 9, last = size - 9;
+        Inventory inv = menu(page, 0, query, size, title);
+        fill(inv, 0, 9, FRAME);
+        fill(inv, last, size, FRAME);
+
+        // Every other slot, around the middle
+        int first = 4 - (top.size() - 1);
+        for (int i = 0; i < top.size() && i < 5; i++) inv.setItem(first + i * 2, top.get(i));
+
+        int row = 9;
+        for (Category c : rows) {
+            inv.setItem(row, barItem(c.accent(), c.title()));
+            inv.setItem(row + 8, noName(c.accent()));
+            for (int i = 0; i < c.buttons().size() && i < CAT_MAX_BUTTONS; i++)
+                inv.setItem(row + CAT_FIRST_COLUMN + i, c.buttons().get(i));
+            row += 9;
+        }
+
+        if (back) inv.setItem(last + CAT_BACK_COLUMN, tag(barItem(Material.DARK_OAK_DOOR, m.get("gui-nav-back")), "back"));
+        inv.setItem(last + CAT_CLOSE_COLUMN, tag(barItem(Material.BARRIER, m.get("gui-nav-close")), "close"));
+        return inv;
     }
 
     private ItemStack alertsToggleItem(Player player, Messages m) {
         boolean on = plugin.alerts().isEnabled(player.getUniqueId());
-        return navItem(on ? Material.LIME_DYE : Material.GRAY_DYE, m.get("gui-btn-alerts-toggle"),
+        return button("alerts-toggle", on ? Material.BELL : Material.GRAY_DYE, m.get("gui-btn-alerts-toggle"),
                 m.get(on ? "gui-btn-alerts-toggle-on" : "gui-btn-alerts-toggle-off"));
     }
 
@@ -398,7 +422,9 @@ public final class VeneerGui implements Listener {
         List<Map<String, Object>> rows = all.subList(from, Math.min(from + PAGE_SIZE, all.size()));
         int slot = 0;
         for (Map<String, Object> row : rows) {
-            ItemStack item = new ItemStack(Material.PAPER);
+            // In use during the last day, or left behind
+            boolean fresh = row.get("used") instanceof Number n && System.currentTimeMillis() - n.longValue() < 86_400_000L;
+            ItemStack item = new ItemStack(fresh ? Material.COMPASS : Material.PAPER);
             ItemMeta meta = item.getItemMeta();
             String id = String.valueOf(row.get("id"));
             meta.displayName(Component.text(id).color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
@@ -413,7 +439,7 @@ public final class VeneerGui implements Listener {
             inv.setItem(slot++, item);
         }
         if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-list-empty")));
-        buildNavRow(inv, pageNum, all.size() > from + PAGE_SIZE, false, m);
+        buildNavRow(inv, pageNum, all.size() > from + PAGE_SIZE, false, ACCENT_WEB, m);
         player.openInventory(inv);
     }
 
@@ -449,8 +475,8 @@ public final class VeneerGui implements Listener {
     private void openDeleteConfirm(Player player, String target) {
         Messages m = plugin.messages().in(player);
         Inventory inv = menu(Page.CONFIRM_DELETE, 0, target, 27, m.get("gui-page-delete", Map.of("player", target)));
-        inv.setItem(CONFIRM_YES, navItem(Material.RED_CONCRETE, m.get("gui-delete-yes"), m.get("gui-delete-yes-lore", Map.of("player", target))));
-        inv.setItem(CONFIRM_NO, navItem(Material.LIME_CONCRETE, m.get("gui-delete-no"), null));
+        inv.setItem(CONFIRM_YES, infoItem(Material.RED_CONCRETE, m.get("gui-delete-yes"), m.get("gui-delete-yes-lore", Map.of("player", target))));
+        inv.setItem(CONFIRM_NO, infoItem(Material.LIME_CONCRETE, m.get("gui-delete-no"), null));
         player.openInventory(inv);
     }
 
@@ -536,7 +562,7 @@ public final class VeneerGui implements Listener {
             if (lastSeen > 0)
                 lore.add(m.get("gui-player-last-seen", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(lastSeen))))
                         .decoration(TextDecoration.ITALIC, false));
-            if (GRIM_API && grimTracker != null && grimTracker.hasViolations(safeUuid(uuid)))
+            if (grimTracker != null && grimTracker.hasViolations(safeUuid(uuid)))
                 lore.add(m.get("gui-player-grim-flagged").decoration(TextDecoration.ITALIC, false));
             skullMeta.lore(lore);
             skullMeta.getPersistentDataContainer().set(targetKey, PersistentDataType.STRING, name);
@@ -545,7 +571,7 @@ public final class VeneerGui implements Listener {
         }
 
         if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-list-empty")));
-        buildNavRow(inv, pageNum, mayHaveMore, true, m);
+        buildNavRow(inv, pageNum, mayHaveMore, true, ACCENT_PLAYERS, m);
         player.openInventory(inv);
     }
 
@@ -573,80 +599,33 @@ public final class VeneerGui implements Listener {
             String pName   = (String) row.get("target_name");
             String type    = (String) row.get("type");
             long   ts      = row.get("timestamp") instanceof Number n ? n.longValue() : 0;
+            String checker = (String) row.get("checker_name");
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> results = (List<Map<String, Object>>) row.get("results");
             List<String> detected = new ArrayList<>();
+            // The most serious mod of the scan decides how its item looks: 1 = cheat, 2 = forbidden, 3 = tolerated
+            int worst = 0;
             if (results != null)
                 for (Map<String, Object> r : results)
-                    if ("DETECTED".equals(r.get("result")))
+                    if ("DETECTED".equals(r.get("result"))) {
                         detected.add((String) r.getOrDefault("hack_name", r.getOrDefault("language", "?")));
+                        int level = r.get("hack_name") instanceof String id ? modLevel(id) : 0;
+                        if (level > 0 && (worst == 0 || level < worst)) worst = level;
+                    }
 
-            ItemStack item = new ItemStack(detected.isEmpty() ? Material.PAPER : Material.WRITTEN_BOOK);
+            ItemStack item = new ItemStack(switch (worst) {
+                case 1 -> Material.TNT;
+                case 2 -> Material.WRITTEN_BOOK;
+                case 3 -> Material.BOOK;
+                default -> Material.PAPER;
+            });
+            // As many as the scan found, so a client full of mods stands out in the list
+            item.setAmount(Math.max(1, Math.min(detected.size(), item.getMaxStackSize())));
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
-            List<Component> lore = new ArrayList<>();
-            lore.add(m.get("gui-detection-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?"))
+            meta.displayName(Component.text(pName != null ? pName : "?")
+                    .color(worst == 1 ? NamedTextColor.RED : worst == 3 ? NamedTextColor.YELLOW : NamedTextColor.GOLD)
                     .decoration(TextDecoration.ITALIC, false));
-            if (!detected.isEmpty())
-                lore.add(m.get("gui-detection-mods", Map.of("mods", String.join(", ", detected)))
-                        .decoration(TextDecoration.ITALIC, false));
-            if (ts > 0)
-                lore.add(m.get("gui-detection-date", Map.of("date", DATE_FMT.format(Instant.ofEpochMilli(ts))))
-                        .decoration(TextDecoration.ITALIC, false));
-            meta.lore(lore);
-            if (pName != null) meta.getPersistentDataContainer().set(targetKey, PersistentDataType.STRING, pName);
-            item.setItemMeta(meta);
-            inv.setItem(slot++, item);
-        }
-
-        if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-list-empty")));
-        buildNavRow(inv, pageNum, mayHaveMore, false, m);
-        player.openInventory(inv);
-    }
-
-    // ── Alerts page ───────────────────────────────────────────────────────────
-
-    private void openAlerts(Player player, int pageNum, String targetPlayer) {
-        // As /veneer alerts: the history belongs to those who receive the alerts
-        if (!player.hasPermission(Alerts.PERMISSION)) {
-            player.sendMessage(plugin.messages().in(player).get("no-permission"));
-            return;
-        }
-        load(player, () -> plugin.database().scans().getRecentScans(null, PAGE_SIZE + 1, pageNum * PAGE_SIZE, true, targetPlayer),
-                rows -> showAlerts(player, pageNum, targetPlayer, rows));
-    }
-
-    private void showAlerts(Player player, int pageNum, String targetPlayer, List<Map<String, Object>> rows) {
-        Messages m = plugin.messages().in(player);
-        boolean mayHaveMore = rows.size() > PAGE_SIZE;
-        if (mayHaveMore) rows = rows.subList(0, PAGE_SIZE);
-
-        Component title = targetPlayer != null
-                ? m.get("gui-page-alerts").append(Component.text(" (" + targetPlayer + ")").color(NamedTextColor.GRAY))
-                : m.get("gui-page-alerts");
-
-        Inventory inv = menu(Page.ALERTS, pageNum, targetPlayer, 54, title);
-
-        int slot = 0;
-        for (Map<String, Object> row : rows) {
-            if (slot >= PAGE_SIZE) break;
-            String pName   = (String) row.get("target_name");
-            String type    = (String) row.get("type");
-            long   ts      = row.get("timestamp") instanceof Number n ? n.longValue() : 0;
-            String checker = (String) row.getOrDefault("checker_name", "?");
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> results = (List<Map<String, Object>>) row.get("results");
-            List<String> detected = new ArrayList<>();
-            if (results != null)
-                for (Map<String, Object> r : results)
-                    if ("DETECTED".equals(r.get("result")))
-                        detected.add((String) r.getOrDefault("hack_name", r.getOrDefault("language", "?")));
-
-            ItemStack item = new ItemStack(Material.BELL);
-            ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(pName != null ? pName : "?").color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
             lore.add(m.get("gui-alert-type", Map.of("type", type != null ? type.toUpperCase(Locale.ROOT) : "?",
                     "checker", checker != null ? checker : "?")).decoration(TextDecoration.ITALIC, false));
@@ -662,9 +641,8 @@ public final class VeneerGui implements Listener {
             inv.setItem(slot++, item);
         }
 
-        if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-alerts-empty")));
-
-        buildNavRow(inv, pageNum, mayHaveMore, false, m);
+        if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-list-empty")));
+        buildNavRow(inv, pageNum, mayHaveMore, false, ACCENT_DETECTIONS, m);
         player.openInventory(inv);
     }
 
@@ -685,7 +663,7 @@ public final class VeneerGui implements Listener {
             inv.setItem(slot++, buildBrandItem(e, m));
 
         if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-list-empty")));
-        buildNavRow(inv, pageNum, all.size() > (long)(pageNum + 1) * PAGE_SIZE, false, m);
+        buildNavRow(inv, pageNum, all.size() > (long)(pageNum + 1) * PAGE_SIZE, false, ACCENT_PLAYERS, m);
         player.openInventory(inv);
     }
 
@@ -721,7 +699,7 @@ public final class VeneerGui implements Listener {
 
         int slot = 0;
         for (GrimViolationTracker.Violation v : violations) {
-            ItemStack item = new ItemStack(Material.SHIELD);
+            ItemStack item = new ItemStack(grimIcon(v.check()));
             ItemMeta meta = item.getItemMeta();
             meta.displayName(Component.text(v.playerName()).color(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
@@ -738,7 +716,7 @@ public final class VeneerGui implements Listener {
 
         if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-grim-empty")));
 
-        buildNavRow(inv, pageNum, all.size() > (long)(pageNum + 1) * PAGE_SIZE, false, m);
+        buildNavRow(inv, pageNum, all.size() > (long)(pageNum + 1) * PAGE_SIZE, false, ACCENT_DETECTIONS, m);
         player.openInventory(inv);
     }
 
@@ -779,10 +757,12 @@ public final class VeneerGui implements Listener {
                     ? channelList[0] + ", " + channelList[1] + ", +" + (channelList.length - 2)
                     : channels;
 
-            Material mat = !online.isEmpty() ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
-            ItemStack item = new ItemStack(mat);
+            // The icon says what kind of client the set comes from; green and glowing while someone with it is online
+            ItemStack item = new ItemStack(channelIcon(Arrays.asList(channelList)));
             ItemMeta meta = item.getItemMeta();
-            meta.displayName(Component.text(display).color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+            meta.displayName(Component.text(display).color(online.isEmpty() ? NamedTextColor.WHITE : NamedTextColor.GREEN)
+                    .decoration(TextDecoration.ITALIC, false));
+            if (!online.isEmpty()) meta.setEnchantmentGlintOverride(true);
             List<Component> lore = new ArrayList<>();
             lore.add(m.get("gui-channel-players", Map.of("count", String.valueOf(playerCount))).decoration(TextDecoration.ITALIC, false));
             if (!online.isEmpty()) {
@@ -804,19 +784,21 @@ public final class VeneerGui implements Listener {
 
         if (slot == 0) inv.setItem(EMPTY_SLOT, barItem(Material.STRUCTURE_VOID, m.get("gui-channels-empty")));
 
-        buildNavRow(inv, pageNum, mayHaveMore, false, m);
+        buildNavRow(inv, pageNum, mayHaveMore, false, ACCENT_PLAYERS, m);
         player.openInventory(inv);
     }
 
     // ── Navigation row ────────────────────────────────────────────────────────
 
-    private void buildNavRow(Inventory inv, int pageNum, boolean hasNext, boolean hasSearch, Messages m) {
+    /** The bottom row of a list, in the colour of the category the list belongs to. */
+    private void buildNavRow(Inventory inv, int pageNum, boolean hasNext, boolean hasSearch, Material accent, Messages m) {
+        fill(inv, PAGE_SIZE, PAGE_SIZE + 9, accent);
         // The click handlers ask the holder: the filler in the arrow's place must not turn the page
         if (inv.getHolder(false) instanceof VeneerMenuHolder holder) holder.hasNext = hasNext;
         if (pageNum > 0) inv.setItem(NAV_PREV, barItem(Material.ARROW, m.get("gui-nav-prev")));
         if (hasSearch)
             inv.setItem(NAV_SEARCH, barItem(Material.NAME_TAG, m.get("gui-nav-search")));
-        inv.setItem(NAV_BACK, barItem(Material.RED_STAINED_GLASS_PANE, m.get("gui-nav-back")));
+        inv.setItem(NAV_BACK, barItem(Material.DARK_OAK_DOOR, m.get("gui-nav-back")));
         if (hasNext) inv.setItem(NAV_NEXT, barItem(Material.ARROW, m.get("gui-nav-next")));
         inv.setItem(NAV_CLOSE2, barItem(Material.BARRIER, m.get("gui-nav-close")));
     }
@@ -865,34 +847,35 @@ public final class VeneerGui implements Listener {
             case DETECTIONS  -> handleDetections(player, holder, slot, click.item());
             case BRANDS      -> handleBrands(player, holder, slot, click);
             case GRIM        -> handleGrim(player, holder, slot, click.item());
-            case PLAYER_INFO -> handlePlayerInfo(player, holder, slot);
+            case PLAYER_INFO -> handlePlayerInfo(player, holder, click.item());
             case CHANNELS    -> handleChannels(player, holder, slot, click.item(), click.type());
-            case ALERTS      -> handleAlerts(player, holder, slot, click.item());
             case BROWSERS    -> handleBrowsers(player, holder, slot, click.item(), click.type());
             case CONFIRM_DELETE -> handleDeleteConfirm(player, holder, slot);
         }
     }
 
     private void handleMain(Player player, int slot, Click click) {
-        switch (slot) {
-            case SLOT_PLAYERS    -> { openPlayers(player, 0, null); }
-            case SLOT_DETECTIONS -> { openDetections(player, 0, null); }
-            case SLOT_BRANDS     -> { if (mayBrands(player)) { openBrands(player, 0); } }
-            case SLOT_GRIM       -> { if (grimTracker != null) { openGrim(player, 0); } }
-            case SLOT_ALERTS     -> { if (player.hasPermission(Alerts.PERMISSION)) { openAlerts(player, 0, null); } }
-            case SLOT_CHANNELS   -> { openChannels(player, 0); }
-            case SLOT_EDITOR     -> { if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor")) openEditor(player); }
-            case SLOT_ALERTS_TOGGLE -> {
+        String action = actionOf(click.item());
+        if (action == null) return;
+        boolean editor = plugin.hacks().running() && player.hasPermission("veneer.hacks.editor");
+        switch (action) {
+            case "players"    -> openPlayers(player, 0, null);
+            case "channels"   -> openChannels(player, 0);
+            case "brands"     -> { if (mayBrands(player)) openBrands(player, 0); }
+            case "detections" -> openDetections(player, 0, null);
+            case "grim"       -> { if (grimTracker != null) openGrim(player, 0); }
+            case "editor"     -> { if (editor) openEditor(player); }
+            case "browsers"   -> { if (editor) openBrowsers(player, player.getName()); }
+            case "alerts-toggle" -> {
                 if (player.hasPermission(Alerts.PERMISSION)) {
                     player.performCommand("veneer alerts toggle");
                     click.inventory().setItem(slot, alertsToggleItem(player, plugin.messages().in(player)));
                 }
             }
-            case SLOT_LANG       -> switchLanguage(player, click.type());
-            case SLOT_BROWSERS   -> { if (plugin.hacks().running() && player.hasPermission("veneer.hacks.editor")) { openBrowsers(player, player.getName()); } }
-            case SLOT_RELOAD     -> { player.closeInventory(); player.performCommand("veneer reload"); }
-            case SLOT_VERSION    -> { player.closeInventory(); player.performCommand("veneer version"); }
-            case SLOT_CLOSE      -> player.closeInventory();
+            case "lang"       -> switchLanguage(player, click.type());
+            case "reload"     -> { player.closeInventory(); player.performCommand("veneer reload"); }
+            case "version"    -> { player.closeInventory(); player.performCommand("veneer version"); }
+            case "close"      -> player.closeInventory();
         }
     }
 
@@ -974,30 +957,17 @@ public final class VeneerGui implements Listener {
         }
     }
 
-    private void handlePlayerInfo(Player player, VeneerMenuHolder holder, int slot) {
+    private void handlePlayerInfo(Player player, VeneerMenuHolder holder, ItemStack item) {
         String targetName = holder.query();
-        switch (slot) {
-            case PI_CHECK      -> { player.closeInventory(); if (targetName != null) openCheckDialog(player, targetName); }
-            case PI_DETECTIONS -> { if (targetName != null) openDetections(player, 0, targetName); }
-            case PI_ALERTS     -> { if (targetName != null) openAlerts(player, 0, targetName); }
-            case PI_BROWSERS   -> { if (targetName != null && plugin.hacks().running() && player.hasPermission("veneer.hacks.editor.admin")) { openBrowsers(player, targetName); } }
-            case PI_DELETE     -> { if (targetName != null) { openDeleteConfirm(player, targetName); } }
-            case PI_BACK       -> { open(player); }
-            case PI_CLOSE      -> player.closeInventory();
-        }
-    }
-
-    private void handleAlerts(Player player, VeneerMenuHolder holder, int slot, ItemStack item) {
-        if (slot < PAGE_SIZE) {
-            String name = targetOf(item);
-            if (name != null) openPlayerInfo(player, name);
-            return;
-        }
-        switch (slot) {
-            case NAV_PREV   -> { if (holder.pageNum() > 0) { openAlerts(player, holder.pageNum() - 1, holder.query()); } }
-            case NAV_BACK   -> { open(player); }
-            case NAV_NEXT   -> { if (holder.hasNext()) openAlerts(player, holder.pageNum() + 1, holder.query()); }
-            case NAV_CLOSE2 -> player.closeInventory();
+        String action = actionOf(item);
+        if (action == null) return;
+        switch (action) {
+            case "check"      -> { player.closeInventory(); if (targetName != null) openCheckDialog(player, targetName); }
+            case "detections" -> { if (targetName != null) openDetections(player, 0, targetName); }
+            case "browsers"   -> { if (targetName != null && plugin.hacks().running() && player.hasPermission("veneer.hacks.editor.admin")) openBrowsers(player, targetName); }
+            case "delete"     -> { if (targetName != null) openDeleteConfirm(player, targetName); }
+            case "back"       -> open(player);
+            case "close"      -> player.closeInventory();
         }
     }
 
@@ -1059,22 +1029,79 @@ public final class VeneerGui implements Listener {
         plugin.messages().in(player).send(player, "gui-search-prompt");
     }
 
-    private ItemStack moduleItem(boolean running, Component name, Messages m) {
-        ItemStack stack = new ItemStack(running ? Material.LIME_CONCRETE : Material.RED_CONCRETE);
+    /** A module of the plugin: its own icon while it runs, grey when it is off. */
+    private ItemStack moduleItem(Material icon, boolean running, Component name, Messages m) {
+        ItemStack stack = new ItemStack(running ? icon : Material.GRAY_DYE);
         ItemMeta meta = stack.getItemMeta();
-        meta.displayName(name.color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+        meta.displayName(name.color(running ? NamedTextColor.GREEN : NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
         meta.lore(List.of((running ? m.get("gui-module-on") : m.get("gui-module-off")).decoration(TextDecoration.ITALIC, false)));
         stack.setItemMeta(meta);
         return stack;
     }
 
-    private static ItemStack navItem(Material mat, Component name, Component lore) {
+    /** A button of a category menu: white name, any number of lore lines, and the action a click on it runs. */
+    private ItemStack button(String action, Material mat, Component name, Component... lore) {
         ItemStack stack = new ItemStack(mat);
         ItemMeta meta = stack.getItemMeta();
-        meta.displayName(name.color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
-        if (lore != null) meta.lore(List.of(lore.decoration(TextDecoration.ITALIC, false)));
+        meta.displayName(name.colorIfAbsent(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+        if (lore.length > 0) meta.lore(Arrays.stream(lore).map(VeneerGui::upright).toList());
+        stack.setItemMeta(meta);
+        return tag(stack, action);
+    }
+
+    private ItemStack tag(ItemStack stack, String action) {
+        ItemMeta meta = stack.getItemMeta();
+        meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, action);
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    private String actionOf(ItemStack item) {
+        return item == null || !item.hasItemMeta() ? null
+                : item.getItemMeta().getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
+    }
+
+    /** Level of a detected mod (1 = cheat, 2 = forbidden, 3 = tolerated), 0 while the mod scan is off. */
+    private int modLevel(String id) {
+        return plugin.hacks().running() ? plugin.hacks().config().levelOf(id) : 0;
+    }
+
+    /** What a channel set comes from, as far as its names tell. */
+    private static Material channelIcon(Collection<String> channels) {
+        String all = String.join(",", channels).toLowerCase(Locale.ROOT);
+        if (all.contains("neoforge")) return Material.NETHERITE_SCRAP;
+        if (all.contains("forge") || all.contains("fml")) return Material.ANVIL;
+        if (all.contains("fabric")) return Material.WHITE_WOOL;
+        if (all.contains("quilt")) return Material.PURPLE_WOOL;
+        if (all.contains("bungeecord") || all.contains("velocity")) return Material.ENDER_PEARL;
+        for (String channel : channels)
+            if (!channel.isBlank() && !channel.strip().toLowerCase(Locale.ROOT).startsWith("minecraft:")) return Material.COMPARATOR;
+        return Material.GRASS_BLOCK;
+    }
+
+    /** What a GrimAC check is about, by its name: combat, building, timing, packets, movement. */
+    private static Material grimIcon(String check) {
+        String c = check == null ? "" : check.toLowerCase(Locale.ROOT);
+        if (has(c, "reach", "hitbox", "aim", "aura", "combat", "clicker", "wallhit", "interact")) return Material.BOW;
+        if (has(c, "place", "break", "scaffold", "nuker", "liquid", "baritone")) return Material.BRICKS;
+        if (has(c, "timer")) return Material.CLOCK;
+        if (has(c, "packet", "post", "crash", "exploit", "transaction", "inventory")) return Material.PAPER;
+        if (has(c, "simulation", "fall", "ground", "speed", "fly", "phase", "slow", "velocity", "knockback",
+                "explosion", "elytra", "vehicle", "sprint", "step", "strafe", "prediction")) return Material.FEATHER;
+        return Material.SHIELD;
+    }
+
+    private static boolean has(String text, String... parts) {
+        for (String part : parts) if (text.contains(part)) return true;
+        return false;
+    }
+
+    private static String date(long millis) {
+        return DATE_FMT.format(Instant.ofEpochMilli(millis));
+    }
+
+    private static Component upright(Component c) {
+        return c.decoration(TextDecoration.ITALIC, false);
     }
 
     private static ItemStack barItem(Material mat, Component name) {
@@ -1102,8 +1129,8 @@ public final class VeneerGui implements Listener {
         return stack;
     }
 
-    private static void fillGlass(Inventory inv, int from, int to) {
-        ItemStack glass = noName(FILLER);
+    private static void fill(Inventory inv, int from, int to, Material pane) {
+        ItemStack glass = noName(pane);
         for (int i = from; i < to; i++) inv.setItem(i, glass);
     }
 
