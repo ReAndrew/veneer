@@ -99,7 +99,8 @@ rptrack:    # resource-pack cache tracking                                (enabl
 |---|---|
 | `%veneer_brand%` | Client brand |
 | `%veneer_channels%`, `%veneer_channels_count%` | Registered plugin channels |
-| `%veneer_is_spoofing%`, `%veneer_is_bedrock%` | `true` / `false` |
+| `%veneer_is_spoofing%` | `true` / `false`: the spoof checks flagged the player this session (bypass and Bedrock modes respected) |
+| `%veneer_is_bedrock%` | `true` / `false` |
 | `%veneer_fake%`, `%veneer_is_fake%` | `true` / `false` (bot / headless client) |
 | `%veneer_expreventer%`, `%veneer_is_expreventer%` | `true` / `false` (ExploitPreventer detected) |
 | `%veneer_client_type%` | Client type seen by the mod scan |

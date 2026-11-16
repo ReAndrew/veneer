@@ -25,6 +25,10 @@ public class DetectionManager {
     // Track player violation states to prevent duplicate alerts
     private final Map<UUID, Map<String, Boolean>> playerViolations = new ConcurrentHashMap<>();
 
+    // Violations that were really processed (alerted / punished) this session, for %veneer_is_spoofing%.
+    // Join-brand and alert-only brand markers in playerViolations are not violations, so they are kept apart.
+    private final Map<UUID, Set<String>> flaggedViolations = new ConcurrentHashMap<>();
+
     // Track players who have already had their required channels check done
     private final Set<UUID> requiredChannelCheckedPlayers = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
@@ -93,6 +97,8 @@ public class DetectionManager {
                                            " because a fabric channel was registered: " + channel);
                 }
                 violations.put("MISSING_REQUIRED_CHANNELS", false);
+                Set<String> flagged = flaggedViolations.get(playerUUID);
+                if (flagged != null) flagged.remove("MISSING_REQUIRED_CHANNELS");
             }
         }
 
@@ -547,6 +553,8 @@ public class DetectionManager {
         // Skip if no new violations
         if (newViolations.isEmpty()) return;
 
+        markFlagged(uuid, newViolations.keySet());
+
         plugin.module(HacksModule.class).onSpoofFlag(player, String.join("; ", newViolations.values()));
 
         // Get violated channel for blacklist mode
@@ -658,6 +666,7 @@ public class DetectionManager {
 
         // Mark as alerted
         violations.put(violationType, true);
+        markFlagged(uuid, Set.of(violationType));
 
         // Send alert
         plugin.module(SpoofModule.class).alertManager().sendViolationAlert(
@@ -858,6 +867,7 @@ public class DetectionManager {
      */
     public void handlePlayerQuit(UUID playerUUID) {
         playerViolations.remove(playerUUID);
+        flaggedViolations.remove(playerUUID);
         recentlyCheckedPlayers.remove(playerUUID);
         requiredChannelCheckedPlayers.remove(playerUUID);
     }
@@ -870,5 +880,20 @@ public class DetectionManager {
         String text = plugin.messages().getRaw(key);
         for (int i = 0; i + 1 < pairs.length; i += 2) text = text.replace("{" + pairs[i] + "}", String.valueOf(pairs[i + 1]));
         return text;
+    }
+
+    private void markFlagged(UUID uuid, Collection<String> types) {
+        flaggedViolations.computeIfAbsent(uuid, k -> ConcurrentHashMap.newKeySet()).addAll(types);
+    }
+
+    /**
+     * Whether the spoof checks flagged the player this session. Unlike {@code SpoofModule.isPlayerSpoofing}, which
+     * re-evaluates the rules on demand, this is what detection really did: it honours the bypass permission, the
+     * Bedrock EXEMPT/IGNORE modes and the join delay (a player whose brand has not arrived yet is not flagged).
+     * Safe to call from any thread.
+     */
+    public boolean isFlagged(UUID uuid) {
+        Set<String> flagged = flaggedViolations.get(uuid);
+        return flagged != null && !flagged.isEmpty();
     }
 }

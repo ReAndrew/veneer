@@ -15,8 +15,12 @@ import java.util.Set;
 
 /**
  * PlaceholderAPI expansion {@code %veneer_<key>%}.
- * brand, channels, channels_count, is_spoofing, is_bedrock, client_type, version, version_real, version_mismatch,
- * alerts, group, rptrack_packs, rptrack_linked, rptrack_liquidbounce.
+ * brand, channels, channels_count, is_spoofing, is_bedrock, fake / is_fake, expreventer / is_expreventer,
+ * client_type, version, version_real, version_mismatch, alerts, group, rptrack_packs, rptrack_linked,
+ * rptrack_liquidbounce.
+ *
+ * <p>Scoreboard and tab plugins may ask from any thread and after the player quit, so every value is only read:
+ * nothing here creates a profile or re-runs a check.
  *
  * <p>Brand and channels are sent by the client, so their tag and colour characters are replaced with look-alikes
  * ({@link Text#inert}): another plugin that formats the placeholder must not run a player's tags or {@code &} codes.
@@ -40,7 +44,9 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
         if (player == null) return "";
         switch (id) {
             case "brand": {
-                String brand = plugin.brandOf(player);
+                // Not plugin.brandOf: that records the brand in a profile, which would bring back a dropped one
+                PlayerProfile data = plugin.profileOf(player.getUniqueId());
+                String brand = data != null && data.getBrand() != null ? data.getBrand() : player.getClientBrandName();
                 return brand != null ? Text.inert(brand) : "unknown";
             }
             case "channels": {
@@ -52,7 +58,11 @@ public class VeneerPlaceholders extends PlaceholderExpansion {
                 PlayerProfile data = plugin.profileOf(player.getUniqueId());
                 return String.valueOf(data == null ? 0 : data.getChannels().size());
             }
-            case "is_spoofing": return String.valueOf(plugin.module(SpoofModule.class).running() && plugin.module(SpoofModule.class).isPlayerSpoofing(player));
+            case "is_spoofing": {
+                // What the spoof checks really flagged (bypass, Bedrock modes and join delay included)
+                SpoofModule spoof = plugin.module(SpoofModule.class);
+                return String.valueOf(spoof.running() && spoof.detection() != null && spoof.detection().isFlagged(player.getUniqueId()));
+            }
             case "is_bedrock": return String.valueOf(plugin.bedrock().isBedrock(player));
             case "fake":
             case "is_fake": {
