@@ -1351,241 +1351,6 @@
       // ============================================================================
       let graph3d = null, graphRaf = 0, graphRun = 0;
 
-      const DEFAULT_PHYSICS = {
-        chargeDistMax: 100,
-        chargeStr: 25,
-        chargeDistMin: 10,
-        linkDist: 30,
-        linkStr: 0.70,
-        centerStr: 0.05,
-        velocityDecay: 0.60,
-        unpinOnRelease: true
-      };
-
-      function loadPhysicsSettings() {
-        try {
-          const raw = localStorage.getItem('veneer_graph_physics');
-          if (raw) return Object.assign({}, DEFAULT_PHYSICS, JSON.parse(raw));
-        } catch (e) {}
-        return Object.assign({}, DEFAULT_PHYSICS);
-      }
-      let currentPhysics = loadPhysicsSettings();
-
-      function savePhysicsSettings() {
-        try {
-          localStorage.setItem('veneer_graph_physics', JSON.stringify(currentPhysics));
-        } catch (e) {}
-      }
-
-      function applyPhysics(g = graph3d, reheat = true) {
-        if (!g) return;
-        const charge = g.d3Force('charge');
-        if (charge) {
-          if (typeof charge.strength === 'function') charge.strength(-currentPhysics.chargeStr);
-          if (typeof charge.distanceMax === 'function') charge.distanceMax(currentPhysics.chargeDistMax);
-          if (typeof charge.distanceMin === 'function') charge.distanceMin(currentPhysics.chargeDistMin);
-        }
-        const link = g.d3Force('link');
-        if (link) {
-          if (typeof link.distance === 'function') link.distance(currentPhysics.linkDist);
-          if (typeof link.strength === 'function') link.strength(currentPhysics.linkStr);
-        }
-        const center = g.d3Force('center');
-        if (center && typeof center.strength === 'function') {
-          center.strength(currentPhysics.centerStr);
-        }
-        if (typeof g.d3VelocityDecay === 'function') {
-          g.d3VelocityDecay(currentPhysics.velocityDecay);
-        }
-        if (reheat && typeof g.d3ReheatSimulation === 'function') {
-          g.d3ReheatSimulation();
-        }
-      }
-
-      let benchEl = null, isBenchOpen = false, benchPos = null;
-
-      function createPhysicsBench(onResetLayout, onReheat) {
-        if (benchEl) return benchEl;
-        const bench = document.createElement('div');
-        bench.className = 'physics-bench';
-        bench.id = 'graph-physics-bench';
-        bench.style.display = 'none';
-
-        bench.innerHTML =
-          '<div class="physics-bench-header" id="benchHeader">' +
-            '<h3>' +
-              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
-              '<span>' + escapeHtml(t('Physics Tuning Stand')) + '</span>' +
-            '</h3>' +
-            '<button type="button" class="close-btn" id="closeBenchBtn" title="' + escapeHtml(t('Close')) + '">&times;</button>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Radius of Influence (charge.distMax)')) + '</span><b id="lbl-dist-max">100 px</b></div>' +
-            '<input type="range" id="rng-dist-max" min="30" max="400" step="5" value="100">' +
-            '<div class="phys-hint">' + escapeHtml(t('Nodes further than this don\'t push each other away. Fixes nodes running away on drag.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Repulsion Strength (charge.strength)')) + '</span><b id="lbl-charge-str">-25</b></div>' +
-            '<input type="range" id="rng-charge-str" min="5" max="150" step="5" value="25">' +
-            '<div class="phys-hint">' + escapeHtml(t('How strongly close nodes push each other.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Min Repulsion Distance (charge.distMin)')) + '</span><b id="lbl-dist-min">10 px</b></div>' +
-            '<input type="range" id="rng-dist-min" min="1" max="40" step="1" value="10">' +
-            '<div class="phys-hint">' + escapeHtml(t('Clamps explosive force when nodes collide or overlap.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Link Distance (link.distance)')) + '</span><b id="lbl-link-dist">30 px</b></div>' +
-            '<input type="range" id="rng-link-dist" min="10" max="120" step="2" value="30">' +
-            '<div class="phys-hint">' + escapeHtml(t('Target length of links between connected accounts.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Link Elasticity (link.strength)')) + '</span><b id="lbl-link-str">0.70</b></div>' +
-            '<input type="range" id="rng-link-str" min="0.05" max="1.0" step="0.05" value="0.70">' +
-            '<div class="phys-hint">' + escapeHtml(t('Stiffness of links. Higher values keep alts tightly clustered.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Center Gravity (center.strength)')) + '</span><b id="lbl-center-str">0.05</b></div>' +
-            '<input type="range" id="rng-center-str" min="0.0" max="0.5" step="0.01" value="0.05">' +
-            '<div class="phys-hint">' + escapeHtml(t('Pulls graph to center. Low value prevents dragging 1 node from moving the whole graph.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control">' +
-            '<div class="phys-control-head"><span>' + escapeHtml(t('Damping (velocityDecay)')) + '</span><b id="lbl-decay">0.60</b></div>' +
-            '<input type="range" id="rng-decay" min="0.10" max="0.90" step="0.05" value="0.60">' +
-            '<div class="phys-hint">' + escapeHtml(t('Friction that absorbs kinetic energy and stops oscillations.')) + '</div>' +
-          '</div>' +
-          '<div class="phys-control" style="margin-top:6px;">' +
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11.5px;color:var(--text-secondary);">' +
-              '<input type="checkbox" id="chk-unpin" checked> ' +
-              '<span>' + escapeHtml(t('Spring back after drag (unpin node)')) + '</span>' +
-            '</label>' +
-          '</div>' +
-          '<div class="phys-actions">' +
-            '<button type="button" class="btn btn-primary" id="btnResetLayout" style="flex:1;justify-content:center;padding:4px 8px;font-size:11.5px;">' +
-              '↺ ' + escapeHtml(t('Reset Layout')) +
-            '</button>' +
-            '<button type="button" class="btn btn-secondary" id="btnReheat" style="padding:4px 8px;font-size:11.5px;" title="' + escapeHtml(t('Reheat')) + '">' +
-              '⚡ ' + escapeHtml(t('Reheat')) +
-            '</button>' +
-            '<button type="button" class="btn btn-secondary" id="btnDefaults" style="padding:4px 8px;font-size:11.5px;" title="' + escapeHtml(t('Default')) + '">' +
-              escapeHtml(t('Default')) +
-            '</button>' +
-          '</div>';
-
-        const syncInputs = () => {
-          bench.querySelector('#rng-dist-max').value = currentPhysics.chargeDistMax;
-          bench.querySelector('#lbl-dist-max').textContent = currentPhysics.chargeDistMax + ' px';
-
-          bench.querySelector('#rng-charge-str').value = currentPhysics.chargeStr;
-          bench.querySelector('#lbl-charge-str').textContent = '-' + currentPhysics.chargeStr;
-
-          bench.querySelector('#rng-dist-min').value = currentPhysics.chargeDistMin;
-          bench.querySelector('#lbl-dist-min').textContent = currentPhysics.chargeDistMin + ' px';
-
-          bench.querySelector('#rng-link-dist').value = currentPhysics.linkDist;
-          bench.querySelector('#lbl-link-dist').textContent = currentPhysics.linkDist + ' px';
-
-          bench.querySelector('#rng-link-str').value = currentPhysics.linkStr;
-          bench.querySelector('#lbl-link-str').textContent = currentPhysics.linkStr.toFixed(2);
-
-          bench.querySelector('#rng-center-str').value = currentPhysics.centerStr;
-          bench.querySelector('#lbl-center-str').textContent = currentPhysics.centerStr.toFixed(2);
-
-          bench.querySelector('#rng-decay').value = currentPhysics.velocityDecay;
-          bench.querySelector('#lbl-decay').textContent = currentPhysics.velocityDecay.toFixed(2);
-
-          bench.querySelector('#chk-unpin').checked = !!currentPhysics.unpinOnRelease;
-        };
-
-        const bindSlider = (id, lblId, prop, unit, isDec) => {
-          const rng = bench.querySelector('#' + id);
-          const lbl = bench.querySelector('#' + lblId);
-          rng.addEventListener('input', () => {
-            const val = Number(rng.value);
-            currentPhysics[prop] = val;
-            lbl.textContent = (prop === 'chargeStr' ? '-' : '') + (isDec ? val.toFixed(2) : val) + unit;
-            applyPhysics(graph3d, prop !== 'velocityDecay');
-          });
-          rng.addEventListener('change', () => {
-            savePhysicsSettings();
-          });
-        };
-
-        bindSlider('rng-dist-max', 'lbl-dist-max', 'chargeDistMax', ' px', false);
-        bindSlider('rng-charge-str', 'lbl-charge-str', 'chargeStr', '', false);
-        bindSlider('rng-dist-min', 'lbl-dist-min', 'chargeDistMin', ' px', false);
-        bindSlider('rng-link-dist', 'lbl-link-dist', 'linkDist', ' px', false);
-        bindSlider('rng-link-str', 'lbl-link-str', 'linkStr', '', true);
-        bindSlider('rng-center-str', 'lbl-center-str', 'centerStr', '', true);
-        bindSlider('rng-decay', 'lbl-decay', 'velocityDecay', '', true);
-
-        const chkUnpin = bench.querySelector('#chk-unpin');
-        chkUnpin.addEventListener('change', () => {
-          currentPhysics.unpinOnRelease = chkUnpin.checked;
-          savePhysicsSettings();
-        });
-
-        bench.querySelector('#btnResetLayout').addEventListener('click', () => {
-          if (typeof onResetLayout === 'function') onResetLayout();
-        });
-
-        bench.querySelector('#btnReheat').addEventListener('click', () => {
-          if (typeof onReheat === 'function') onReheat();
-        });
-
-        bench.querySelector('#btnDefaults').addEventListener('click', () => {
-          currentPhysics = Object.assign({}, DEFAULT_PHYSICS);
-          savePhysicsSettings();
-          syncInputs();
-          applyPhysics(graph3d, true);
-        });
-
-        const closeBtn = bench.querySelector('#closeBenchBtn');
-        closeBtn.addEventListener('click', () => {
-          isBenchOpen = false;
-          bench.style.display = 'none';
-          const toggleBtn = document.getElementById('g-physics-toggle');
-          if (toggleBtn) toggleBtn.classList.remove('active');
-        });
-
-        // Draggable stand header
-        const header = bench.querySelector('#benchHeader');
-        let isDragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
-        header.addEventListener('pointerdown', ev => {
-          if (ev.target.tagName === 'BUTTON' || ev.target.closest('button')) return;
-          isDragging = true;
-          startX = ev.clientX;
-          startY = ev.clientY;
-          const rect = bench.getBoundingClientRect();
-          const pRect = (bench.parentElement || document.body).getBoundingClientRect();
-          origX = rect.left - pRect.left;
-          origY = rect.top - pRect.top;
-          header.setPointerCapture(ev.pointerId);
-          ev.preventDefault();
-        });
-        header.addEventListener('pointermove', ev => {
-          if (!isDragging) return;
-          const dx = ev.clientX - startX;
-          const dy = ev.clientY - startY;
-          benchPos = { left: Math.max(0, origX + dx) + 'px', top: Math.max(0, origY + dy) + 'px' };
-          bench.style.left = benchPos.left;
-          bench.style.top = benchPos.top;
-          bench.style.right = 'auto';
-        });
-        const stopDrag = ev => {
-          if (isDragging) {
-            isDragging = false;
-            try { header.releasePointerCapture(ev.pointerId); } catch(e) {}
-          }
-        };
-        header.addEventListener('pointerup', stopDrag);
-        header.addEventListener('pointercancel', stopDrag);
-
-        syncInputs();
-        benchEl = bench;
-        return benchEl;
-      }
-
       function stopGraph() {
         if (graphRaf) cancelAnimationFrame(graphRaf);
         graphRaf = 0;
@@ -1755,29 +1520,6 @@
         const card = document.createElement('div'); card.className = 'node-card'; card.style.display = 'none';
         const info = document.createElement('div'); info.className = 'graph-info';
 
-        let doFit = null;
-        const resetLayout = () => {
-          if (!graph3d) return;
-          const gData = graph3d.graphData();
-          (gData.nodes || []).forEach(n => {
-            delete n.fx; delete n.fy; delete n.fz;
-            n.vx = 0; n.vy = 0; n.vz = 0;
-          });
-          graph3d.d3ReheatSimulation();
-          fitted = false;
-          if (typeof doFit === 'function') doFit(600, 'reset layout');
-        };
-
-        const bench = createPhysicsBench(resetLayout, () => {
-          if (graph3d) graph3d.d3ReheatSimulation();
-        });
-        if (benchPos) {
-          bench.style.left = benchPos.left;
-          bench.style.top = benchPos.top;
-          bench.style.right = 'auto';
-        }
-        bench.style.display = isBenchOpen ? '' : 'none';
-
         // "Only this group": the accounts reachable from this one; opened from a player page it starts on
         let groupRoot = focus || null;
         const gGrpEarly = document.getElementById('g-grp');
@@ -1839,7 +1581,6 @@
           box.appendChild(card);
           box.appendChild(info);
           box.appendChild(dbgBox);
-          box.appendChild(bench);
 
           selected = null; hover = null; fitted = false;
           let framed = false, cameraMovedAt = 0;
@@ -1873,23 +1614,17 @@
             .onNodeHover(n => { hover = n ? n.id : null; })
             .warmupTicks(120)
             .cooldownTicks(Infinity)
-            .cooldownTime(8000)
-            .d3VelocityDecay(currentPhysics.velocityDecay)
-            .onNodeDragEnd(n => {
-              if (currentPhysics.unpinOnRelease) {
-                delete n.fx;
-                delete n.fy;
-                delete n.fz;
-              }
-              if (graph3d) graph3d.d3AlphaTarget(0).resetCountdown();
-            })
+            .cooldownTime(6000)
+            .d3VelocityDecay(0.55)
             .onEngineStop(() => {
               if (fitted || selected) return;
               fitted = true;
               fit(600, 'fit after layout');
             })
             .graphData({nodes, links});
-          applyPhysics(graph3d, false);
+          // Tighter than the library's defaults (-30, 30), with room left for the biggest heads
+          graph3d.d3Force('charge').strength(-24);
+          graph3d.d3Force('link').distance(28);
           // The user took the camera: the end of the layout must not pull it back
           const controls = graph3d.controls();
           controls.addEventListener('start', () => { fitted = true; });
@@ -1925,7 +1660,6 @@
           box.appendChild(card);
           box.appendChild(info);
           box.appendChild(dbgBox);
-          box.appendChild(bench);
 
           const select = async n => {
             if (n && n === selected) n = null;
@@ -2016,7 +1750,6 @@
             const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
             moveCamera({x: cx, y: cy, z: cz + dist}, {x: cx, y: cy, z: cz}, ms, why);
           };
-          doFit = fit;
 
           const place = () => {
             if (!graph3d) return;
@@ -2095,15 +1828,6 @@
         const gSearch = document.getElementById('g-search');
 
         [gIp, gRp, gCl, gEm, gNm, gMan, gDays, g2d].forEach(el => { if (el) el.onchange = build; });
-        const gPhysBtn = document.getElementById('g-physics-toggle');
-        if (gPhysBtn) {
-          gPhysBtn.classList.toggle('active', isBenchOpen);
-          gPhysBtn.onclick = () => {
-            isBenchOpen = !isBenchOpen;
-            bench.style.display = isBenchOpen ? '' : 'none';
-            gPhysBtn.classList.toggle('active', isBenchOpen);
-          };
-        }
         const gGrp = document.getElementById('g-grp');
         if (gGrp) gGrp.onchange = () => {
           // Narrows around the selected account; with none picked yet there is no group to show
