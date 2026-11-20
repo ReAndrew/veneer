@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CheckPlayerData {
 
@@ -42,6 +43,7 @@ public class CheckPlayerData {
     public void setUnsupportedClient(boolean unsupported) { unsupportedClient = unsupported; }
 
     private Location signLocation;
+    private final AtomicBoolean awaitingResponse = new AtomicBoolean(false);
     private BlockState originalState;
     private WrappedTask signTimeoutTask;
     private Location lastSignLocation;
@@ -85,6 +87,9 @@ public class CheckPlayerData {
 
     public Location getSignLocation()            { return signLocation; }
     public void setSignLocation(Location l)      { this.signLocation = l; }
+    public boolean isAwaitingResponse()           { return awaitingResponse.get(); }
+    public void setAwaitingResponse(boolean value) { awaitingResponse.set(value); }
+    public boolean beginResponse()                { return awaitingResponse.compareAndSet(true, false); }
     public BlockState getOriginalState()         { return originalState; }
     public void setOriginalState(BlockState s)   { this.originalState = s; }
     public WrappedTask getSignTimeoutTask()       { return signTimeoutTask; }

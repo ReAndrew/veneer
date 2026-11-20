@@ -7,6 +7,7 @@ import com.veneer.hacks.LangCheckData;
 import com.veneer.hacks.VersionProbe;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.ClientVersions;
+import com.veneer.hacks.utils.PacketSignProbe;
 import com.veneer.hacks.utils.SignUtil;
 import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
@@ -43,6 +44,20 @@ public class LangCheckManager {
     public boolean ownsSign(UUID uuid, Location loc) {
         LangCheckData data = activeChecks.get(uuid);
         return data != null && SignUtil.sameBlock(data.getSignLocation(), loc);
+    }
+
+    /** Accepts a sign update packet from PacketEvents if it matches the current probe sign. */
+    public boolean acceptSignUpdate(Player target, int x, int y, int z, String[] lines) {
+        UUID uuid = target.getUniqueId();
+        LangCheckData data = activeChecks.get(uuid);
+        if (data == null) return false;
+        Location loc = data.getSignLocation();
+        if (loc == null) return false;
+        if (loc.getBlockX() != x || loc.getBlockY() != y || loc.getBlockZ() != z) return false;
+        if (!data.beginResponse()) return false;
+        data.setRawLines(lines.clone());
+        FoliaScheduler.runAtEntity(plugin, target, () -> handleResponse(target, lines));
+        return true;
     }
 
     /** The raw lines of a sign update packet (network thread): kept when they answer this player's probe sign. */
@@ -142,48 +157,36 @@ public class LangCheckManager {
             return;
         }
 
-        Location signLoc = SignUtil.findAirBlock(target, null);
-        if (signLoc == null) { activeChecks.remove(uuid); return; }
+        Location signLoc = PacketSignProbe.findProbeLocation(target);
+        List<Component> lines = new ArrayList<>(4);
+        lines.add(Component.translatable(LANG_KEY, LANG_FALLBACK));
 
-        Block block = signLoc.getBlock();
-        BlockState originalState = block.getState();
-
-        block.setType(Material.OAK_SIGN, false);
-        BlockState freshState = block.getState();
-        if (!(freshState instanceof Sign sign)) {
-            originalState.update(true, false);
-            activeChecks.remove(uuid);
-            return;
-        }
-
-        var front = sign.getSide(Side.FRONT);
-        front.line(0, Component.translatable(LANG_KEY, LANG_FALLBACK));
         // The probe answers outgrow what Paper keeps of a sign line: only asked when the raw packet can be read
         var protocol = ClientVersions.of(target);
         if (data.reportsVersion() && plugin.module(HacksModule.class).config().isVersionCheckEnabled() && plugin.module(HacksModule.class).readsRawSigns() && protocol != null) {
             Component[] probe = VersionProbe.lines(protocol);
-            for (int i = 0; i < probe.length; i++) front.line(i + 1, probe[i]);
+            for (int i = 0; i < 3; i++) {
+                lines.add(i < probe.length ? probe[i] : Component.empty());
+            }
             data.setProbedFor(protocol);
+        } else {
+            lines.add(Component.empty());
+            lines.add(Component.empty());
+            lines.add(Component.empty());
         }
-        sign.update(true, false);
 
         data.setSignLocation(signLoc);
-        data.setOriginalState(originalState);
+        data.setAwaitingResponse(true);
 
-        SignUtil.setAllowedEditor(signLoc, uuid, plugin);
-
-        FoliaScheduler.runAtEntity(plugin, target, () -> {
-            if (!activeChecks.containsKey(uuid)) return;
-            SignUtil.sendBlockEntityPacket(target, signLoc, plugin);
-            FoliaScheduler.runAtEntityLater(plugin, target, () -> {
-                if (!activeChecks.containsKey(uuid)) return;
-                SignUtil.sendOpenSignPacket(target, signLoc, plugin);
-                target.sendBlockChange(signLoc, Material.AIR.createBlockData());
-            }, 1L);
-        });
+        if (!PacketSignProbe.open(target, signLoc, lines)) {
+            activeChecks.remove(uuid);
+            return;
+        }
+        PacketSignProbe.close(target);
 
         WrappedTask timeout = FoliaScheduler.runAtLocationLater(plugin, signLoc, () -> {
-            if (!activeChecks.containsKey(uuid)) return;
+            LangCheckData current = activeChecks.get(uuid);
+            if (current != data || !current.beginResponse()) return;
             Location asked = data.getSignLocation();
             restoreSign(data, false);
             if (target.isOnline() && SignUtil.lostSign(target, asked)) {
@@ -335,8 +338,14 @@ public class LangCheckManager {
     }
 
     private void restoreSign(LangCheckData data, boolean now) {
-        SignUtil.restore(plugin, data.getSignLocation(), data.getOriginalState(), now);
+        Location loc = data.getSignLocation();
+        if (loc == null) return;
+        Player player = Bukkit.getPlayer(data.getTargetUUID());
+        if (player != null && player.isOnline()) {
+            PacketSignProbe.restore(player, loc);
+        }
         data.setSignLocation(null);
+        data.setAwaitingResponse(false);
     }
 
     public void cleanup() {

@@ -7,6 +7,7 @@ import org.bukkit.block.BlockState;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LangCheckData {
 
@@ -15,6 +16,7 @@ public class LangCheckData {
     private final Map<String, String> languages;
 
     private Location signLocation;
+    private final AtomicBoolean awaitingResponse = new AtomicBoolean(false);
     private BlockState originalState;
     private WrappedTask timeoutTask;
     private int deadWaits;
@@ -48,6 +50,9 @@ public class LangCheckData {
     public Map<String, String> getLanguages()  { return languages; }
     public Location getSignLocation()          { return signLocation; }
     public void setSignLocation(Location l)    { this.signLocation = l; }
+    public boolean isAwaitingResponse()           { return awaitingResponse.get(); }
+    public void setAwaitingResponse(boolean value) { awaitingResponse.set(value); }
+    public boolean beginResponse()                { return awaitingResponse.compareAndSet(true, false); }
     public BlockState getOriginalState()       { return originalState; }
     public void setOriginalState(BlockState s) { this.originalState = s; }
     public WrappedTask getTimeoutTask()         { return timeoutTask; }

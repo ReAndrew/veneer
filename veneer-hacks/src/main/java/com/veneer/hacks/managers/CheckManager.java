@@ -6,6 +6,7 @@ import com.veneer.VeneerPlugin;
 import com.veneer.hacks.*;
 import com.veneer.core.FoliaScheduler;
 import com.veneer.core.ClientVersions;
+import com.veneer.hacks.utils.PacketSignProbe;
 import com.veneer.hacks.utils.SignUtil;
 import com.veneer.core.WrappedTask;
 import net.kyori.adventure.text.Component;
@@ -73,6 +74,18 @@ public class CheckManager {
     public boolean ownsSign(UUID uuid, Location loc) {
         CheckPlayerData data = activeChecks.get(uuid);
         return data != null && SignUtil.sameBlock(data.getSignLocation(), loc);
+    }
+
+    /** Accepts a sign update packet from PacketEvents if it matches the current probe sign. */
+    public boolean acceptSignUpdate(Player target, int x, int y, int z, String[] lines) {
+        CheckPlayerData data = activeChecks.get(target.getUniqueId());
+        if (data == null) return false;
+        Location loc = data.getSignLocation();
+        if (loc == null) return false;
+        if (loc.getBlockX() != x || loc.getBlockY() != y || loc.getBlockZ() != z) return false;
+        if (!data.beginResponse()) return false;
+        FoliaScheduler.runAtEntity(plugin, target, () -> handleBatchResponse(target, lines));
+        return true;
     }
 
     /** True when {@code loc} is any running scan's probe sign. */
@@ -206,48 +219,25 @@ public class CheckManager {
         }
         List<HackDefinition> batch = data.getCurrentBatchHacks();
 
-        Location signLoc = SignUtil.findAirBlock(target, data.getLastSignLocation());
-        if (signLoc == null) {
-            finishCheck(uuid);
-            return;
-        }
-
-        Block block = signLoc.getBlock();
-        BlockState originalState = block.getState();
-
-        block.setType(Material.OAK_SIGN, false);
-        BlockState freshState = block.getState();
-        if (!(freshState instanceof Sign sign)) {
-            originalState.update(true, false);
-            finishCheck(uuid);
-            return;
-        }
-
-        var front = sign.getSide(Side.FRONT);
+        Location signLoc = PacketSignProbe.findProbeLocation(target);
+        List<Component> lines = new ArrayList<>(4);
         for (int i = 0; i < LINES_PER_SIGN; i++)
-            front.line(i, i < batch.size() ? buildComponent(batch.get(i)) : Component.empty());
-        front.line(3, Component.keybind(CTRL_KEYBIND));
-        sign.update(true, false);
+            lines.add(i < batch.size() ? buildComponent(batch.get(i)) : Component.empty());
+        lines.add(Component.keybind(CTRL_KEYBIND));
 
         data.setSignLocation(signLoc);
         data.setLastSignLocation(signLoc);
-        data.setOriginalState(originalState);
+        data.setAwaitingResponse(true);
 
-        SignUtil.setAllowedEditor(signLoc, uuid, plugin);
-
-        FoliaScheduler.runAtEntity(plugin, target, () -> {
-            if (!activeChecks.containsKey(uuid)) return;
-            SignUtil.sendBlockEntityPacket(target, signLoc, plugin);
-            FoliaScheduler.runAtEntityLater(plugin, target, () -> {
-                if (!activeChecks.containsKey(uuid)) return;
-                SignUtil.sendOpenSignPacket(target, signLoc, plugin);
-                target.sendBlockChange(signLoc, Material.AIR.createBlockData());
-            }, 1L);
-        });
+        if (!PacketSignProbe.open(target, signLoc, lines)) {
+            finishCheck(uuid);
+            return;
+        }
+        PacketSignProbe.close(target);
 
         WrappedTask timeout = FoliaScheduler.runAtLocationLater(plugin, signLoc, () -> {
             CheckPlayerData d = activeChecks.get(uuid);
-            if (d == null) return;
+            if (d == null || !d.beginResponse()) return;
             Location asked = d.getSignLocation();
             restoreCurrentSign(d, false);
             Player again = Bukkit.getPlayer(uuid);
@@ -711,8 +701,12 @@ public class CheckManager {
     private void restoreCurrentSign(CheckPlayerData data, boolean now) {
         Location loc = data.getSignLocation();
         if (loc == null) return;
-        SignUtil.restore(plugin, loc, data.getOriginalState(), now);
+        Player player = Bukkit.getPlayer(data.getTargetUUID());
+        if (player != null && player.isOnline()) {
+            PacketSignProbe.restore(player, loc);
+        }
         data.setSignLocation(null);
+        data.setAwaitingResponse(false);
     }
 
     public void cleanup() {

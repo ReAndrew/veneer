@@ -9,7 +9,6 @@ import com.veneer.hacks.commands.HackEditorCommand;
 import com.veneer.hacks.commands.HackLangCommand;
 import com.veneer.hacks.listeners.AntiCheatListener;
 import com.veneer.hacks.listeners.JoinListener;
-import com.veneer.hacks.listeners.SignListener;
 import com.veneer.hacks.listeners.SignPacketListener;
 import com.veneer.hacks.managers.CheckManager;
 import com.veneer.hacks.managers.ConfigManager;
@@ -59,7 +58,6 @@ public class HacksModule extends VeneerModule {
 
     @Override
     protected void enable() {
-        SignUtil.clearLeftovers(plugin);
         config = new ConfigManager(plugin);
         checks = new CheckManager(plugin);
         langChecks = new LangCheckManager(plugin);
@@ -69,7 +67,6 @@ public class HacksModule extends VeneerModule {
         command("hacklang", new HackLangCommand(plugin));
         command("hackeditor", new HackEditorCommand(plugin));
 
-        listen(new SignListener(plugin));
         joinChecks = listen(new JoinListener(plugin));
         AntiCheatListener anticheat = listen(new AntiCheatListener(plugin));
         anticheat.registerHooks();
@@ -87,7 +84,6 @@ public class HacksModule extends VeneerModule {
         signPackets = null;
         checks.cleanup();
         langChecks.cleanup();
-        SignUtil.saveLeftovers(plugin);
         if (web != null) web.stop();
         web = null;
     }
