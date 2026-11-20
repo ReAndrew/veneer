@@ -140,3 +140,31 @@ jobs:
             veneer-plugin/target/veneer-*.jar
             veneer-plugin/target/SHA256SUMS.txt
           generate_release_notes: true
+
+      - name: Publish to Modrinth
+        if: steps.channel.outputs.do_release == 'true' && steps.channel.outputs.is_prerelease != 'true'
+        uses: Kir-Antipov/mc-publish@v3
+        with:
+          modrinth-id: nXjf9Rpi
+          modrinth-token: ${{ secrets.modrinth_api || secrets.MODRINTH_TOKEN }}
+          files: veneer-plugin/target/veneer-*.jar
+          name: ${{ steps.channel.outputs.release_title }}
+          version: ${{ steps.channel.outputs.tag_name }}
+          version-type: release
+          loaders: |
+            paper
+            purpur
+            folia
+          game-versions: |
+            1.21
+            1.21.1
+            1.21.2
+            1.21.3
+            1.21.4
+            1.21.5
+            1.21.6
+            1.21.7
+            1.21.8
+            1.21.9
+            1.21.10
+            1.21.11
