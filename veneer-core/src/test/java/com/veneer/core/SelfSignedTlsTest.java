@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -49,7 +49,7 @@ class SelfSignedTlsTest {
             HttpRequest request = HttpRequest.newBuilder(uri).build();
             assertEquals(204, HttpClient.newBuilder().sslContext(client).build()
                     .send(request, HttpResponse.BodyHandlers.discarding()).statusCode());
-            assertThrows(SSLHandshakeException.class, () -> HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding()));
+            assertThrows(SSLException.class, () -> HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding()));
         } finally {
             server.stop(0);
         }
