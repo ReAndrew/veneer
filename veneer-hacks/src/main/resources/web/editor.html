@@ -1175,6 +1175,19 @@
         .graph-legend{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:11px;color:var(--text-muted);}
         .graph-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-left:4px;}
         .badge-PROTECTED{background:rgba(245, 158, 11, 0.15);border:1px solid rgba(245, 158, 11, 0.4);color:var(--warning-fg);border-radius:4px;padding:2px 6px;font-size:11px;font-weight:600;}
+        .physics-bench{position:absolute;top:14px;left:14px;width:320px;max-height:calc(100% - 28px);overflow-y:auto;background:rgba(22, 31, 46, 0.96);backdrop-filter:blur(8px);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;z-index:6;font-size:12px;color:var(--text-main);box-shadow:0 8px 24px rgba(0,0,0,0.5);}
+        .physics-bench-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(33,44,61,0.6);cursor:move;user-select:none;}
+        .physics-bench-header h3{font-size:13px;font-weight:700;margin:0;display:flex;align-items:center;gap:6px;}
+        .physics-bench-header button.close-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;line-height:1;padding:0 2px;}
+        .physics-bench-header button.close-btn:hover{color:var(--text-main);}
+        .phys-control{margin-bottom:9px;}
+        .phys-control-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+        .phys-control-head span{font-size:11px;font-weight:500;color:var(--text-secondary);}
+        .phys-control-head b{font-size:11px;font-family:var(--font-mono);color:var(--accent-primary);}
+        .phys-control input[type="range"]{width:100%;margin:2px 0;padding:0;height:4px;cursor:pointer;}
+        .phys-hint{font-size:9.5px;color:var(--text-muted);line-height:1.25;}
+        .phys-actions{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(33,44,61,0.6);}
+        #g-physics-toggle.active{background:var(--accent-primary);color:#fff;border-color:var(--accent-primary);}
 
     </style>
       <script src="three.min.js"></script>
@@ -1617,6 +1630,10 @@
               <label><input type="checkbox" id="g-2d"> flat</label>
               <label title="Only the accounts linked to the selected one, directly or through others"><input type="checkbox" id="g-grp"> only this group</label>
               <span class="graph-legend"><i style="background:#ef4444"></i>cheats <i style="background:#eab308"></i>forbidden mods <i style="background:#f97316"></i>spoof flag <i style="background:#9ca3af"></i>banned <i style="background:#22c55e"></i>clean <i style="background:#3b82f6"></i>not scanned <b style="color:#4ade80">name</b> online</span>
+              <button type="button" class="btn btn-secondary" id="g-physics-toggle" style="padding: 3px 8px; font-size: 11.5px; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;" title="Physics Tuning Stand">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span data-i18n="Physics Stand">Physics Stand</span>
+              </button>
               <input type="checkbox" id="g-dbg" hidden>
             </div>
             <div class="graph-box" id="graph-box" style="flex: 1; min-height: 480px; position: relative; border-radius: 8px; border: 1px solid var(--border-subtle); background: #05080d; overflow: hidden;">
